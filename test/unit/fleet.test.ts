@@ -652,6 +652,8 @@ describe("native subagent fleet", () => {
 							startedAt: now - 900,
 							updatedAt: now - 100,
 							tokens: 120,
+							model: "provider/live-model",
+							thinking: "high",
 						},
 					],
 					[
@@ -696,6 +698,12 @@ describe("native subagent fleet", () => {
 				assert.ok(lines.some((line) => line.includes("worker")));
 				assert.ok(lines.some((line) => line.includes("reviewer")));
 				assert.ok(lines.some((line) => line.includes("foreground · live")));
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("live-model · thinking high"),
+					),
+				);
 				assert.ok(
 					lines.some(
 						(line) =>
@@ -803,6 +811,8 @@ describe("native subagent fleet", () => {
 							index: 0,
 							status: "completed",
 							transcriptPath: recentTranscript,
+							model: "provider/recent-model",
+							thinking: "xhigh",
 						},
 					],
 				});
@@ -851,6 +861,9 @@ describe("native subagent fleet", () => {
 							component.render(100).some((line) => line.includes(expected)),
 							`missing ${expected}`,
 						);
+						if (initialKey.startsWith("foreground-recent:")) {
+							assert.ok(lines.some((line) => line.includes("recent-model · thinking xhigh")));
+						}
 					} finally {
 						component.dispose();
 					}
@@ -891,7 +904,7 @@ describe("native subagent fleet", () => {
 		assert.equal(state.fleetInspectorOpen, false);
 	});
 
-	it("opens the inspector with the FleetView-selected child focused", () => {
+	it("focuses the selected child and renders raw foreground model details", () => {
 		const state = stateForTest();
 		state.foregroundControls.set("run-worker", {
 			runId: "run-worker",
@@ -900,6 +913,8 @@ describe("native subagent fleet", () => {
 			updatedAt: 20,
 			currentAgent: "worker",
 			currentIndex: 0,
+			model: "provider/raw-model",
+			thinking: "medium",
 		});
 		state.foregroundControls.set("run-reviewer", {
 			runId: "run-reviewer",
@@ -908,6 +923,14 @@ describe("native subagent fleet", () => {
 			updatedAt: 21,
 			currentAgent: "reviewer",
 			currentIndex: 0,
+		});
+		state.foregroundRuns!.set("run-recent", {
+			runId: "run-recent",
+			mode: "single",
+			cwd: process.cwd(),
+			sessionId: "session-current",
+			updatedAt: 19,
+			children: [{ agent: "reviewer", index: 0, status: "completed", model: "provider/recent-raw-model", thinking: "xhigh" }],
 		});
 		const component = new SubagentFleetComponent(
 			{ terminal: { rows: 28, columns: 90 }, requestRender() {} } as never,
@@ -924,8 +947,22 @@ describe("native subagent fleet", () => {
 				selectedLine?.includes("run-work"),
 				`unexpected selected row: ${selectedLine}`,
 			);
+			assert.ok(lines.some((line) => line.includes("Model: raw-model · thinking medium")));
 		} finally {
 			component.dispose();
+		}
+
+		const recentComponent = new SubagentFleetComponent(
+			{ terminal: { rows: 28, columns: 90 }, requestRender() {} } as never,
+			theme as never,
+			state,
+			() => {},
+			{ initialKey: "foreground-recent:run-recent:0", refreshMs: 60_000 },
+		);
+		try {
+			assert.ok(recentComponent.render(90).some((line) => line.includes("Model: recent-raw-model · thinking xhigh")));
+		} finally {
+			recentComponent.dispose();
 		}
 	});
 
