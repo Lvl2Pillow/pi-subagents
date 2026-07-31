@@ -376,31 +376,6 @@ to child processes via the `PI_SUBAGENT_PARENT_SESSION` environment variable,
 which the permission system uses to forward `ask` prompts from headless
 subagent processes back to the parent session's UI.
 
-### Checking the integration
-
-Run `/subagents-doctor` to check the permission system status.
-If `ask` prompts from children are not reaching the parent UI, verify both
-extensions are installed:
-
-```bash
-pi list
-```
-
-### How it works
-
-At session start, the interactive (root) session records its own identity in
-`PI_SUBAGENT_PARENT_SESSION`. When pi-subagents launches a child, it passes the
-launching session's identity to that child explicitly, falling back to the
-inherited environment variable. When the permission system inside a child
-encounters an `ask` permission, it reads this variable to locate the parent
-session and forwards the confirmation request there.
-
-This resolves an interactive prompt only when the parent it points at is the
-interactive session — i.e. for the direct children of the root session. A
-nested child's parent is itself a headless subagent process with no UI to
-surface the prompt, so `ask` policies are best placed on agents that run as
-direct children of the interactive session.
-
 ## Direct commands
 
 Skip this section until you want exact syntax.
@@ -417,41 +392,10 @@ Skip this section until you want exact syntax.
 | `/subagents-doctor` | Show read-only setup diagnostics |
 | `/subagents-models [agent]` | Show the runtime-loaded builtin model mapping, optionally filtered to one builtin |
 | `/subagents-watchdog [status|on|off|recommend-model|model ...|session model ...|check]` | Show or configure the opt-in watchdog; use a strong complementary model such as Opus 4.8 high or GPT 5.5 high |
-| `/subagents-profiles` | List saved subagent profiles from `~/.pi/agent/profiles/pi-subagents/` |
-| `/subagents-load-profile <name>` | Replace only `settings.subagents` with a saved profile and optionally switch this session to the profile worker model |
-| `/subagents-refresh-provider-models <provider> [--force]` | Create or refresh the cached provider model catalog |
-| `/subagents-generate-profiles <provider>` | Generate `<provider>.quota.json` and `<provider>.quality.json` profiles |
-| `/subagents-check-profile <name>` | Check a saved profile against the current registry and live model probes |
 
 Commands validate agent names locally, support tab completion, and send results back into the conversation.
 
-`/subagents` opens a compact administration flow for builtin, package, user, and project agents. Model choices refresh Pi's model registry first, thinking choices are filtered to levels declared by the selected model, and prompt editing uses Pi's native multiline editor; press Ctrl+G to open the configured external editor. Full metadata is opt-in through `details`. Edits are persisted to the field-owning layer: explicit custom-agent frontmatter remains in the agent file, while settings/profile-managed fields remain in `settings.subagents.agentOverrides`. Package-owned fields and definitions loaded through `PI_SUBAGENT_EXTRA_AGENT_DIRS` stay read-only; settings can still supply model or thinking fields omitted by a package definition.
-
-### Profiles and provider model catalogs
-
-Profiles are stored under:
-
-```text
-~/.pi/agent/profiles/pi-subagents/
-```
-
-Provider model catalogs are cached under:
-
-```text
-~/.pi/agent/profiles/pi-subagents/providers/
-```
-
-Use the profile workflow like this:
-
-```text
-/subagents-refresh-provider-models openai-codex
-/subagents-generate-profiles openai-codex
-/subagents-load-profile openai-codex.quota
-```
-
-`/subagents-refresh-provider-models` writes a serialized provider model catalog with observed registry data, simple role-oriented classification, and live probe results from tiny one-shot `pi -p --model ... --no-tools` checks. The cache refreshes when missing or stale; use `--force` to ignore freshness and probe again immediately.
-
-`/subagents-generate-profiles` uses the provider catalog to produce quota and quality profiles. `/subagents-check-profile` re-checks each assigned model in a saved profile against the current registry and a live probe so you can detect model removals, auth problems, or stale assignments.
+`/subagents` opens a compact administration flow for builtin, package, user, and project agents. Model choices refresh Pi's model registry first, thinking choices are filtered to levels declared by the selected model, and prompt editing uses Pi's native multiline editor; press Ctrl+G to open the configured external editor. Full metadata is opt-in through `details`. Edits are persisted to the field-owning layer: explicit custom-agent frontmatter remains in the agent file, while settings-managed fields remain in `settings.subagents.agentOverrides`. Package-owned fields and definitions loaded through `PI_SUBAGENT_EXTRA_AGENT_DIRS` stay read-only; settings can still supply model or thinking fields omitted by a package definition.
 
 ### Per-step tasks
 

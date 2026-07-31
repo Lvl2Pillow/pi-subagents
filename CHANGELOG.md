@@ -22,6 +22,7 @@
 - Removed the external `intercom` tool and the `pi-intercom` cross-process bridge; subagents coordinate with the parent through the native supervisor channel only, via the child-facing `contact_supervisor` tool and parent-facing `subagent_supervisor` tool.
 - Removed the `subagent:result-intercom` and `subagent:control-intercom` events, `SUBAGENT_ORCHESTRATOR_TARGET_ENV`, the `intercomTarget`/`orchestratorIntercomTarget`/`deliverIntercomResults` run options, `notifyChannels: "intercom"`, `intercomBridge.resultDelivery`, and the intercom fallback tool registration. The native `IntercomEventBus` detach flow (`subagent:detach-request`/`detach-response`, `allowIntercomDetach`, `intercomBridge` `mode`/`instructionFile`) remains for supervisor handoff.
 - Removed the per-agent persistent memory feature: the `memory` frontmatter field, `MEMORY.md` injection into child system prompts, the async recovery descriptor field, and the agent digest contribution. Leftover `memory:` frontmatter is now silently ignored and existing `agent-memory/` directories are no longer read.
+- Removed subagent profiles and provider model catalogs: the `subagents-profiles`, `subagents-load-profile`, `subagents-refresh-provider-models`, `subagents-generate-profiles`, and `subagents-check-profile` commands, the `src/profiles/profiles.ts` module, live model probes, and quota/quality profile generation. Subagents now use explicit `model:` definitions only.
 
 ## [0.37.2] - 2026-07-28
 
