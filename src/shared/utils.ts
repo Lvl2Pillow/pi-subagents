@@ -73,8 +73,19 @@ export function resolveConfigDirName(codingAgentModule?: unknown, entryPoint?: s
 		?? DEFAULT_CONFIG_DIR_NAME;
 }
 
+let cachedConfigDirName: { entryPoint: string | undefined; packageRoot: string | undefined; value: string } | undefined;
+
 export function getConfigDirName(): string {
-	return resolveConfigDirName();
+	const entryPoint = process.argv[1];
+	const packageRoot = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
+	if (cachedConfigDirName
+		&& cachedConfigDirName.entryPoint === entryPoint
+		&& cachedConfigDirName.packageRoot === packageRoot) {
+		return cachedConfigDirName.value;
+	}
+	const value = resolveConfigDirName(undefined, entryPoint, packageRoot);
+	cachedConfigDirName = { entryPoint, packageRoot, value };
+	return value;
 }
 
 export function getProjectConfigDir(projectRoot: string): string {

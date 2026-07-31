@@ -54,10 +54,11 @@ import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
-import { applyThinkingSuffix, buildPiArgs, cleanupTempDir, resolvePiLaunchToolPlan } from "../shared/pi-args.ts";
+import { applyThinkingSuffix, buildPiArgs, cleanupTempDir, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/pi-args.ts";
 import { decodeSubagentCapabilityCeiling, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV } from "../shared/capability-ceiling.ts";
 import { resolveEffectiveThinking } from "../../shared/model-info.ts";
 import { MISSING_STRUCTURED_OUTPUT_CALL_ERROR, readStructuredOutput } from "../shared/structured-output.ts";
+import { formatProcessSignalError, isUnexplainedProcessSignal } from "../shared/process-signal.ts";
 import { readChildToolDiagnosticError } from "../shared/tool-availability.ts";
 import { captureSingleOutputSnapshot, extractChildWrittenOutput, formatSavedOutputReference, injectOutputPathSystemPrompt, resolveSingleOutput, validateFileOnlyOutputMode, type SingleOutputSnapshot } from "../shared/single-output.ts";
 import {
@@ -290,6 +291,7 @@ async function runSingleAttempt(
 		capabilityCeiling: options.capabilityCeiling,
 		inheritedCapabilityCeiling: decodeSubagentCapabilityCeiling(process.env[SUBAGENT_CAPABILITY_CEILING_ENV]),
 	});
+	const launchResolvedExtensions = projectLaunchResolvedChildExtensions(toolPlan);
 	const launchContractDigest = launchBindingDigest({
 		definitionDigest: agentDefinitionDigest(agent),
 		task: shared.originalTask ?? task,
@@ -313,6 +315,7 @@ async function runSingleAttempt(
 		task: shared.originalTask ?? task,
 		...(options.agentContract ? { agentContract: options.agentContract } : {}),
 		launchContractDigest,
+		launchResolvedExtensions,
 		exitCode: 0,
 		messages: [],
 		usage: emptyUsage(),
@@ -972,7 +975,18 @@ async function runSingleAttempt(
 			const stderr = stderrTail.text();
 			const rawStdout = rawStdoutTail.text();
 			let closeError = result.error ?? toolDiagnosticError ?? assistantError;
-			const forcedDrainAfterFinalSuccess = forcedTerminationSignal && (cleanTerminalAssistantStopReceived || agentSettledReceived) && !closeError;
+			const forcedDrainAfterFinalSuccess = Boolean(forcedTerminationSignal || signal) && (cleanTerminalAssistantStopReceived || agentSettledReceived) && !closeError;
+			if (signal) result.processSignal = signal;
+			if (!closeError && isUnexplainedProcessSignal({
+				processSignal: signal,
+				interrupted: result.interrupted,
+				timedOut: result.timedOut,
+				stopped: result.stopped,
+				turnBudgetExceeded: result.turnBudgetExceeded,
+				forcedDrainAfterFinalSuccess,
+			})) {
+				closeError = formatProcessSignalError(signal!);
+			}
 			if (code !== 0 && rawStdout.trim() && !closeError && !forcedDrainAfterFinalSuccess) {
 				closeError = rawStdout.trim();
 			}
@@ -980,7 +994,6 @@ async function runSingleAttempt(
 				closeError = stderr.trim();
 			}
 			const finalCode = forcedDrainAfterFinalSuccess ? 0 : forcedTerminationSignal || signal ? (code ?? 1) : (code ?? 0);
-			if (signal) result.processSignal = signal;
 			if (detached) {
 				const recoveredProgress = snapshotProgress(progress);
 				const recoveredResult = snapshotResult(result, recoveredProgress);
@@ -1394,6 +1407,7 @@ export async function runSync(
 			error: target.error,
 			agentContract: target.agentContract,
 			launchContractDigest: target.launchContractDigest,
+			launchResolvedExtensions: target.launchResolvedExtensions,
 			execution: target.execution,
 			acceptance: target.acceptance,
 			capabilityCeiling: target.capabilityCeiling,

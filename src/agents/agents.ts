@@ -109,6 +109,7 @@ export interface AgentConfig {
 	localName?: string;
 	packageName?: string;
 	description: string;
+	aliases?: string[];
 	tools?: string[];
 	mcpDirectTools?: string[];
 	model?: string;
@@ -463,6 +464,41 @@ function collectPackageSubagentPaths(cwd: string, options: { includeUser: boolea
 		}
 	}
 	return { agents, chains };
+}
+
+function normalizeAgentAliases(rawAliases: string[] | undefined, agentName: string): string[] | undefined {
+	const aliases = [...new Set((rawAliases ?? []).map((alias) => alias.trim()).filter(Boolean))]
+		.filter((alias) => alias !== agentName);
+	return aliases.length > 0 ? aliases : undefined;
+}
+
+function effectiveAgentMatch(matches: AgentConfig[]): { agent?: AgentConfig; error?: string } {
+	const distinctNames = [...new Set(matches.map((agent) => agent.name))];
+	if (distinctNames.length === 1) {
+		const sourceRank = new Map<AgentConfig["source"], number>([["builtin", 0], ["package", 1], ["user", 2], ["project", 3]]);
+		return { agent: [...matches].sort((a, b) => (sourceRank.get(b.source) ?? 0) - (sourceRank.get(a.source) ?? 0))[0] };
+	}
+	return {};
+}
+
+export function resolveAgentName(name: string, agents: AgentConfig[]): { agent?: AgentConfig; error?: string } {
+	const raw = name.trim();
+	const exact = agents.filter((agent) => agent.name === raw || agent.localName === raw);
+	if (exact.length === 1) return { agent: exact[0] };
+	if (exact.length > 1) {
+		const effective = effectiveAgentMatch(exact);
+		if (effective.agent) return effective;
+		return { error: `Ambiguous agent name '${name}': ${exact.map((agent) => agent.name).join(", ")}` };
+	}
+
+	const aliases = agents.filter((agent) => agent.aliases?.includes(raw));
+	if (aliases.length === 1) return { agent: aliases[0] };
+	if (aliases.length > 1) {
+		const effective = effectiveAgentMatch(aliases);
+		if (effective.agent) return effective;
+		return { error: `Ambiguous agent alias '${name}': ${aliases.map((agent) => agent.name).join(", ")}` };
+	}
+	return {};
 }
 
 function splitToolList(rawTools: string[] | undefined): { tools?: string[]; mcpDirectTools?: string[] } {
@@ -1349,6 +1385,7 @@ function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 		const tools = parsedTools.tools ?? [];
 		const mcpDirectTools = parsedTools.mcpDirectTools ?? [];
 		const defaultReads = parseFrontmatterList(frontmatter.defaultReads);
+		const aliases = normalizeAgentAliases(parseFrontmatterList(frontmatter.aliases ?? frontmatter.alias), runtimeName);
 		const skillStr = frontmatter.skill || frontmatter.skills;
 		const skills = parseFrontmatterList(skillStr);
 		const skillPath = parseFrontmatterList(frontmatter.skillPath);
@@ -1429,6 +1466,7 @@ function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 			localName,
 			packageName,
 			description: frontmatter.description,
+			aliases,
 			tools: rawTools !== undefined ? tools : undefined,
 			mcpDirectTools: mcpDirectTools.length > 0 ? mcpDirectTools : undefined,
 			model: frontmatter.model,

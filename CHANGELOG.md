@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Added agent frontmatter aliases and built-in worker aliases for `developer`, `coder`, `implementer`, and `develop`, while keeping canonical names in execution state. Thanks to @selimerunkut for #695.
+- Added explicit chain approval checkpoints with `{ checkpoint, message? }`, `approve-checkpoint`/`reject-checkpoint` controls, persisted checkpoint status, and terminal `rejected` outcomes. Thanks to @saleemlala for #694.
+- Added optional root `usageBudget` limits for reported token and cost totals, with soft status reporting and hard gating for later child launches without stopping already-running children. Thanks to @saleemlala for #693.
+- Added optional `launchResolvedExtensions` status/result/RPC metadata with opaque launch-resolved child extension identifiers and ambient-extension state. Thanks to @saleemlala for #691.
+- Added Fleet inspector controls to steer the selected live async child and stop its top-level async run with confirmation. Thanks to @saleemlala for #692.
+
+### Changed
+- Reduced repeated runtime filesystem work by caching stable Pi config-directory resolution, incrementally sanitizing run history, and limiting nested control-result polling to files created for the active request.
+
+### Fixed
+- Resynchronized async job control-event scans that resume inside an oversized JSONL record, avoiding malformed-tail parse noise while preserving later control events. Thanks to @vicary for #700.
+- Report signal-terminated child processes with a canonical signal error instead of stderr-tail noise and classify those results separately from ordinary task failures. Thanks to @cking000bigdemon for #688.
+
+## [0.38.0] - 2026-07-30
+
+### Added
 - Added `j`/`k` navigation aliases to the non-filterable `/subagents-stop` selector and clarify step list while preserving text input in editor and search modes. Thanks to @magoz for #686.
 - Added the optional versioned `fleetStatus` RPC capability with bounded, current-session child roles, goals, model/effort, split token usage, elapsed timestamps, stable opaque reconciliation keys, and explicit overflow counts. Thanks to @neumie for #682.
 

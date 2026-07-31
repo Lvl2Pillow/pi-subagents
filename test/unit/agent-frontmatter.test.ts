@@ -153,6 +153,47 @@ body`);
 	}));
 });
 
+describe("agent aliases", () => {
+	it("parses and serializes agent aliases", () => withTempHome(() => {
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-alias-agent-"));
+		tempDirs.push(project);
+		writeAgent(path.join(project, ".pi", "agents", "worker.md"), `---
+name: worker
+description: Worker
+aliases: developer, coder, worker
+---
+body`);
+
+		const worker = discoverAgents(project, "both").agents.find((agent) => agent.name === "worker")!;
+		assert.deepEqual(worker.aliases, ["developer", "coder"]);
+		assert.match(serializeAgent(worker), /^aliases: developer, coder$/m);
+
+		const ctx = { cwd: project, modelRegistry: { getAvailable: () => [] } };
+		assert.match(handleManagementAction("list", {}, ctx).content[0]?.text ?? "", /aliases: developer, coder/);
+		assert.match(handleManagementAction("get", { agent: "developer" }, ctx).content[0]?.text ?? "", /Agent: worker/);
+	}));
+
+	it("reports management alias collisions as ambiguous", () => withTempHome(() => {
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-alias-collision-"));
+		tempDirs.push(project);
+		writeAgent(path.join(project, ".pi", "agents", "review-agent.md"), `---
+name: review-agent
+description: Custom reviewer
+aliases: developer
+---
+body`);
+
+		const ctx = { cwd: project, modelRegistry: { getAvailable: () => [] } };
+		const getResult = handleManagementAction("get", { agent: "developer" }, ctx);
+		assert.equal(getResult.isError, true);
+		assert.match(getResult.content[0]?.text ?? "", /Ambiguous agent alias or name 'developer': review-agent, worker/);
+
+		const disableResult = handleManagementAction("disable", { agent: "developer" }, ctx);
+		assert.equal(disableResult.isError, true);
+		assert.match(disableResult.content[0]?.text ?? "", /Ambiguous agent alias 'developer': worker, review-agent|Ambiguous agent alias 'developer': review-agent, worker/);
+	}));
+});
+
 describe("agent simple-scalar list frontmatter", () => {
 	it("discovers newline block lists for all list fields and routes MCP tools", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-agent-block-list-frontmatter-"));

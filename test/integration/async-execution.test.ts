@@ -15,7 +15,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createEventBus, createMockPi, createTempDir, events, makeAgent, makeMinimalCtx, removeTempDir, tryImport } from "../support/helpers.ts";
 import type { MockPi } from "../support/helpers.ts";
-import { deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest } from "../../src/runs/background/control-channel.ts";
+import { deliverCheckpointDecisionRequest, deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest } from "../../src/runs/background/control-channel.ts";
 import { waitForSubagents } from "../../src/runs/background/subagent-wait.ts";
 import { writeAtomicJson } from "../../src/shared/atomic-json.ts";
 import { CHILD_WATCHDOG_STATUS_EVENT } from "../../src/watchdog/child-status.ts";
@@ -26,10 +26,28 @@ import { resolveSubagentLaunchContract } from "../../src/api/preflight.ts";
 import { discoverAgents } from "../../src/agents/agents.ts";
 import { runSync } from "../../src/runs/foreground/execution.ts";
 
+interface LaunchResolvedExtensions {
+	version?: number;
+	source?: string;
+	disableAmbientExtensions?: boolean;
+	runtime?: string[];
+	configured?: string[];
+	effective?: string[];
+}
+
+interface UsageBudgetState {
+	version?: number;
+	source?: string;
+	exhausted?: boolean;
+	reason?: string;
+	tokens?: { used?: number; hard?: number; exhausted?: boolean };
+	costUsd?: { used?: number; hard?: number; exhausted?: boolean };
+}
+
 interface AsyncExecutionResult {
 	content: Array<{ text?: string }>;
 	isError?: boolean;
-	details: { asyncId?: string; asyncDir?: string; launchContractDigest?: string };
+	details: { asyncId?: string; asyncDir?: string; launchContractDigest?: string; launchResolvedExtensions?: LaunchResolvedExtensions; usageBudget?: UsageBudgetState; checkpoint?: { name?: string; status?: string } };
 }
 
 interface AsyncResultPayload {
@@ -40,6 +58,7 @@ interface AsyncResultPayload {
 	sessionId?: string;
 	mode?: string;
 	launchContractDigest?: string;
+	launchResolvedExtensions?: LaunchResolvedExtensions;
 	summary?: string;
 	error?: string;
 	timeoutMs?: number;
@@ -51,7 +70,10 @@ interface AsyncResultPayload {
 	wrapUpRequested?: boolean;
 	totalTokens?: { input: number; output: number; total: number };
 	totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
-	results: Array<{ agent?: string; launchContractDigest?: string; output?: string; success?: boolean; error?: string; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
+	usageBudget?: UsageBudgetState;
+	checkpoint?: { name?: string; status?: string };
+	results: Array<{ agent?: string; launchContractDigest?: string; launchResolvedExtensions?: LaunchResolvedExtensions; output?: string; success?: boolean; error?: string; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
+
 	outputs?: Record<string, { text?: string; structured?: unknown }>;
 	workflowGraph?: { nodes?: Array<{ kind?: string; label?: string; phase?: string; status?: string; acceptanceStatus?: string; error?: string; outputName?: string; structured?: boolean; children?: Array<{ label?: string; outputName?: string; itemKey?: string; status?: string; acceptanceStatus?: string; error?: string }> }> };
 	parallelHandoff?: { version?: number; path?: string; groupCount?: number; childCount?: number; changedPatches?: number; cleanupState?: string };
@@ -68,6 +90,7 @@ interface AsyncStatusPayload {
 	currentPath?: string;
 	state?: string;
 	launchContractDigest?: string;
+	launchResolvedExtensions?: LaunchResolvedExtensions;
 	error?: string;
 	timeoutMs?: number;
 	deadlineAt?: number;
@@ -78,6 +101,8 @@ interface AsyncStatusPayload {
 	wrapUpRequested?: boolean;
 	totalTokens?: { total: number };
 	totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
+	usageBudget?: UsageBudgetState;
+	checkpoint?: { name?: string; status?: string; message?: string };
 	parallelGroups?: Array<{ start: number; count: number; stepIndex: number }>;
 	parallelHandoff?: { version?: number; path?: string; groupCount?: number; childCount?: number; changedPatches?: number; cleanupState?: string };
 	capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] };
@@ -100,6 +125,7 @@ interface AsyncStatusPayload {
 		totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
 		agentContract?: { version: 1 };
 		launchContractDigest?: string;
+		launchResolvedExtensions?: LaunchResolvedExtensions;
 		execution?: { status?: string; success?: boolean; exitCode?: number };
 		effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } };
 		acceptance?: { status?: string };
@@ -292,6 +318,19 @@ async function waitForAsyncResultFile(id: string, timeoutMs = 15_000): Promise<s
 	return resultPath;
 }
 
+async function waitForAsyncState(id: string, predicate: (status: AsyncStatusPayload) => boolean, timeoutMs = 10_000): Promise<AsyncStatusPayload> {
+	const statusPath = path.join(ASYNC_DIR, id, "status.json");
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() <= deadline) {
+		if (fs.existsSync(statusPath)) {
+			const status = JSON.parse(fs.readFileSync(statusPath, "utf-8")) as AsyncStatusPayload;
+			if (predicate(status)) return status;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	assert.fail(`Timed out waiting for async status: ${statusPath}`);
+}
+
 async function waitForDeferredTurnBudget(id: string, timeoutMs = 10_000): Promise<AsyncStatusPayload> {
 	const statusPath = path.join(ASYNC_DIR, id, "status.json");
 	const deadline = Date.now() + timeoutMs;
@@ -475,10 +514,11 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 	it("persists the actual launch digest in async status and result metadata", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({ output: "digest-bound async done" });
 		const id = `async-launch-digest-${Date.now().toString(36)}`;
+		const privateExtension = path.join(tempDir, "extensions", "private-extension.ts");
 		const launch = executeAsyncSingle(id, {
 			agent: "worker",
 			task: "Exercise launch digest reporting",
-			agentConfig: makeAgent("worker", { completionGuard: false }),
+			agentConfig: makeAgent("worker", { completionGuard: false, extensions: [privateExtension] }),
 			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
 			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
 			shareEnabled: false,
@@ -493,6 +533,135 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.results[0]?.launchContractDigest, launch.details.launchContractDigest);
 		assert.equal(status.launchContractDigest, launch.details.launchContractDigest);
 		assert.equal(status.steps?.[0]?.launchContractDigest, launch.details.launchContractDigest);
+		assert.equal(launch.details.launchResolvedExtensions?.source, "launch-resolved");
+		assert.equal(launch.details.launchResolvedExtensions?.disableAmbientExtensions, true);
+		assert.deepEqual(payload.launchResolvedExtensions, launch.details.launchResolvedExtensions);
+		assert.deepEqual(payload.results[0]?.launchResolvedExtensions, launch.details.launchResolvedExtensions);
+		assert.deepEqual(status.launchResolvedExtensions, launch.details.launchResolvedExtensions);
+		assert.deepEqual(status.steps?.[0]?.launchResolvedExtensions, launch.details.launchResolvedExtensions);
+		assert.ok(!JSON.stringify(launch.details.launchResolvedExtensions).includes(tempDir), "projection should not expose raw extension paths");
+	});
+
+	it("async chain checkpoints pause before the next child until approved", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+		mockPi.onCall({ output: "analysis done" });
+		mockPi.onCall({ output: "implementation done" });
+		const id = `async-checkpoint-approve-${Date.now().toString(36)}`;
+		const launch = executeAsyncChain(id, {
+			chain: [
+				{ agent: "analyst", task: "Analyze" },
+				{ checkpoint: "review", message: "Approve implementation?" },
+				{ agent: "reporter", task: "Summarize {previous}" },
+			],
+			agents: [makeAgent("analyst"), makeAgent("reporter")],
+			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
+			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
+			shareEnabled: false,
+			maxSubagentDepth: 2,
+		});
+
+		const paused = await waitForAsyncState(id, (status) => status.state === "paused" && status.checkpoint?.name === "review");
+		assert.equal(launch.isError, undefined);
+		assert.equal(paused.steps?.[1]?.status, "paused");
+		assert.equal(mockPi.callCount(), 1);
+
+		deliverCheckpointDecisionRequest({ asyncDir: path.join(ASYNC_DIR, id), decision: "approved" });
+		const payload = await readAsyncPayload(id);
+		assert.equal(payload.success, true);
+		assert.equal(payload.state, "complete");
+		assert.equal(payload.checkpoint?.status, "approved");
+		assert.equal(payload.results.length, 2);
+		assert.equal(mockPi.callCount(), 2);
+	});
+
+	it("foreground checkpoint decisions use current-session control actions", { skip: !createSubagentExecutor ? "executor not available" : undefined }, async () => {
+		mockPi.onCall({ output: "analysis done" });
+		const executor = makeAsyncExecutor([makeAgent("analyst"), makeAgent("worker")]);
+		const ctx = makeMinimalCtx(tempDir);
+		ctx.sessionManager.getSessionId = () => "session-foreground-checkpoint";
+		const id = `foreground-checkpoint-${Date.now().toString(36)}`;
+
+		const paused = await executor.execute(id, {
+			chain: [
+				{ agent: "analyst", task: "Analyze" },
+				{ checkpoint: "review", message: "Approve implementation?" },
+				{ agent: "worker", task: "Implement" },
+			],
+		}, new AbortController().signal, undefined, ctx) as AsyncExecutionResult;
+
+		assert.equal(paused.isError, undefined);
+		assert.equal(paused.details.checkpoint?.status, "pending");
+		assert.equal(mockPi.callCount(), 1);
+		const runId = (paused.details as AsyncExecutionResult["details"] & { runId?: string }).runId;
+		assert.ok(runId);
+
+		const approved = await executor.execute(`${id}-approve`, { action: "approve-checkpoint", id: runId }, new AbortController().signal, undefined, ctx) as AsyncExecutionResult;
+		assert.equal(approved.isError, undefined);
+		assert.equal(approved.details.checkpoint?.name, "review");
+		assert.equal(approved.details.checkpoint?.status, "approved");
+		assert.equal(mockPi.callCount(), 1);
+	});
+
+	it("async chain checkpoint rejection is an explicit terminal state", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+		mockPi.onCall({ output: "analysis done" });
+		mockPi.onCall({ output: "should not run" });
+		const id = `async-checkpoint-reject-${Date.now().toString(36)}`;
+		executeAsyncChain(id, {
+			chain: [
+				{ agent: "analyst", task: "Analyze" },
+				{ checkpoint: "review" },
+				{ agent: "worker", task: "Implement" },
+			],
+			agents: [makeAgent("analyst"), makeAgent("worker")],
+			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
+			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
+			shareEnabled: false,
+			maxSubagentDepth: 2,
+		});
+
+		await waitForAsyncState(id, (status) => status.state === "paused" && status.checkpoint?.name === "review");
+		deliverCheckpointDecisionRequest({ asyncDir: path.join(ASYNC_DIR, id), decision: "rejected" });
+		const payload = await readAsyncPayload(id);
+		assert.equal(payload.success, false);
+		assert.equal(payload.state, "rejected");
+		assert.equal(payload.checkpoint?.status, "rejected");
+		assert.equal(mockPi.callCount(), 1);
+	});
+
+	it("background parallel groups report usage budget state and block queued children", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+		mockPi.onCall({ output: "first async result" });
+		const id = `async-usage-budget-${Date.now().toString(36)}`;
+		const launch = executeAsyncChain(id, {
+			chain: [{
+				parallel: [
+					{ agent: "first", task: "First task" },
+					{ agent: "second", task: "Second task" },
+				],
+				concurrency: 1,
+			}],
+			resultMode: "parallel",
+			usageBudget: { tokens: { hard: 10 } },
+			agents: [makeAgent("first"), makeAgent("second")],
+			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
+			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
+			shareEnabled: false,
+			maxSubagentDepth: 2,
+		});
+
+		assert.equal(launch.details.usageBudget?.exhausted, false);
+		const payload = await readAsyncPayload(id);
+		const status = JSON.parse(fs.readFileSync(path.join(ASYNC_DIR, id, "status.json"), "utf-8")) as AsyncStatusPayload;
+		assert.equal(payload.success, false);
+		assert.equal(payload.state, "failed");
+		assert.match(payload.error ?? payload.summary ?? "", /Usage budget exhausted/);
+		assert.equal(payload.results.length, 2);
+		assert.equal(payload.results[1]?.skipped, true);
+		assert.match(payload.results[1]?.error ?? "", /Usage budget exhausted/);
+		assert.equal(mockPi.callCount(), 1);
+		assert.equal(payload.usageBudget?.exhausted, true);
+		assert.equal(payload.usageBudget?.reason, "tokens");
+		assert.equal(status.usageBudget?.exhausted, true);
+		assert.equal(status.steps?.[0]?.status, "complete");
+		assert.equal(status.steps?.[1]?.status, "failed");
 	});
 
 	it("background fails with protocol_output_limit for an oversized stdout line", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
@@ -1860,6 +2029,39 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.workflowGraph?.nodes?.[1]?.kind, "dynamic-parallel-group");
 		assert.deepEqual(payload.workflowGraph?.nodes?.[1]?.children?.map((child) => child.itemKey), ["src/a.ts", "src/b.ts"]);
 		assert.equal(payload.workflowGraph?.nodes?.[2]?.flatIndex, 3);
+	});
+
+	it("async dynamic fanout blocks queued children when hard reported usage is exhausted", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+		mockPi.onCall({ output: "targets", structuredOutput: { items: [{ path: "src/a.ts" }, { path: "src/b.ts" }] } });
+		mockPi.onCall({ matchArgIncludes: "Review src/a.ts", output: "review-a", structuredOutput: { ok: "a" } });
+		const id = `async-dynamic-usage-budget-${Date.now().toString(36)}`;
+		executeAsyncChain(id, {
+			chain: [
+				{ agent: "producer", task: "Produce targets", as: "targets", outputSchema: { type: "object" } },
+				{
+					expand: { from: { output: "targets", path: "/items" }, item: "target", key: "/path", maxItems: 4 },
+					parallel: { agent: "reviewer", task: "Review {target.path}", outputSchema: { type: "object" } },
+					collect: { as: "reviews" },
+					concurrency: 1,
+				},
+			],
+			usageBudget: { tokens: { hard: 200 } },
+			agents: [makeAgent("producer"), makeAgent("reviewer")],
+			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-dynamic-budget" },
+			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
+			shareEnabled: false,
+			maxSubagentDepth: 2,
+		});
+
+		const payload = await readAsyncPayload(id);
+		const status = JSON.parse(fs.readFileSync(path.join(ASYNC_DIR, id, "status.json"), "utf-8")) as AsyncStatusPayload;
+		assert.equal(mockPi.callCount(), 2);
+		assert.equal(payload.success, false);
+		assert.equal(payload.usageBudget?.exhausted, true);
+		assert.equal(status.steps?.[1]?.status, "complete");
+		assert.equal(status.steps?.[2]?.status, "failed");
+		assert.match(status.steps?.[2]?.error ?? "", /Usage budget exhausted/);
+		assert.equal(payload.results.find((result) => result.agent === "reviewer" && result.skipped)?.skipped, true);
 	});
 
 	it("rejects a shared explicit output before dynamic fanout children start", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {

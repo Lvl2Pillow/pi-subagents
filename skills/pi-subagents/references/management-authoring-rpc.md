@@ -78,6 +78,7 @@ A minimal agent file looks like this:
 name: my-agent
 package: code-analysis
 description: What this agent does
+aliases: developer, coder
 model: openai-codex/gpt-5.4
 thinking: high
 tools: read, grep, find, ls, bash
@@ -95,6 +96,7 @@ That is only a starting point. Omit `package` for the traditional unqualified ru
 - `defaultProgress`
 - `defaultReads`
 - `output`
+- `aliases`
 - `fallbackModels`
 - `subagentOnlyExtensions`
 - `skills`
@@ -105,6 +107,8 @@ That is only a starting point. Omit `package` for the traditional unqualified ru
 - `async` — single-agent default for background launch (`true`/`false`); explicit tool-call `async` wins
 - `timeoutMs` — single-agent default run-level max runtime in ms; foreground calls use a 30-minute package default only when neither the call nor agent provides one (tool alias `maxRuntimeMs` is also accepted)
 - `turnBudget` — single-agent default `{ maxTurns, graceTurns? }` JSON object
+
+`aliases` is an optional comma-separated or block-list set of alternate names for selecting an agent. Aliases resolve to the canonical `name` for execution, status, persistence, and config. Exact canonical names take precedence over aliases, and alias collisions between distinct canonical agents fail as ambiguous. Management create/update accepts a comma-separated string, string array, or `false`/empty string to clear aliases.
 
 `acceptance` is a single-agent launch default. Use a scalar level such as `checked` or an inline/block YAML map such as `{ level: "none", reason: "lightweight lookup" }`. An explicit tool-call value wins; chain and parallel acceptance remains configured on the task or step. Management create/update accepts the same policy object, and `acceptance: ""` clears the frontmatter default (`false` remains the deprecated disabled-policy shorthand).
 

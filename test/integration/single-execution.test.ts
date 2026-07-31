@@ -82,6 +82,15 @@ interface ArtifactPaths {
 	metadataPath?: string;
 }
 
+interface LaunchResolvedExtensions {
+	version?: number;
+	source?: string;
+	disableAmbientExtensions?: boolean;
+	runtime?: string[];
+	configured?: string[];
+	effective?: string[];
+}
+
 interface RunSyncResult {
 	exitCode: number;
 	agent: string;
@@ -100,6 +109,7 @@ interface RunSyncResult {
 	transcriptPath?: string;
 	transcriptError?: string;
 	finalOutput?: string;
+	processSignal?: string | null;
 	interrupted?: boolean;
 	timedOut?: boolean;
 	turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; exceededAtTurn?: number };
@@ -122,6 +132,7 @@ interface RunSyncResult {
 		verifyRuns?: Array<{ status?: string }>;
 		runtimeChecks?: Array<{ id?: string; status?: string; message?: string }>;
 	};
+	launchResolvedExtensions?: LaunchResolvedExtensions;
 }
 
 interface MockPiCallRecord {
@@ -1052,6 +1063,58 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.deepEqual(result.details?.totalCost, { inputTokens: 100, outputTokens: 50, costUsd: 0.001 });
 	});
 
+	it("blocks later foreground chain children when hard reported usage is exhausted", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "first result" });
+		const executor = makeExecutor([makeAgent("echo"), makeAgent("second")]);
+
+		const result = await executor.execute(
+			"foreground-usage-budget",
+			{
+				chain: [
+					{ agent: "echo", task: "First task" },
+					{ agent: "second", task: "Second task" },
+				],
+				usageBudget: { tokens: { hard: 10 } },
+			},
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]?.text ?? "", /Usage budget exhausted/);
+		assert.equal(mockPi.callCount(), 1);
+		assert.equal(result.details?.usageBudget?.exhausted, true);
+		assert.equal(result.details?.usageBudget?.reason, "tokens");
+	});
+
+	it("blocks queued foreground parallel children when hard reported usage is exhausted", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "first result" });
+		const executor = makeExecutor([makeAgent("echo"), makeAgent("second")]);
+
+		const result = await executor.execute(
+			"foreground-parallel-usage-budget",
+			{
+				tasks: [
+					{ agent: "echo", task: "First task" },
+					{ agent: "second", task: "Second task" },
+				],
+				concurrency: 1,
+				usageBudget: { tokens: { hard: 10 } },
+			},
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, undefined);
+		assert.equal(mockPi.callCount(), 1);
+		assert.equal(result.details?.results.length, 2);
+		assert.equal(result.details?.results[1]?.skipped, true);
+		assert.match(result.details?.results[1]?.error ?? "", /Usage budget exhausted/);
+		assert.equal(result.details?.usageBudget?.exhausted, true);
+	});
+
 	it("fails implementation runs that complete without mutation attempts", async () => {
 		mockPi.onCall({ output: "Validation:\nlet rawFilename = params.filename.trim();" });
 		const agents = [makeAgent("worker")];
@@ -1321,6 +1384,17 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.finalOutput, "Applied edit");
 	});
 
+	it("resolves explicit agent aliases to canonical execution names", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "Implemented" });
+		const executor = makeExecutor([makeAgent("worker", { aliases: ["developer"], completionGuard: false })]);
+
+		const result = await executor.execute("single", { agent: "developer", task: "Implement" }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+
+		assert.equal(result.isError, undefined);
+		assert.equal(result.details?.results[0]?.agent, "worker");
+		assert.match(result.content[0]?.text ?? "", /Implemented/);
+	});
+
 	it("returns error for unknown agent", async () => {
 		const agents = makeAgentConfigs(["echo"]);
 		const result = await runSync(tempDir, agents, "nonexistent", "Do something", {});
@@ -1472,8 +1546,24 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		assert.equal(result.exitCode, 1);
 		assert.equal(result.processSignal, "SIGKILL");
+		assert.equal(result.error, "Subagent process terminated by signal SIGKILL.");
 		assert.equal(result.modelAttempts?.length, 1);
 		assert.equal(mockPi.callCount(), 1);
+	});
+
+	it("prefers signal termination errors over stderr tails", { skip: process.platform === "win32" ? "POSIX child signal reporting is unavailable on Windows" : false }, async () => {
+		mockPi.onCall({ stderr: "INFO benign startup line\n", signal: "SIGTERM" });
+		const agents = [makeAgent("worker", { model: "openai/gpt-5-mini" })];
+
+		const result = await runSync(tempDir, agents, "worker", "Do work", {
+			runId: "signal-error-over-stderr",
+			acceptance: false,
+		});
+
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.processSignal, "SIGTERM");
+		assert.equal(result.error, "Subagent process terminated by signal SIGTERM.");
+		assert.doesNotMatch(result.error ?? "", /INFO benign startup line/);
 	});
 
 	it("does not retry a child exit with raw stdout diagnostics", async () => {
@@ -2152,7 +2242,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 	it("writes artifacts when configured", async () => {
 		mockPi.onCall({ output: "Result text" });
-		const agents = makeAgentConfigs(["echo"]);
+		const privateExtension = path.join(tempDir, "extensions", "private-extension.ts");
+		const agents = [makeAgent("echo", { extensions: [privateExtension] })];
 		const artifactsDir = path.join(tempDir, "artifacts");
 
 		const result = await runSync(tempDir, agents, "echo", "Task", {
@@ -2172,8 +2263,12 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.match(transcript.at(-1)?.text ?? "", /^Result text/);
 		assert.equal(result.transcriptError, undefined);
 		assert.ok(fs.existsSync(artifactsDir), "artifacts dir should exist");
-		const metadata = JSON.parse(fs.readFileSync(result.artifactPaths.metadataPath, "utf-8")) as { launchContractDigest?: string };
+		const metadata = JSON.parse(fs.readFileSync(result.artifactPaths.metadataPath, "utf-8")) as { launchContractDigest?: string; launchResolvedExtensions?: LaunchResolvedExtensions };
 		assert.equal(metadata.launchContractDigest, result.launchContractDigest);
+		assert.equal(result.launchResolvedExtensions?.source, "launch-resolved");
+		assert.equal(result.launchResolvedExtensions?.disableAmbientExtensions, true);
+		assert.deepEqual(metadata.launchResolvedExtensions, result.launchResolvedExtensions);
+		assert.ok(!JSON.stringify(result.launchResolvedExtensions).includes(tempDir), "projection should not expose raw extension paths");
 	});
 
 	it("routes foreground artifacts to the configured session directory", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {

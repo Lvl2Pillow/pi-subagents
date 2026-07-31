@@ -44,7 +44,11 @@ type ResultFileChild = {
 	error?: string;
 	success?: boolean;
 	state?: string;
+	interrupted?: boolean;
+	timedOut?: boolean;
 	stopped?: boolean;
+	turnBudgetExceeded?: boolean;
+	processSignal?: string | null;
 	sessionFile?: string;
 	artifactPaths?: { outputPath?: string };
 	children?: unknown;
@@ -186,7 +190,15 @@ export function createResultWatcher(
 							: undefined;
 				return {
 					agent: result.agent ?? data.agent ?? `step-${index + 1}`,
-					status: resolveSubagentResultStatus({ success: result.success, state: childState }),
+					status: resolveSubagentResultStatus({
+						success: result.success,
+						state: childState,
+						interrupted: result.interrupted,
+						timedOut: result.timedOut,
+						stopped: result.stopped,
+						turnBudgetExceeded: result.turnBudgetExceeded,
+						processSignal: result.processSignal,
+					}),
 					summary,
 					index,
 					artifactPath: result.artifactPaths?.outputPath,
