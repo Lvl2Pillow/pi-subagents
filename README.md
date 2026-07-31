@@ -16,27 +16,28 @@ pi install npm:pi-subagents
 
 That is the only required step. You can add optional pieces later.
 
-## Try this first
+## Common Workflows
 
 You do not need to create agents, write config, or learn slash commands. After installing, ask Pi for delegation in plain language:
 
-```text
-Use reviewer to review this diff.
-```
+| Want | Ask naturally |
+|------|---------------|
+| Get a second opinion | “Ask oracle for a second opinion on my current plan.” |
+| Solve a hard problem | “Use oracle to investigate this bug before we edit.” |
+| Review a diff | “Use reviewer to review this diff.” |
+| Understand code first | “Use scout to understand this code based on our discussion then ask me clarification questions.” |
+| Run parallel reviewers | “Run parallel reviewers: one for correctness, one for tests, and one for unnecessary complexity.” |
+| Implement then review | “Implement this, then review it.” |
+| Review until clean | “Run a review loop on this change until reviewers stop finding fixes worth doing, with a max of 3 rounds.” |
+| Execute a plan carefully | “Have worker implement this approved plan. Afterward, run parallel reviewers, summarize their feedback, and apply the fixes that make sense.” |
+| Scout before planning | “Use scout to understand the auth flow, then have planner turn that into an implementation plan.” |
+| Run in the background | “Run this in the background.” |
+| Browse agents | “Show me the available subagents.” |
+| Use a saved workflow | “Run the review chain on this branch.” |
+| See running work | “Show active async runs.” or “Show the subagent fleet.” |
+| Check setup | “Check whether subagents are configured correctly.” |
 
-```text
-Ask oracle for a second opinion on my current plan.
-```
-
-```text
-Use scout to understand this code based on our discussion then ask me clarification questions.
-```
-
-```text
-Run parallel reviewers: one for correctness, one for tests, and one for unnecessary complexity.
-```
-
-That is enough to start.
+Pi decides whether to call `subagent`, which agent to use, and whether a chain or parallel run makes sense. The extension ships with builtin agents you can use immediately.
 
 ## What happens
 
@@ -49,56 +50,6 @@ Installing the extension does not start an automatic reviewer in the background.
 ```text
 When you finish implementing, run a reviewer subagent before summarizing.
 ```
-
-## Good first prompts
-
-These cover most day-to-day use:
-
-```text
-Ask oracle for a second opinion on my current plan. Challenge assumptions and tell me what I might be missing.
-```
-
-```text
-Use oracle to help solve this hard bug. Have it inspect the code and propose the best next move before we edit anything.
-```
-
-```text
-Run parallel reviewers on this diff. I want one focused on correctness, one on tests, and one on unnecessary complexity.
-```
-
-```text
-Have worker implement this approved plan. Afterward, run parallel reviewers, summarize their feedback, and apply the fixes that make sense.
-```
-
-```text
-Run a review loop on this change until reviewers stop finding fixes worth doing, with a max of 3 rounds.
-```
-
-```text
-Use scout to understand the auth flow, then have planner turn that into an implementation plan.
-```
-
-Those are ordinary Pi requests. Pi decides whether to call `subagent`, which agent to use, and whether a chain or parallel run makes sense.
-
-## Common workflows
-
-| Want | Ask naturally |
-|------|---------------|
-| Get a second opinion | “Ask oracle to review this plan and challenge assumptions.” |
-| Solve a hard problem | “Use oracle to investigate this bug before we edit.” |
-| Review a diff | “Use reviewer to review this diff.” |
-| Run parallel reviewers | “Run reviewers for correctness, tests, and cleanup.” |
-| Implement then review | “Implement this, then review it.” |
-| Review until clean | “Run a review loop on this change with a max of 3 rounds.” |
-| Execute a plan carefully | “Have worker implement this approved plan, then run reviewers and apply the feedback.” |
-| Scout before planning | “Use scout to inspect the auth flow before planning.” |
-| Run in the background | “Run this in the background.” |
-| Browse agents | “Show me the available subagents.” |
-| Use a saved workflow | “Run the review chain on this branch.” |
-| See running work | “Show active async runs.” or “Show the subagent fleet.” |
-| Check setup | “Check whether subagents are configured correctly.” |
-
-The extension ships with builtin agents you can use immediately.
 
 ## Builtin agents in plain English
 
@@ -424,29 +375,6 @@ extensions are installed. pi-subagents passes the parent session identity
 to child processes via the `PI_SUBAGENT_PARENT_SESSION` environment variable,
 which the permission system uses to forward `ask` prompts from headless
 subagent processes back to the parent session's UI.
-
-### Per-agent permission frontmatter
-
-Agent files can include a `permission:` block alongside the standard `tools:`
-key. The permission system reads it independently:
-
-```yaml
----
-name: worker
-tools: bash,read,write,edit
-permission:
-  "*": ask
-  read: allow
-  bash:
-    "*": ask
-    "git *": allow
-    "npm test": allow
----
-```
-
-In this example the subagent extension restricts visibility to four tools,
-and the permission system then applies `ask`/`allow` policy within that
-visible set. Both keys coexist without collision.
 
 ### Checking the integration
 
