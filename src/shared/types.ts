@@ -321,7 +321,6 @@ export interface EffectsProjection {
 export const SUBAGENT_LIFECYCLE_ARTIFACT_VERSION = 3;
 export type SubagentLifecycleArtifactVersion = typeof SUBAGENT_LIFECYCLE_ARTIFACT_VERSION;
 
-export type ProcessTerminalState = "pending" | "observed" | "unknown" | "not-started";
 export type ProcessTerminalReason =
 	| "observer-unavailable"
 	| "runner-candidate-missing"

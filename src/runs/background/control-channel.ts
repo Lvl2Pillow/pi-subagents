@@ -319,14 +319,6 @@ function parseSteerAck(raw: unknown): SteerAck | undefined {
 	return { type: "steer-ack", protocolVersion: 1, requestId: input.requestId, index: input.index, ts: input.ts, state: input.state, message: input.message.trim() };
 }
 
-export function readSteerCapability(asyncDir: string, index: number): SteerCapability | undefined {
-	try {
-		return parseSteerCapability(JSON.parse(fs.readFileSync(steerCapabilityPath(asyncDir, index), "utf-8")));
-	} catch {
-		return undefined;
-	}
-}
-
 export function consumeSteerCapabilities(asyncDir: string, fsImpl: Pick<typeof fs, "existsSync" | "readdirSync" | "readFileSync"> = fs): SteerCapability[] {
 	const dir = steerCapabilitiesDir(asyncDir);
 	if (!fsImpl.existsSync(dir)) return [];

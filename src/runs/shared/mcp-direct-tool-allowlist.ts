@@ -239,10 +239,6 @@ function resolveDirectToolSelections(config: McpConfig, cache: MetadataCache, pr
 	return names;
 }
 
-export function resolveMcpDirectToolNames(mcpDirectTools: string[] | undefined, cwd = process.cwd()): string[] {
-	return resolveMcpDirectToolSelections(mcpDirectTools, cwd).map((selection) => selection.name);
-}
-
 function parseSelections(selections: string[]): { servers: Set<string>; tools: Map<string, Set<string>> } {
 	const servers = new Set<string>();
 	const tools = new Map<string, Set<string>>();

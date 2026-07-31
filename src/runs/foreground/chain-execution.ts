@@ -49,7 +49,6 @@ import {
 	type WorktreeSetup,
 } from "../shared/worktree.ts";
 import {
-	type ActivityState,
 	type AgentContract,
 	type AgentProgress,
 	type ArtifactConfig,

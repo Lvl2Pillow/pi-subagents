@@ -585,10 +585,6 @@ function readProjectRootResolution(projectRoot: string): ProjectRootResolution |
 	throw new Error(`Subagent settings in '${settingsPath}' have invalid 'projectRootResolution'; expected 'nearest' or 'git-root'.`);
 }
 
-export function findNearestProjectRoot(cwd: string): string | null {
-	return findProjectRootCandidates(cwd)[0] ?? null;
-}
-
 function findConfiguredProjectRoot(cwd: string): string | null {
 	const candidates = findProjectRootCandidates(cwd);
 	const nearestRoot = candidates[0];
@@ -1162,30 +1158,6 @@ export function buildBuiltinOverrideConfig(
 	if (JSON.stringify(draft.toolBudget) !== JSON.stringify(base.toolBudget)) override.toolBudget = draft.toolBudget ?? false;
 
 	return Object.keys(override).length > 0 ? override : undefined;
-}
-
-export function saveBuiltinAgentOverride(
-	cwd: string,
-	name: string,
-	scope: "user" | "project",
-	override: BuiltinAgentOverrideConfig,
-): string {
-	const filePath = scope === "project" ? getProjectAgentSettingsPath(cwd) : getUserAgentSettingsPath();
-	if (!filePath) throw new Error("Project override is not available here. No project config root was found.");
-
-	const settings = readSettingsFileStrict(filePath);
-	const subagents = settings.subagents && typeof settings.subagents === "object" && !Array.isArray(settings.subagents)
-		? { ...(settings.subagents as Record<string, unknown>) }
-		: {};
-	const agentOverrides = subagents.agentOverrides && typeof subagents.agentOverrides === "object" && !Array.isArray(subagents.agentOverrides)
-		? { ...(subagents.agentOverrides as Record<string, unknown>) }
-		: {};
-
-	agentOverrides[name] = cloneOverrideValue(override);
-	subagents.agentOverrides = agentOverrides;
-	settings.subagents = subagents;
-	writeSettingsFile(filePath, settings);
-	return filePath;
 }
 
 export function removeBuiltinAgentOverride(cwd: string, name: string, scope: "user" | "project"): { path: string; removed: boolean } {

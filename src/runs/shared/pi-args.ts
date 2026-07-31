@@ -372,8 +372,6 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 	return { args, env, tempDir, toolDiagnosticPath, capabilityAudit: toolPlan.capabilityAudit };
 }
 
-export const parseParentPathEnv = parseNestedPathEnv;
-
 export function cleanupTempDir(tempDir: string | null | undefined): void {
 	if (!tempDir) return;
 	try {

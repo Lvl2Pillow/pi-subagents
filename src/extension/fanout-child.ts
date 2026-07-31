@@ -49,7 +49,7 @@ function createChildSafeState(): SubagentState {
 	};
 }
 
-function startNestedControlInboxListener(pi: ExtensionAPI, state: SubagentState): NodeJS.Timeout | undefined {
+function startNestedControlInboxListener(state: SubagentState): NodeJS.Timeout | undefined {
 	let route;
 	try {
 		route = resolveNestedRouteFromEnv();
@@ -156,5 +156,5 @@ export default function registerFanoutChildSubagentExtension(pi: ExtensionAPI): 
 	};
 
 	pi.registerTool(tool);
-	startNestedControlInboxListener(pi, state);
+	startNestedControlInboxListener(state);
 }
