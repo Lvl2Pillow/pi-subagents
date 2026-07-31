@@ -18,6 +18,11 @@
 - Retried short, zero-activity child startup exits on the same model with bounded backoff, reducing concurrent subagent launch races without replaying model or tool work. Thanks to @felipeteodorocw for #671.
 - Bounded streamed subagent progress snapshots so a long or deeply nested fan-out no longer emits a `tool_execution_update` line above the child-stdout protocol cap and gets the child killed with `protocol_output_limit`. Streamed `onUpdate` snapshots now carry compact tool-call summaries instead of the full message transcript, cap `recentTools`, and truncate `recentOutput` line length; the returned result and detached-exit recovery keep the full transcript. Thanks to @shaharmor for #680/#681.
 
+### Removed
+- Removed the external `intercom` tool and the `pi-intercom` cross-process bridge; subagents coordinate with the parent through the native supervisor channel only, via the child-facing `contact_supervisor` tool and parent-facing `subagent_supervisor` tool.
+- Removed the `subagent:result-intercom` and `subagent:control-intercom` events, `SUBAGENT_ORCHESTRATOR_TARGET_ENV`, the `intercomTarget`/`orchestratorIntercomTarget`/`deliverIntercomResults` run options, `notifyChannels: "intercom"`, `intercomBridge.resultDelivery`, and the intercom fallback tool registration. The native `IntercomEventBus` detach flow (`subagent:detach-request`/`detach-response`, `allowIntercomDetach`, `intercomBridge` `mode`/`instructionFile`) remains for supervisor handoff.
+- Removed the per-agent persistent memory feature: the `memory` frontmatter field, `MEMORY.md` injection into child system prompts, the async recovery descriptor field, and the agent digest contribution. Leftover `memory:` frontmatter is now silently ignored and existing `agent-memory/` directories are no longer read.
+
 ## [0.37.2] - 2026-07-28
 
 ### Changed
