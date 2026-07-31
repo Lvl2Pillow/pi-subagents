@@ -110,7 +110,7 @@ test("oracle review tasks with bash available do not require mutation", () => {
 		agent: "oracle",
 		task,
 		messages: [assistantText("Review complete with file-backed findings.")],
-		tools: ["read", "grep", "find", "ls", "bash", "intercom"],
+		tools: ["read", "grep", "find", "ls", "bash", "contact_supervisor"],
 	});
 
 	assert.deepEqual(result, {

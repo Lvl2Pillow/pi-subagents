@@ -23,8 +23,6 @@ import {
 	SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV,
 	SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV,
 	SUBAGENT_RUN_ID_ENV,
-	PI_INTERCOM_STABLE_ID_ENV,
-	PI_INTERCOM_SESSION_ID_ENV,
 	applyThinkingSuffix,
 	buildPiArgs,
 } from "../../src/runs/shared/pi-args.ts";
@@ -47,8 +45,6 @@ const originalEnv = {
 	[MCP_DIRECT_CHILD_TOOLS_ENV]: process.env[MCP_DIRECT_CHILD_TOOLS_ENV],
 	[TOOL_BUDGET_ZERO_AUTH_ENV]: process.env[TOOL_BUDGET_ZERO_AUTH_ENV],
 	[PI_CODING_AGENT_PACKAGE_ROOT_ENV]: process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV],
-	[PI_INTERCOM_STABLE_ID_ENV]: process.env[PI_INTERCOM_STABLE_ID_ENV],
-	[PI_INTERCOM_SESSION_ID_ENV]: process.env[PI_INTERCOM_SESSION_ID_ENV],
 	MCP_HASH_ROOT: process.env.MCP_HASH_ROOT,
 	MCP_HASH_TOKEN: process.env.MCP_HASH_TOKEN,
 };
@@ -493,48 +489,25 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		}
 	});
 
-	it("passes child intercom and orchestrator metadata through env", () => {
-		process.env[PI_INTERCOM_STABLE_ID_ENV] = "subagent-chat-parent";
-		process.env[PI_INTERCOM_SESSION_ID_ENV] = "session-parent-runtime";
+	it("passes child supervisor metadata through env", () => {
 		const { env } = buildPiArgs({
 			baseArgs: ["-p"],
 			task: "hello",
 			sessionEnabled: false,
 			inheritProjectContext: true,
 			inheritSkills: true,
-			intercomSessionName: "subagent-worker-78f659a3",
-			orchestratorIntercomTarget: "subagent-chat-parent",
 			parentSessionId: "session-parent-123",
 			runId: "78f659a3",
 			childAgentName: "worker",
 			childIndex: 2,
 		});
 
-		assert.equal(env.PI_SUBAGENT_INTERCOM_SESSION_NAME, "subagent-worker-78f659a3");
-		assert.equal(env[PI_INTERCOM_STABLE_ID_ENV], "subagent-worker-78f659a3");
-		assert.equal(env[PI_INTERCOM_SESSION_ID_ENV], undefined);
-		assert.equal(env.PI_SUBAGENT_ORCHESTRATOR_TARGET, "subagent-chat-parent");
 		assert.equal(env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV], "session-parent-123");
 		assert.equal(env.PI_SUBAGENT_RUN_ID, "78f659a3");
 		assert.equal(env.PI_SUBAGENT_CHILD_AGENT, "worker");
 		assert.equal(env.PI_SUBAGENT_CHILD_INDEX, "2");
 		assert.equal(typeof env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV], "string");
 		assert.match(env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV] ?? "", /supervisor-channels/);
-	});
-
-	it("clears inherited pi-intercom identity when no child intercom session name is set", () => {
-		process.env[PI_INTERCOM_STABLE_ID_ENV] = "subagent-chat-parent";
-		process.env[PI_INTERCOM_SESSION_ID_ENV] = "session-parent-runtime";
-		const { env } = buildPiArgs({
-			baseArgs: ["-p"],
-			task: "hello",
-			sessionEnabled: false,
-			inheritProjectContext: true,
-			inheritSkills: true,
-		});
-
-		assert.equal(env[PI_INTERCOM_STABLE_ID_ENV], undefined);
-		assert.equal(env[PI_INTERCOM_SESSION_ID_ENV], undefined);
 	});
 
 	it("does not create a supervisor channel without an exact parent session id", () => {
@@ -544,7 +517,6 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			sessionEnabled: false,
 			inheritProjectContext: true,
 			inheritSkills: true,
-			orchestratorIntercomTarget: "subagent-chat-parent",
 			runId: "78f659a3",
 			childAgentName: "worker",
 			childIndex: 2,

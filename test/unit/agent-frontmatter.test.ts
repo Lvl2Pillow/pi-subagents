@@ -1282,7 +1282,7 @@ Do work
 			process.env.USERPROFILE = homeDir;
 			const planner = discoverAgentsAll(dir).builtin.find((agent) => agent.name === "planner");
 			assert.ok(planner, "planner builtin should be discovered");
-			assert.deepEqual(planner.tools, ["read", "grep", "find", "ls", "intercom"]);
+			assert.deepEqual(planner.tools, ["read", "grep", "find", "ls", "contact_supervisor"]);
 			assert.equal(planner.acceptanceRole, "read-only");
 		} finally {
 			if (previousHome === undefined) delete process.env.HOME;

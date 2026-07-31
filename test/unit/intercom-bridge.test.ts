@@ -7,10 +7,8 @@ import type { AgentConfig } from "../../src/agents/agents.ts";
 import {
 	NATIVE_INTERCOM_EXTENSION_DIR,
 	applyIntercomBridgeToAgent,
-	diagnoseIntercomBridge,
 	resolveIntercomBridge,
 	resolveIntercomSessionTarget,
-	resolveSubagentIntercomTarget,
 	resolveIntercomBridgeMode,
 	type IntercomBridgeState,
 } from "../../src/intercom/intercom-bridge.ts";
@@ -44,48 +42,11 @@ describe("resolveIntercomBridgeMode", () => {
 
 describe("resolveIntercomSessionTarget", () => {
 	it("prefers an explicit session name", () => {
-		assert.equal(resolveIntercomSessionTarget("planner", "session-12345678", "session-stableabcdef"), "planner");
+		assert.equal(resolveIntercomSessionTarget("planner", "session-12345678"), "planner");
 	});
 
 	it("uses a runtime-only subagent chat alias when unnamed", () => {
-		assert.equal(resolveIntercomSessionTarget(undefined, "session-12345678", ""), "subagent-chat-12345678");
-	});
-
-	it("uses the current pi-intercom runtime id for unnamed fallback when present", () => {
-		assert.equal(resolveIntercomSessionTarget(undefined, "session-12345678", "session-stableabcdef"), "subagent-chat-stableab");
-	});
-});
-
-describe("resolveSubagentIntercomTarget", () => {
-	it("builds stable child session targets from run metadata", () => {
-		assert.equal(resolveSubagentIntercomTarget("78f659a3", "worker"), "subagent-worker-78f659a3");
-		assert.equal(resolveSubagentIntercomTarget("78f659a3", "senior executor", 1), "subagent-senior-executor-78f659a3-2");
-	});
-});
-
-describe("diagnoseIntercomBridge", () => {
-	it("reports the native supervisor channel as available without external package discovery", () => {
-		const diagnostic = diagnoseIntercomBridge({
-			config: { mode: "always" },
-			context: "fresh",
-			orchestratorTarget: "main",
-		});
-
-		assert.equal(diagnostic.active, true);
-		assert.equal(diagnostic.wantsIntercom, true);
-		assert.equal(diagnostic.supervisorChannelAvailable, true);
-		assert.equal(diagnostic.extensionDir, NATIVE_INTERCOM_EXTENSION_DIR);
-	});
-
-	it("does not read external intercom config when bridge mode is off", () => {
-		const diagnostic = diagnoseIntercomBridge({
-			config: { mode: "off" },
-			context: "fresh",
-			orchestratorTarget: "main",
-		});
-
-		assert.equal(diagnostic.active, false);
-		assert.equal(diagnostic.reason, "bridge mode is off");
+		assert.equal(resolveIntercomSessionTarget(undefined, "session-12345678"), "subagent-chat-12345678");
 	});
 });
 
@@ -98,19 +59,8 @@ describe("resolveIntercomBridge", () => {
 		});
 
 		assert.equal(bridge.active, true);
-		assert.equal(bridge.resultDelivery, true);
 		assert.equal(bridge.orchestratorTarget, "main");
 		assert.equal(bridge.extensionDir, NATIVE_INTERCOM_EXTENSION_DIR);
-	});
-
-	it("can disable external grouped-result delivery without disabling supervisor coordination", () => {
-		const bridge = resolveIntercomBridge({
-			config: { mode: "always", resultDelivery: false },
-			context: "fresh",
-			orchestratorTarget: "main",
-		});
-		assert.equal(bridge.active, true);
-		assert.equal(bridge.resultDelivery, false);
 	});
 
 	it("stays inactive for fresh context when mode is fork-only", () => {
@@ -159,15 +109,14 @@ describe("applyIntercomBridgeToAgent", () => {
 	const activeBridge: IntercomBridgeState = {
 		active: true,
 		mode: "always",
-		resultDelivery: true,
 		orchestratorTarget: "main",
 		extensionDir: NATIVE_INTERCOM_EXTENSION_DIR,
 		instruction: "Intercom orchestration channel:\n- Need a decision or blocked: contact_supervisor({ reason: \"need_decision\", message: \"<question>\" })\n- Blocked/update: contact_supervisor({ reason: \"progress_update\", message: \"UPDATE: <summary>\" })",
 	};
 
-	it("injects intercom tool and prompt instructions", () => {
+	it("injects supervisor tool and prompt instructions", () => {
 		const updated = applyIntercomBridgeToAgent(makeAgent({ tools: ["read", "bash"] }), activeBridge);
-		assert.deepEqual(updated.tools, ["read", "bash", "intercom", "contact_supervisor"]);
+		assert.deepEqual(updated.tools, ["read", "bash", "contact_supervisor"]);
 		assert.match(updated.systemPrompt, /Intercom orchestration channel:/);
 		assert.match(updated.systemPrompt, /contact_supervisor/);
 	});
@@ -175,7 +124,6 @@ describe("applyIntercomBridgeToAgent", () => {
 	it("is idempotent", () => {
 		const first = applyIntercomBridgeToAgent(makeAgent({ tools: ["read"] }), activeBridge);
 		const second = applyIntercomBridgeToAgent(first, activeBridge);
-		assert.equal(second.tools?.filter((tool) => tool === "intercom").length, 1);
 		assert.equal(second.tools?.filter((tool) => tool === "contact_supervisor").length, 1);
 		assert.equal(second.systemPrompt, first.systemPrompt);
 	});
@@ -183,7 +131,7 @@ describe("applyIntercomBridgeToAgent", () => {
 	it("does not block native supervisor tools for agents with explicit extension allowlists", () => {
 		const agent = makeAgent({ tools: ["read"], extensions: ["/tmp/other-extension/index.ts"] });
 		const updated = applyIntercomBridgeToAgent(agent, activeBridge);
-		assert.deepEqual(updated.tools, ["read", "intercom", "contact_supervisor"]);
+		assert.deepEqual(updated.tools, ["read", "contact_supervisor"]);
 		assert.match(updated.systemPrompt, /contact_supervisor/);
 	});
 

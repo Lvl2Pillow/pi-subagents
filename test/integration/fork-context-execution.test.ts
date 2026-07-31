@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { MockPi } from "../support/helpers.ts";
 import { createEventBus, createMockPi, createTempDir, events, removeTempDir, tryImport } from "../support/helpers.ts";
 import { discoverAgents } from "../../src/agents/agents.ts";
-import { DEFAULT_FORK_PREAMBLE, INTERCOM_DETACH_REQUEST_EVENT, SUBAGENT_ASYNC_STARTED_EVENT } from "../../src/shared/types.ts";
+import { DEFAULT_FORK_PREAMBLE, SUBAGENT_DETACH_REQUEST_EVENT, SUBAGENT_ASYNC_STARTED_EVENT } from "../../src/shared/types.ts";
 
 interface ExecutorModule {
 	createSubagentExecutor?: (...args: unknown[]) => {
@@ -1379,25 +1379,25 @@ describe("fork context execution wiring", { skip: !available ? "subagent executo
 		assert.equal(maxRunning, 2);
 	});
 
-	it("detaches parallel child runs cleanly on intercom handoff", async () => {
+	it("detaches parallel child runs cleanly on supervisor handoff", async () => {
 		mockPi.reset();
 		mockPi.onCall({
 			steps: [
-				{ jsonl: [events.toolStart("intercom", { action: "send", to: "orchestrator" })] },
+				{ jsonl: [events.toolStart("contact_supervisor", { reason: "progress_update", message: "FYI" })] },
 				{ delay: 1000, jsonl: [events.assistantMessage("after handoff")] },
 			],
 		});
 		mockPi.onCall({ output: "other done" });
 		const executor = makeExecutorWithDiscoverAgents(() => ({
 			agents: [
-				{ name: "echo", description: "Echo", systemPrompt: "Intercom orchestration channel:" },
-				{ name: "second", description: "Second", systemPrompt: "Intercom orchestration channel:" },
+				{ name: "echo", description: "Echo", systemPrompt: "Native supervisor orchestration channel:" },
+				{ name: "second", description: "Second", systemPrompt: "Native supervisor orchestration channel:" },
 			],
 			projectAgentsDir: null,
 		}));
 		let detachEmitted = false;
 		const result = await executor.execute(
-			"intercom-parallel",
+			"supervisor-parallel",
 			{
 				tasks: [
 					{ agent: "echo", task: "send handoff" },
@@ -1407,9 +1407,9 @@ describe("fork context execution wiring", { skip: !available ? "subagent executo
 			new AbortController().signal,
 			(update: ProgressUpdate) => {
 				if (detachEmitted) return;
-				if (!update.details?.progress?.some((entry) => entry.currentTool === "intercom")) return;
+				if (!update.details?.progress?.some((entry) => entry.currentTool === "contact_supervisor")) return;
 				detachEmitted = true;
-				executor.eventsApi.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "parallel-detach" });
+				executor.eventsApi.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "parallel-detach" });
 			},
 			makeCtx(makeSessionManagerRecorder().manager),
 		);

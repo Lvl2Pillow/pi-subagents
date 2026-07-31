@@ -51,7 +51,7 @@ interface AsyncResultPayload {
 	wrapUpRequested?: boolean;
 	totalTokens?: { input: number; output: number; total: number };
 	totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
-	results: Array<{ agent?: string; launchContractDigest?: string; output?: string; success?: boolean; error?: string; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; intercomTarget?: string; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
+	results: Array<{ agent?: string; launchContractDigest?: string; output?: string; success?: boolean; error?: string; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
 	outputs?: Record<string, { text?: string; structured?: unknown }>;
 	workflowGraph?: { nodes?: Array<{ kind?: string; label?: string; phase?: string; status?: string; acceptanceStatus?: string; error?: string; outputName?: string; structured?: boolean; children?: Array<{ label?: string; outputName?: string; itemKey?: string; status?: string; acceptanceStatus?: string; error?: string }> }> };
 	parallelHandoff?: { version?: number; path?: string; groupCount?: number; childCount?: number; changedPatches?: number; cleanupState?: string };
@@ -562,7 +562,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.deepEqual(status.capabilityCeiling, payload.capabilityCeiling);
 			assert.deepEqual(status.steps?.[0]?.capabilityCeiling, payload.capabilityCeiling);
 			assert.deepEqual(payload.capabilityAudit?.effectiveTools, ["read"]);
-			assert.deepEqual(payload.capabilityAudit?.removedTools, ["write", "intercom", "contact_supervisor"]);
+			assert.deepEqual(payload.capabilityAudit?.removedTools, ["write", "contact_supervisor"]);
 			assert.equal(payload.capabilityAudit?.extensionsDenied, true);
 			const events = fs.readFileSync(path.join(ASYNC_DIR, asyncId, "events.jsonl"), "utf-8").trim().split("\n").map((line) => JSON.parse(line));
 			assert.ok(events.some((event) => event.type === "subagent.capability-ceiling.applied" && event.stepIndex === 0 && event.capabilityAudit?.removedTools?.includes("write")));
@@ -571,7 +571,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as { launchContractDigest?: string; capabilityCeiling?: unknown; capabilityAudit?: { removedTools?: string[] } };
 			assert.equal(metadata.launchContractDigest, payload.results[0]?.launchContractDigest);
 			assert.deepEqual(metadata.capabilityCeiling, payload.capabilityCeiling);
-			assert.deepEqual(metadata.capabilityAudit?.removedTools, ["write", "intercom", "contact_supervisor"]);
+			assert.deepEqual(metadata.capabilityAudit?.removedTools, ["write", "contact_supervisor"]);
 		} finally {
 			handle.dispose();
 		}
@@ -2068,41 +2068,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.notEqual(dynamicNode?.acceptanceStatus, "verified");
 		assert.equal(status.timedOut, true);
 		assert.ok(elapsedMs < 3_000, `timeout should cancel dynamic aggregate acceptance promptly, elapsed ${elapsedMs}ms`);
-	});
-
-	it("async dynamic fanout recomputes later child intercom targets by final flat index", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
-		mockPi.onCall({ output: "targets", structuredOutput: { items: [{ path: "src/a.ts" }, { path: "src/b.ts" }] } });
-		mockPi.onCall({ output: "review-a", structuredOutput: { ok: "a" } });
-		mockPi.onCall({ output: "review-b", structuredOutput: { ok: "b" } });
-		mockPi.onCall({ echoEnv: ["PI_SUBAGENT_INTERCOM_SESSION_NAME"] });
-		const id = `async-dynamic-targets-${Date.now().toString(36)}`;
-		const result = executeAsyncChain(id, {
-			chain: [
-				{ agent: "producer", task: "Produce targets", as: "targets", outputSchema: { type: "object" } },
-				{
-					expand: { from: { output: "targets", path: "/items" }, item: "target", key: "/path", maxItems: 4 },
-					parallel: { agent: "reviewer", task: "Review {target.path}", outputSchema: { type: "object" } },
-					collect: { as: "reviews" },
-					concurrency: 1,
-				},
-				{ agent: "consumer", task: "Use {outputs.reviews}" },
-			],
-			agents: [makeAgent("producer"), makeAgent("reviewer"), makeAgent("consumer")],
-			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-dynamic-targets" },
-			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
-			shareEnabled: false,
-			maxSubagentDepth: 2,
-			controlIntercomTarget: "subagent-orchestrator-test",
-			childIntercomTarget: (agent: string, index: number) => `subagent-${agent}-${id}-${index + 1}`,
-		});
-
-		assert.ok(!result.isError);
-		const resultPath = await waitForAsyncResultFile(id, 10_000);
-		const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
-		const expectedConsumerTarget = `subagent-consumer-${id}-4`;
-		assert.equal(payload.success, true);
-		assert.equal(payload.results[3]?.intercomTarget, expectedConsumerTarget);
-		assert.deepEqual(JSON.parse(payload.results[3]?.output ?? "{}"), { PI_SUBAGENT_INTERCOM_SESSION_NAME: expectedConsumerTarget });
 	});
 
 	it("async dynamic pre-spawn failures persist failed graph status and error", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
@@ -4060,7 +4025,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				activeNoticeAfterTokens: 999_999,
 				failedToolAttemptsBeforeAttention: 3,
 				notifyOn: ["active_long_running", "needs_attention"],
-				notifyChannels: ["event", "async", "intercom"],
+				notifyChannels: ["event", "async"],
 			},
 		});
 
@@ -4126,7 +4091,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				activeNoticeAfterMs: 999_999,
 				failedToolAttemptsBeforeAttention: 3,
 				notifyOn: ["active_long_running", "needs_attention"],
-				notifyChannels: ["event", "async", "intercom"],
+				notifyChannels: ["event", "async"],
 			},
 		});
 
@@ -4182,7 +4147,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				activeNoticeAfterMs: 999_999,
 				failedToolAttemptsBeforeAttention: 3,
 				notifyOn: ["active_long_running", "needs_attention"],
-				notifyChannels: ["event", "async", "intercom"],
+				notifyChannels: ["event", "async"],
 			},
 		});
 
@@ -4209,7 +4174,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(waitResult.isError, undefined);
 		assert.match(waitText, /attention required/i);
 		assert.match(waitText, new RegExp(id));
-		assert.match(waitText, /intercom\(\{ action: "pending" \}\)/);
+		assert.match(waitText, /Reply to any pending supervisor request with subagent_supervisor/);
 		assert.equal(fs.existsSync(resultPath), false, "wait should return before the child completes");
 
 		const eventText = fs.existsSync(eventsPath) ? fs.readFileSync(eventsPath, "utf-8") : "";
@@ -4269,7 +4234,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				activeNoticeAfterTokens: 999_999,
 				failedToolAttemptsBeforeAttention: 3,
 				notifyOn: ["active_long_running", "needs_attention"],
-				notifyChannels: ["event", "async", "intercom"],
+				notifyChannels: ["event", "async"],
 			},
 		});
 

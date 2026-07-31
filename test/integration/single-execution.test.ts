@@ -39,9 +39,10 @@ import {
 	type SubagentDelegationV2Response,
 	type SubagentDelegationV2Started,
 } from "../../src/api/delegation.ts";
-import { INTERCOM_DETACH_REQUEST_EVENT, INTERCOM_DETACH_RESPONSE_EVENT, type SubagentState } from "../../src/shared/types.ts";
+import { SUBAGENT_DETACH_REQUEST_EVENT, SUBAGENT_DETACH_RESPONSE_EVENT, type SubagentState } from "../../src/shared/types.ts";
 import { CHILD_WATCHDOG_STATUS_EVENT } from "../../src/watchdog/child-status.ts";
 import { WAIT_TOOL_ENABLED_ENV } from "../../src/runs/background/wait-config.ts";
+import { isAsyncAvailable } from "../../src/runs/background/async-execution.ts";
 import { TOOL_BUDGET_ENV, TOOL_BUDGET_ZERO_AUTH_ENV } from "../../src/runs/shared/tool-budget.ts";
 import { MainWatchdogRuntime } from "../../src/watchdog/runtime.ts";
 import { MAX_CHILD_PENDING_LINE_BYTES, MAX_CHILD_STDERR_BYTES } from "../../src/runs/shared/child-protocol.ts";
@@ -778,7 +779,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		}
 	});
 
-	it("allows concurrent async launches in one turn", async () => {
+	it("allows concurrent async launches in one turn", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({ output: "async one" });
 		mockPi.onCall({ output: "async two" });
 		const executor = makeExecutor([makeAgent("echo"), makeAgent("second")]);
@@ -2508,7 +2509,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(agentResult.details?.timeoutMs, 4_000);
 	});
 
-	it("applies agent frontmatter defaults to single-agent launches", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+	it("applies agent frontmatter defaults to single-agent launches", { skip: !createSubagentExecutor ? "executor not importable" : !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		const executor = makeExecutor([
 			makeAgent("echo", {
 				defaultAsync: true,
@@ -2611,7 +2612,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.details?.asyncId, undefined);
 	});
 
-	it("allows timeout settings for async runs before spawning", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+	it("allows timeout settings for async runs before spawning", { skip: !createSubagentExecutor ? "executor not importable" : !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		const executor = makeExecutor();
 
 		const result = await executor.execute(
@@ -2769,10 +2770,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		}
 	});
 
-	it("passes supervisor metadata through to child execution", async () => {
+	it("passes run identity metadata through to child execution", async () => {
 		mockPi.onCall({ echoEnv: [
-			"PI_SUBAGENT_INTERCOM_SESSION_NAME",
-			"PI_SUBAGENT_ORCHESTRATOR_TARGET",
 			"PI_SUBAGENT_RUN_ID",
 			"PI_SUBAGENT_CHILD_AGENT",
 			"PI_SUBAGENT_CHILD_INDEX",
@@ -2782,14 +2781,10 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const result = await runSync(tempDir, agents, "echo", "Task", {
 			runId: "78f659a3",
 			index: 2,
-			intercomSessionName: "subagent-echo-78f659a3-3",
-			orchestratorIntercomTarget: "subagent-chat-parent",
 		});
 
 		assert.equal(result.exitCode, 0);
 		assert.deepEqual(JSON.parse(result.finalOutput ?? "{}"), {
-			PI_SUBAGENT_INTERCOM_SESSION_NAME: "subagent-echo-78f659a3-3",
-			PI_SUBAGENT_ORCHESTRATOR_TARGET: "subagent-chat-parent",
 			PI_SUBAGENT_RUN_ID: "78f659a3",
 			PI_SUBAGENT_CHILD_AGENT: "echo",
 			PI_SUBAGENT_CHILD_INDEX: "2",
@@ -3183,51 +3178,49 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.match(result.finalOutput ?? "", /Interrupted/);
 	});
 
-	for (const toolName of ["intercom", "contact_supervisor"]) {
-		it(`detaches cleanly on ${toolName} handoff without aborting the child process`, async () => {
-			const eventBus = createEventBus();
-			let accepted = false;
-			eventBus.on(INTERCOM_DETACH_RESPONSE_EVENT, (payload) => {
-				if (!payload || typeof payload !== "object") return;
-				accepted = (payload as { accepted?: unknown }).accepted === true;
-			});
-			mockPi.onCall({
-				steps: [
-					{ jsonl: [events.toolStart(toolName, toolName === "intercom" ? { action: "ask", to: "orchestrator" } : { reason: "need_decision", message: "Need a decision" })] },
-					{ delay: 1000, jsonl: [events.assistantMessage("received pong")] },
-				],
-			});
-			const agents = makeAgentConfigs(["echo"]);
-
-			// Emit the detach request the moment we observe the coordination tool start
-			// in a progress update — this is the signal the parent has set
-			// `intercomStarted=true`. Using a fixed delay here races the mock's
-			// cold spawn and flakes under load.
-			let detachEmitted = false;
-			const runPromise = runSync(tempDir, agents, "echo", "Task", {
-				runId: `${toolName}-detach`,
-				allowIntercomDetach: true,
-				intercomEvents: eventBus,
-				onUpdate: (update) => {
-					if (detachEmitted) return;
-					const progress = (update as { details?: { progress?: Array<{ currentTool?: string }> } }).details?.progress;
-					const sawCoordinationTool = Array.isArray(progress) && progress.some((p) => p?.currentTool === toolName);
-					if (!sawCoordinationTool) return;
-					detachEmitted = true;
-					eventBus.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "test-request" });
-				},
-			});
-
-			const result = await runPromise;
-
-			assert.equal(result.exitCode, -2);
-			assert.equal(result.detached, true);
-			assert.equal(result.detachedReason, "intercom coordination");
-			assert.equal(result.finalOutput, "Detached for intercom coordination before task completion.");
-			assert.equal(result.progress?.status, "detached");
-			assert.equal(accepted, true);
+	it("detaches cleanly on contact_supervisor handoff without aborting the child process", async () => {
+		const eventBus = createEventBus();
+		let accepted = false;
+		eventBus.on(SUBAGENT_DETACH_RESPONSE_EVENT, (payload) => {
+			if (!payload || typeof payload !== "object") return;
+			accepted = (payload as { accepted?: unknown }).accepted === true;
 		});
-	}
+		mockPi.onCall({
+			steps: [
+				{ jsonl: [events.toolStart("contact_supervisor", { reason: "need_decision", message: "Need a decision" })] },
+				{ delay: 1000, jsonl: [events.assistantMessage("received pong")] },
+			],
+		});
+		const agents = makeAgentConfigs(["echo"]);
+
+		// Emit the detach request the moment we observe the coordination tool start
+		// in a progress update — this is the signal the parent has set
+		// `intercomStarted=true`. Using a fixed delay here races the mock's
+		// cold spawn and flakes under load.
+		let detachEmitted = false;
+		const runPromise = runSync(tempDir, agents, "echo", "Task", {
+			runId: "contact_supervisor-detach",
+			allowIntercomDetach: true,
+			intercomEvents: eventBus,
+			onUpdate: (update) => {
+				if (detachEmitted) return;
+				const progress = (update as { details?: { progress?: Array<{ currentTool?: string }> } }).details?.progress;
+				const sawCoordinationTool = Array.isArray(progress) && progress.some((p) => p?.currentTool === "contact_supervisor");
+				if (!sawCoordinationTool) return;
+				detachEmitted = true;
+				eventBus.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "test-request" });
+			},
+		});
+
+		const result = await runPromise;
+
+		assert.equal(result.exitCode, -2);
+		assert.equal(result.detached, true);
+		assert.equal(result.detachedReason, "intercom coordination");
+		assert.equal(result.finalOutput, "Detached for intercom coordination before task completion.");
+		assert.equal(result.progress?.status, "detached");
+		assert.equal(accepted, true);
+	});
 
 	it("enforces the stdout protocol limit after foreground detachment", async () => {
 		const eventBus = createEventBus();
@@ -3248,7 +3241,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 				const progress = (update as { details?: { progress?: Array<{ currentTool?: string }> } }).details?.progress;
 				if (!Array.isArray(progress) || !progress.some((item) => item.currentTool === "contact_supervisor")) return;
 				detachEmitted = true;
-				eventBus.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "detached-protocol-request" });
+				eventBus.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "detached-protocol-request" });
 			},
 			onDetachedExit: (postExit) => { recoveredResult = postExit as RunSyncResult; },
 		});
@@ -3281,7 +3274,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 				const progress = (update as { details?: { progress?: Array<{ currentTool?: string }> } }).details?.progress;
 				if (!Array.isArray(progress) || !progress.some((p) => p?.currentTool === "contact_supervisor")) return;
 				detachEmitted = true;
-				eventBus.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "file-only-detach" });
+				eventBus.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "file-only-detach" });
 			},
 		});
 
@@ -3316,7 +3309,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 				const progress = (update as { details?: { progress?: Array<{ currentTool?: string }> } }).details?.progress;
 				if (!Array.isArray(progress) || !progress.some((p) => p?.currentTool === "contact_supervisor")) return;
 				detachEmitted = true;
-				eventBus.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "file-only-post-exit-detach" });
+				eventBus.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "file-only-post-exit-detach" });
 			},
 			onDetachedExit: (postExit) => {
 				recoveredResult = postExit as RunSyncResult;
@@ -3371,7 +3364,6 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	});
 
 	for (const testCase of [
-		{ name: "intercom ask", toolName: "intercom", args: { action: "ask", to: "orchestrator" } },
 		{ name: "contact_supervisor need_decision", toolName: "contact_supervisor", args: { reason: "need_decision", message: "Need a decision" } },
 		{ name: "contact_supervisor interview_request", toolName: "contact_supervisor", args: { reason: "interview_request", message: "Need input", interview: { questions: [] } } },
 	]) {
@@ -3397,7 +3389,6 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	}
 
 	for (const testCase of [
-		{ name: "intercom send", toolName: "intercom", args: { action: "send", to: "orchestrator", message: "FYI" } },
 		{ name: "contact_supervisor progress_update", toolName: "contact_supervisor", args: { reason: "progress_update", message: "FYI" } },
 	]) {
 		it(`does not proactively detach foreground children on non-blocking ${testCase.name}`, async () => {
@@ -3422,16 +3413,16 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 	}
 
-	it("lets an active intercom child accept detach when another child is listening", async () => {
+	it("lets an active supervisor child accept detach when another child is listening", async () => {
 		const eventBus = createEventBus();
 		let firstDetachResponse: boolean | undefined;
-		eventBus.on(INTERCOM_DETACH_RESPONSE_EVENT, (payload) => {
+		eventBus.on(SUBAGENT_DETACH_RESPONSE_EVENT, (payload) => {
 			if (!payload || typeof payload !== "object") return;
 			if ((payload as { requestId?: unknown }).requestId !== "parallel-request") return;
 			firstDetachResponse ??= (payload as { accepted?: unknown }).accepted === true;
 		});
 		mockPi.onCall({ delay: 500, output: "quiet child done" });
-		const agents = makeAgentConfigs(["quiet", "intercom"]);
+		const agents = makeAgentConfigs(["quiet", "echo"]);
 
 		const quietRun = runSync(tempDir, agents, "quiet", "Quiet task", {
 			runId: "quiet-listener",
@@ -3444,32 +3435,32 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(mockPi.callCount(), 1);
 		mockPi.onCall({
 			steps: [
-				{ jsonl: [events.toolStart("intercom", { action: "send", to: "orchestrator" })] },
-				{ delay: 500, jsonl: [events.assistantMessage("after intercom")] },
+				{ jsonl: [events.toolStart("contact_supervisor", { reason: "progress_update", message: "FYI" })] },
+				{ delay: 500, jsonl: [events.assistantMessage("after supervisor")] },
 			],
 		});
 
 		let detachEmitted = false;
-		const intercomRun = runSync(tempDir, agents, "intercom", "Intercom task", {
-			runId: "active-intercom",
+		const supervisorRun = runSync(tempDir, agents, "echo", "Supervisor task", {
+			runId: "active-supervisor",
 			allowIntercomDetach: true,
 			intercomEvents: eventBus,
 			onUpdate: (update) => {
 				if (detachEmitted) return;
 				const progress = (update as { details?: { progress?: Array<{ currentTool?: string }> } }).details?.progress;
-				const sawIntercom = Array.isArray(progress) && progress.some((p) => p?.currentTool === "intercom");
-				if (!sawIntercom) return;
+				const sawSupervisor = Array.isArray(progress) && progress.some((p) => p?.currentTool === "contact_supervisor");
+				if (!sawSupervisor) return;
 				detachEmitted = true;
-				eventBus.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "parallel-request" });
+				eventBus.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "parallel-request" });
 			},
 		});
 
-		const [quietResult, intercomResult] = await Promise.all([quietRun, intercomRun]);
+		const [quietResult, supervisorResult] = await Promise.all([quietRun, supervisorRun]);
 
 		assert.equal(quietResult.exitCode, 0);
 		assert.equal(quietResult.detached, undefined);
-		assert.equal(intercomResult.exitCode, -2);
-		assert.equal(intercomResult.detached, true);
+		assert.equal(supervisorResult.exitCode, -2);
+		assert.equal(supervisorResult.detached, true);
 		assert.equal(firstDetachResponse, true);
 	});
 

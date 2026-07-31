@@ -13,12 +13,12 @@ This file is a detailed reference loaded from `skills/pi-subagents/SKILL.md`.
 - **Default subagent nesting depth is 2.** Deeper recursive delegation is blocked
   unless configured otherwise.
 - **Attention signals are not lifecycle state.** `needs_attention` means no activity has been observed past the configured threshold. `paused` means the child turn was intentionally interrupted or is awaiting direction; it is not the same as `failed`.
-- **Intercom asks are blocking.** A session can only maintain one pending outbound
+- **Supervisor asks are blocking.** A session can only maintain one pending outbound
   ask wait state at a time.
 - **Keep conversational authority clear.** Advisory subagents should not silently
   become second decision-makers.
 
-Runtime config can change orchestration behavior. `intercomBridge.resultDelivery: false` disables only external acknowledged grouped-result delivery when native parent notifications own completion; supervisor asks/progress stay active, and enabled transport failures are still reported. `asyncByDefault` and `forceTopLevelAsync` affect whether launches detach; `waitTool` can make direct `subagent_wait()` calls return immediately while headless auto-drain remains active, and its effective value is propagated to child runtimes; `globalConcurrencyLimit` bounds concurrent fanout, while a positive `maxSubagentSpawnsPerSession` optionally caps cumulative launches (`0` or unset is unlimited). Status and doctor report the budget; static work preflights declared capacity; only the settled root interactive parent can use `grant-spawn-budget` after native confirmation, with total grants bounded by the original cap. Compaction does not reset usage or grants; `singleRunOutputBaseDir` and `worktreeBaseDir` route outputs and worktrees; `completionBatch` groups async notifications. `artifactDir` is `project` (default), `session`, or `temp` and chooses where subagent artifacts are stored. Set `asyncWidget: false` to hide the above-editor background-run widget when a companion footer or dashboard owns that space (fleet inspector remains available). Per-run `artifacts: false` disables artifact capture for that launch. Async status and result artifacts are versioned with fields such as `lifecycleArtifactVersion`, `workflowGraph`, `steps`, `results`, `totalTokens`, `totalCost`, `turnCount`, `toolCount`, and nested `children`. Child protocol failures expose a structured `protocolError`; `protocol_output_limit` means a child emitted a JSONL line above the 4 MiB live-parser cap. Prefer these artifacts and `status` views over scraping terminal output.
+Runtime config can change orchestration behavior. `asyncByDefault` and `forceTopLevelAsync` affect whether launches detach; `waitTool` can make direct `subagent_wait()` calls return immediately while headless auto-drain remains active, and its effective value is propagated to child runtimes; `globalConcurrencyLimit` bounds concurrent fanout, while a positive `maxSubagentSpawnsPerSession` optionally caps cumulative launches (`0` or unset is unlimited). Status and doctor report the budget; static work preflights declared capacity; only the settled root interactive parent can use `grant-spawn-budget` after native confirmation, with total grants bounded by the original cap. Compaction does not reset usage or grants; `singleRunOutputBaseDir` and `worktreeBaseDir` route outputs and worktrees; `completionBatch` groups async notifications. `artifactDir` is `project` (default), `session`, or `temp` and chooses where subagent artifacts are stored. Set `asyncWidget: false` to hide the above-editor background-run widget when a companion footer or dashboard owns that space (fleet inspector remains available). Per-run `artifacts: false` disables artifact capture for that launch. Async status and result artifacts are versioned with fields such as `lifecycleArtifactVersion`, `workflowGraph`, `steps`, `results`, `totalTokens`, `totalCost`, `turnCount`, `toolCount`, and nested `children`. Child protocol failures expose a structured `protocolError`; `protocol_output_limit` means a child emitted a JSONL line above the 4 MiB live-parser cap. Prefer these artifacts and `status` views over scraping terminal output.
 
 ## Best Practices
 
@@ -61,7 +61,7 @@ Give subagents specific tasks rather than vague mandates.
 ### Escalate decisions upward
 
 If a subagent encounters an unapproved product, architecture, or scope choice,
-it should use `contact_supervisor` and wait for the reply instead of deciding alone. Generic `intercom` is a fallback only when the bridge-provided supervisor tool is unavailable.
+it should use `contact_supervisor` and wait for the reply instead of deciding alone.
 
 ### Intervene only on clear control signals
 
@@ -69,7 +69,7 @@ Use subagent control proactively when a delegated run emits `needs_attention`, o
 
 ### Name sessions meaningfully
 
-Use `/name` so intercom targeting stays stable.
+Use `/name` so supervisor targeting stays stable.
 
 ## Common Workflows
 
@@ -219,10 +219,10 @@ subagent({ action: "list" })
 // Check available agents and chains, then confirm scope/precedence.
 ```
 
-**Setup, discovery, or intercom confusion**
+**Setup, discovery, or supervisor channel confusion**
 ```typescript
 subagent({ action: "doctor" })
-// Check runtime paths, async support, discovery counts, current session, and intercom bridge state.
+// Check runtime paths, async support, discovery counts, current session, and supervisor channel state.
 ```
 
 **"Max subagent depth exceeded"**
@@ -235,7 +235,7 @@ subagent({ action: "doctor" })
 // Persist the current session before using context: "fork".
 ```
 
-**Intercom "Already waiting for a reply"**
+**Supervisor "Already waiting for a reply"**
 ```typescript
 // Resolve the current outbound ask before starting another one.
 ```

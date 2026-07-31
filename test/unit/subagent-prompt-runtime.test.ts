@@ -9,7 +9,6 @@ import {
 	SUBAGENT_CHILD_INDEX_ENV,
 	SUBAGENT_FANOUT_CHILD_ENV,
 	SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV,
-	SUBAGENT_ORCHESTRATOR_TARGET_ENV,
 	SUBAGENT_RUN_ID_ENV,
 	SUBAGENT_STEER_ACK_DIR_ENV,
 	SUBAGENT_STEER_CAPABILITY_ENV,
@@ -24,7 +23,6 @@ import { SUBAGENT_WATCHDOG_WARNING_TYPE } from "../../src/watchdog/types.ts";
 import registerSubagentPromptRuntime, {
 	CHILD_FANOUT_BOUNDARY_INSTRUCTIONS,
 	CHILD_SUBAGENT_BOUNDARY_INSTRUCTIONS,
-	SUBAGENT_INTERCOM_SESSION_NAME_ENV,
 	registerSteeringInbox,
 	rewriteSubagentPrompt,
 	stripInheritedSkills,
@@ -36,7 +34,6 @@ import registerSubagentPromptRuntime, {
 const envSnapshot = {
 	PI_SUBAGENT_INHERIT_PROJECT_CONTEXT: process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT,
 	PI_SUBAGENT_INHERIT_SKILLS: process.env.PI_SUBAGENT_INHERIT_SKILLS,
-	PI_SUBAGENT_INTERCOM_SESSION_NAME: process.env.PI_SUBAGENT_INTERCOM_SESSION_NAME,
 	PI_SUBAGENT_FANOUT_CHILD: process.env.PI_SUBAGENT_FANOUT_CHILD,
 	PI_SUBAGENT_STEER_INBOX: process.env.PI_SUBAGENT_STEER_INBOX,
 	PI_SUBAGENT_STEER_CAPABILITY: process.env.PI_SUBAGENT_STEER_CAPABILITY,
@@ -47,7 +44,6 @@ const envSnapshot = {
 	PI_SUBAGENT_REQUIRED_TOOLS: process.env.PI_SUBAGENT_REQUIRED_TOOLS,
 	PI_SUBAGENT_MCP_DIRECT_TOOLS: process.env.PI_SUBAGENT_MCP_DIRECT_TOOLS,
 	PI_SUBAGENT_TOOL_DIAGNOSTIC_PATH: process.env.PI_SUBAGENT_TOOL_DIAGNOSTIC_PATH,
-	PI_SUBAGENT_ORCHESTRATOR_TARGET: process.env.PI_SUBAGENT_ORCHESTRATOR_TARGET,
 	PI_SUBAGENT_ORCHESTRATOR_SESSION_ID: process.env.PI_SUBAGENT_ORCHESTRATOR_SESSION_ID,
 	PI_SUBAGENT_SUPERVISOR_CHANNEL_DIR: process.env.PI_SUBAGENT_SUPERVISOR_CHANNEL_DIR,
 	PI_SUBAGENT_RUN_ID: process.env.PI_SUBAGENT_RUN_ID,
@@ -80,8 +76,6 @@ afterEach(() => {
 	else process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT = envSnapshot.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT;
 	if (envSnapshot.PI_SUBAGENT_INHERIT_SKILLS === undefined) delete process.env.PI_SUBAGENT_INHERIT_SKILLS;
 	else process.env.PI_SUBAGENT_INHERIT_SKILLS = envSnapshot.PI_SUBAGENT_INHERIT_SKILLS;
-	if (envSnapshot.PI_SUBAGENT_INTERCOM_SESSION_NAME === undefined) delete process.env.PI_SUBAGENT_INTERCOM_SESSION_NAME;
-	else process.env.PI_SUBAGENT_INTERCOM_SESSION_NAME = envSnapshot.PI_SUBAGENT_INTERCOM_SESSION_NAME;
 	if (envSnapshot.PI_SUBAGENT_FANOUT_CHILD === undefined) delete process.env.PI_SUBAGENT_FANOUT_CHILD;
 	else process.env.PI_SUBAGENT_FANOUT_CHILD = envSnapshot.PI_SUBAGENT_FANOUT_CHILD;
 	if (envSnapshot.PI_SUBAGENT_STEER_INBOX === undefined) delete process.env[SUBAGENT_STEER_INBOX_ENV];
@@ -102,8 +96,6 @@ afterEach(() => {
 	else process.env[MCP_DIRECT_CHILD_TOOLS_ENV] = envSnapshot.PI_SUBAGENT_MCP_DIRECT_TOOLS;
 	if (envSnapshot.PI_SUBAGENT_TOOL_DIAGNOSTIC_PATH === undefined) delete process.env[CHILD_TOOL_DIAGNOSTIC_PATH_ENV];
 	else process.env[CHILD_TOOL_DIAGNOSTIC_PATH_ENV] = envSnapshot.PI_SUBAGENT_TOOL_DIAGNOSTIC_PATH;
-	if (envSnapshot.PI_SUBAGENT_ORCHESTRATOR_TARGET === undefined) delete process.env[SUBAGENT_ORCHESTRATOR_TARGET_ENV];
-	else process.env[SUBAGENT_ORCHESTRATOR_TARGET_ENV] = envSnapshot.PI_SUBAGENT_ORCHESTRATOR_TARGET;
 	if (envSnapshot.PI_SUBAGENT_ORCHESTRATOR_SESSION_ID === undefined) delete process.env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV];
 	else process.env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV] = envSnapshot.PI_SUBAGENT_ORCHESTRATOR_SESSION_ID;
 	if (envSnapshot.PI_SUBAGENT_SUPERVISOR_CHANNEL_DIR === undefined) delete process.env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV];
@@ -119,7 +111,6 @@ afterEach(() => {
 });
 
 function setSupervisorEnv(): void {
-	process.env[SUBAGENT_ORCHESTRATOR_TARGET_ENV] = "subagent-chat-parent";
 	process.env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV] = "session-parent";
 	process.env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV] = path.join(os.tmpdir(), "subagent-supervisor-runtime-test");
 	process.env[SUBAGENT_RUN_ID_ENV] = "run-123";
@@ -578,7 +569,7 @@ describe("subagent prompt runtime", () => {
 		assert.deepEqual(stripParentOnlySubagentMessages([user, subagentCall, subagentResult, instruction]), [user, subagentCall, subagentResult]);
 	});
 
-	it("defers native supervisor registration until runtime events and respects installed pi-intercom tools", async () => {
+	it("defers native supervisor registration until runtime events", async () => {
 		setSupervisorEnv();
 		const handlers = new Map<string, (payload?: unknown) => unknown>();
 		const registered: string[] = [];
@@ -587,7 +578,7 @@ describe("subagent prompt runtime", () => {
 			on(event: string, handler: (payload?: unknown) => unknown) {
 				handlers.set(event, handler);
 			},
-			getAllTools: () => [{ name: "intercom" }, { name: "contact_supervisor" }],
+			getAllTools: () => [{ name: "contact_supervisor" }],
 			registerTool(tool: { name: string }) {
 				registered.push(tool.name);
 			},
@@ -599,14 +590,14 @@ describe("subagent prompt runtime", () => {
 		assert.deepEqual(registered, ["subagent_wait"]);
 	});
 
-	it("registers native intercom before the final strict allowlist check", () => {
+	it("registers native supervisor tools before the final strict allowlist check", () => {
 		setSupervisorEnv();
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-intercom-diagnostic-"));
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-supervisor-diagnostic-"));
 		try {
 			const diagnosticPath = path.join(dir, "tools.json");
 			const handlers = new Map<string, (payload?: unknown) => unknown>();
 			const registered: string[] = [];
-			process.env[REQUIRED_CHILD_TOOLS_ENV] = JSON.stringify(["read", "grep", "find", "ls", "bash", "edit", "write", "intercom"]);
+			process.env[REQUIRED_CHILD_TOOLS_ENV] = JSON.stringify(["read", "grep", "find", "ls", "bash", "edit", "write"]);
 			process.env[CHILD_TOOL_DIAGNOSTIC_PATH_ENV] = diagnosticPath;
 			process.env[SUBAGENT_CHILD_AGENT_ENV] = "scout";
 
@@ -621,7 +612,7 @@ describe("subagent prompt runtime", () => {
 			} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(tool: { name: string }): void });
 
 			handlers.get("session_start")?.({});
-			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor", "intercom"]);
+			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor"]);
 			handlers.get("agent_start")?.({});
 			assert.equal(fs.existsSync(diagnosticPath), false);
 		} finally {
@@ -629,7 +620,7 @@ describe("subagent prompt runtime", () => {
 		}
 	});
 
-	it("keeps installed pi-intercom while filling only a missing child contact_supervisor tool", async () => {
+	it("fills only a missing child contact_supervisor tool", async () => {
 		setSupervisorEnv();
 		const handlers = new Map<string, (payload?: unknown) => unknown>();
 		const registered: string[] = [];
@@ -638,7 +629,7 @@ describe("subagent prompt runtime", () => {
 			on(event: string, handler: (payload?: unknown) => unknown) {
 				handlers.set(event, handler);
 			},
-			getAllTools: () => [{ name: "intercom" }, ...registered.map((name) => ({ name }))],
+			getAllTools: () => registered.map((name) => ({ name })),
 			registerTool(tool: { name: string }) {
 				registered.push(tool.name);
 			},
@@ -650,7 +641,7 @@ describe("subagent prompt runtime", () => {
 		assert.deepEqual(registered, ["subagent_wait", "contact_supervisor"]);
 	});
 
-	it("registers native supervisor tools at runtime when pi-intercom is absent", async () => {
+	it("registers native supervisor tools at runtime when no child tool allowlist is set", async () => {
 		setSupervisorEnv();
 		const previousRequiredTools = process.env[REQUIRED_CHILD_TOOLS_ENV];
 		delete process.env[REQUIRED_CHILD_TOOLS_ENV];
@@ -672,7 +663,7 @@ describe("subagent prompt runtime", () => {
 			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor"]);
 
 			await handlers.get("before_agent_start")?.({ systemPrompt: BASE_PROMPT });
-			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor", "intercom"]);
+			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor"]);
 		} finally {
 			if (previousRequiredTools === undefined) delete process.env[REQUIRED_CHILD_TOOLS_ENV];
 			else process.env[REQUIRED_CHILD_TOOLS_ENV] = previousRequiredTools;
@@ -782,33 +773,13 @@ describe("subagent prompt runtime", () => {
 		}
 	});
 
-	it("sets the child intercom session name from env during agent startup", async () => {
-		let sessionName: string | undefined;
-		let beforeAgentStart: ((event: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>) | undefined;
-		process.env[SUBAGENT_INTERCOM_SESSION_NAME_ENV] = "subagent-worker-78f659a3";
-
-		registerSubagentPromptRuntime({
-			on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>) {
-				if (event === "before_agent_start") beforeAgentStart = handler;
-			},
-			getAllTools: () => [{ name: "intercom" }, { name: "contact_supervisor" }],
-			setSessionName(name: string) {
-				sessionName = name;
-			},
-		} as { on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>): void; getAllTools(): Array<{ name: string }>; setSessionName(name: string): void });
-
-		await beforeAgentStart?.({ systemPrompt: BASE_PROMPT });
-
-		assert.equal(sessionName, "subagent-worker-78f659a3");
-	});
-
 	it("rewrites the final child-visible prompt through before_agent_start", async () => {
 		let beforeAgentStart: ((event: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>) | undefined;
 		registerSubagentPromptRuntime({
 			on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>) {
 				if (event === "before_agent_start") beforeAgentStart = handler;
 			},
-			getAllTools: () => [{ name: "intercom" }, { name: "contact_supervisor" }],
+			getAllTools: () => [{ name: "contact_supervisor" }],
 		} as { on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>): void; getAllTools(): Array<{ name: string }> });
 
 		assert.ok(beforeAgentStart, "expected before_agent_start handler");
@@ -828,7 +799,7 @@ describe("subagent prompt runtime", () => {
 			on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>) {
 				if (event === "before_agent_start") beforeAgentStart = handler;
 			},
-			getAllTools: () => [{ name: "intercom" }, { name: "contact_supervisor" }],
+			getAllTools: () => [{ name: "contact_supervisor" }],
 		} as { on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>): void; getAllTools(): Array<{ name: string }> });
 
 		process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT = "1";

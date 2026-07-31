@@ -24,7 +24,7 @@ import {
 	tryImport,
 	events,
 } from "../support/helpers.ts";
-import { INTERCOM_DETACH_REQUEST_EVENT } from "../../src/shared/types.ts";
+import { SUBAGENT_DETACH_REQUEST_EVENT } from "../../src/shared/types.ts";
 
 interface TestSequentialStep {
 	agent: string;
@@ -1550,10 +1550,10 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 		assert.equal(mockPi.callCount(), 0);
 	});
 
-	it("detaches parallel chain children cleanly on intercom handoff", async () => {
+	it("detaches parallel chain children cleanly on supervisor handoff", async () => {
 		mockPi.onCall({
 			steps: [
-				{ jsonl: [events.toolStart("intercom", { action: "send", to: "orchestrator" })] },
+				{ jsonl: [events.toolStart("contact_supervisor", { reason: "progress_update", message: "FYI" })] },
 				{ delay: 25, jsonl: [events.assistantMessage("after handoff")] },
 			],
 		});
@@ -1580,9 +1580,9 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 					intercomEvents,
 					onUpdate(update: { details?: { progress?: Array<{ currentTool?: string }> } }) {
 						if (detachEmitted) return;
-						if (!update.details?.progress?.some((entry) => entry.currentTool === "intercom")) return;
+						if (!update.details?.progress?.some((entry) => entry.currentTool === "contact_supervisor")) return;
 						detachEmitted = true;
-						intercomEvents.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "chain-parallel-detach" });
+						intercomEvents.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "chain-parallel-detach" });
 					},
 				},
 			),
@@ -1622,7 +1622,7 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 						if (detachEmitted) return;
 						if (!update.details?.progress?.some((entry) => entry.currentTool === "contact_supervisor")) return;
 						detachEmitted = true;
-						intercomEvents.emit(INTERCOM_DETACH_REQUEST_EVENT, { requestId: "chain-sequential-detach" });
+						intercomEvents.emit(SUBAGENT_DETACH_REQUEST_EVENT, { requestId: "chain-sequential-detach" });
 					},
 				},
 			),

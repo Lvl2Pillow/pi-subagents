@@ -2,7 +2,7 @@
 name: pi-subagents
 description: |
   Delegate work to builtin or custom subagents with single-agent, chain,
-  parallel, async, forked-context, and intercom-coordinated workflows. Use
+  parallel, async, forked-context, and supervisor-coordinated workflows. Use
   for advisory review, implementation handoffs, and multi-step tasks where a
   single agent should stay in control while other agents contribute context,
   planning, or execution.
@@ -21,7 +21,7 @@ Read the matching reference file before acting. Paths are relative to this `SKIL
 | Task | Read |
 | --- | --- |
 | Decide whether to delegate, choose agents, compare tool versus slash commands, apply prompt techniques, or understand builtin roles | `references/prompting-and-roles.md` |
-| Run single, parallel, chain, async, scheduled, forked, worktree, watchdog, clarify, oracle, or intercom-coordinated workflows | `references/execution-controls.md` |
+| Run single, parallel, chain, async, scheduled, forked, worktree, watchdog, clarify, oracle, or supervisor-coordinated workflows | `references/execution-controls.md` |
 | List/create/update/delete/eject/disable agents or chains, edit agent files, use prompt-template integration, or expose extension RPC | `references/management-authoring-rpc.md` |
 | Check safety constraints, best practices, standard workflows, or error handling | `references/constraints-and-recipes.md` |
 

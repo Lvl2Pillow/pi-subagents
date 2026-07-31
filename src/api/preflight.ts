@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { discoverAgents, discoverAgentsAll, type AgentConfig, type AgentScope, type AgentSource } from "../agents/agents.ts";
 import { resolveExecutionAgentScope } from "../agents/agent-scope.ts";
 import { buildSkillInjection, normalizeSkillInput, resolveSkillsWithFallback } from "../agents/skills.ts";
-import { buildAgentMemoryInjection } from "../agents/agent-memory.ts";
 import { buildModelCandidates, resolveEffectiveSubagentModel, type AvailableModelInfo, type ParentModel } from "../runs/shared/model-fallback.ts";
 import { applyThinkingSuffix, resolvePiLaunchToolPlan, type PiLaunchToolPlan } from "../runs/shared/pi-args.ts";
 import { injectOutputPathSystemPrompt, normalizeSingleOutputOverride, resolveSingleOutputPath } from "../runs/shared/single-output.ts";
@@ -304,8 +303,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 		const skillInjection = buildSkillInjection(resolvedSkills.resolved);
 		effectiveSystemPrompt = effectiveSystemPrompt ? `${effectiveSystemPrompt}\n\n${skillInjection}` : skillInjection;
 	}
-	const memoryInjection = buildAgentMemoryInjection(agent, effectiveCwd);
-	if (memoryInjection) effectiveSystemPrompt = effectiveSystemPrompt ? `${effectiveSystemPrompt}\n\n${memoryInjection}` : memoryInjection;
 	effectiveSystemPrompt = injectOutputPathSystemPrompt(effectiveSystemPrompt, outputPath, agent);
 	const turnBudget = input.turnBudget ?? agent.defaultTurnBudget;
 	effectiveSystemPrompt = appendTurnBudgetSystemPrompt(effectiveSystemPrompt, turnBudget);

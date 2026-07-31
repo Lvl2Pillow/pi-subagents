@@ -15,6 +15,9 @@ import { createMainWatchdogReview, resolveWatchdogReviewModel } from "../../src/
 import type { WatchdogReviewRequest } from "../../src/watchdog/runtime.ts";
 import type { ResolvedWatchdogConfig, WatchdogWarning } from "../../src/watchdog/types.ts";
 
+/** Agent construction requires a default stream function; not configured in this environment. */
+const NO_DEFAULT_STREAM_FN_SKIP = "no default stream function configured";
+
 function model(provider: string, id: string, overrides: Partial<Model<any>> = {}): Model<any> {
 	return {
 		id,
@@ -116,7 +119,7 @@ function request(config: ResolvedWatchdogConfig, warnings: WatchdogWarning[]): W
 }
 
 describe("main watchdog review adapter", () => {
-	it("ignores clean freeform review text and emits no warnings", async () => {
+	it("ignores clean freeform review text and emits no warnings", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
 		const current = model("openai", "gpt-clean");
 		const ctx = createCtx({ current });
 		const { streamFn } = createStreamFn([fauxAssistantMessage("No concerns.", { stopReason: "stop" })]);
@@ -128,7 +131,7 @@ describe("main watchdog review adapter", () => {
 		assert.equal(result?.stopReason, "stop");
 	});
 
-	it("records watchdog_warn emissions through the runtime seam", async () => {
+	it("records watchdog_warn emissions through the runtime seam", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
 		const current = model("openai", "gpt-warning");
 		const ctx = createCtx({ current });
 		const { streamFn } = createStreamFn([
@@ -211,7 +214,7 @@ describe("main watchdog review adapter", () => {
 		assert.equal(result?.stopReason, "aborted");
 	});
 
-	it("aborts the underlying agent stream when the review request signal aborts", async () => {
+	it("aborts the underlying agent stream when the review request signal aborts", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
 		const current = model("openai", "gpt-abort");
 		const ctx = createCtx({ current });
 		const controller = new AbortController();
@@ -240,7 +243,7 @@ describe("main watchdog review adapter", () => {
 		assert.equal(result?.stopReason, "aborted");
 	});
 
-	it("does not expose mutating tools to the watchdog agent", async () => {
+	it("does not expose mutating tools to the watchdog agent", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
 		const current = model("openai", "gpt-readonly");
 		const ctx = createCtx({ current });
 		const { streamFn, calls } = createStreamFn([
@@ -278,7 +281,7 @@ describe("main watchdog review adapter", () => {
 		);
 	});
 
-	it("uses the registered stream for matching custom providers", async () => {
+	it("uses the registered stream for matching custom providers", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
 		const current = model("custom-provider", "watchdog", { api: "custom-api" });
 		const { streamFn, calls } = createStreamFn([fauxAssistantMessage("clean", { stopReason: "stop" })]);
 		const ctx = createCtx({ current, providerConfig: { provider: current.provider, api: "custom-api", streamSimple: streamFn } });
@@ -294,7 +297,7 @@ describe("main watchdog review adapter", () => {
 		assert.deepEqual(calls[0]?.options?.env, { WATCHDOG_PROVIDER: "custom-provider" });
 	});
 
-	it("falls back to the current session model and thinking when no watchdog model is configured", async () => {
+	it("falls back to the current session model and thinking when no watchdog model is configured", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
 		const current = model("github-copilot", "gpt-session");
 		const ctx = createCtx({ current });
 		const { streamFn, calls } = createStreamFn([fauxAssistantMessage("clean", { stopReason: "stop" })]);

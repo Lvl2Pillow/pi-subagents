@@ -19,7 +19,6 @@ const TASK_ARG_LIMIT = 8000;
 const PROMPT_RUNTIME_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "subagent-prompt-runtime.ts");
 const FANOUT_CHILD_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extension", "fanout-child.ts");
 export const SUBAGENT_CHILD_ENV = "PI_SUBAGENT_CHILD";
-export const SUBAGENT_ORCHESTRATOR_TARGET_ENV = "PI_SUBAGENT_ORCHESTRATOR_TARGET";
 export const SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV = "PI_SUBAGENT_ORCHESTRATOR_SESSION_ID";
 export const SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV = "PI_SUBAGENT_SUPERVISOR_CHANNEL_DIR";
 export const SUBAGENT_RUN_ID_ENV = "PI_SUBAGENT_RUN_ID";
@@ -38,8 +37,6 @@ export const SUBAGENT_PARENT_SESSION_ENV = "PI_SUBAGENT_PARENT_SESSION";
 export const SUBAGENT_STEER_INBOX_ENV = "PI_SUBAGENT_STEER_INBOX";
 export const SUBAGENT_STEER_CAPABILITY_ENV = "PI_SUBAGENT_STEER_CAPABILITY";
 export const SUBAGENT_STEER_ACK_DIR_ENV = "PI_SUBAGENT_STEER_ACK_DIR";
-export const PI_INTERCOM_STABLE_ID_ENV = "PI_INTERCOM_STABLE_ID";
-export const PI_INTERCOM_SESSION_ID_ENV = "PI_INTERCOM_SESSION_ID";
 
 export interface BuildPiArgsInput {
 	parentSessionId?: string;
@@ -61,8 +58,6 @@ export interface BuildPiArgsInput {
 	mcpDirectTools?: string[];
 	cwd?: string;
 	promptFileStem?: string;
-	intercomSessionName?: string;
-	orchestratorIntercomTarget?: string;
 	runId?: string;
 	childAgentName?: string;
 	childIndex?: number;
@@ -333,18 +328,10 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 		: "";
 	env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT = input.inheritProjectContext ? "1" : "0";
 	env.PI_SUBAGENT_INHERIT_SKILLS = input.inheritSkills ? "1" : "0";
-	env[PI_INTERCOM_STABLE_ID_ENV] = input.intercomSessionName || undefined;
-	env[PI_INTERCOM_SESSION_ID_ENV] = undefined;
-	if (input.intercomSessionName) {
-		env.PI_SUBAGENT_INTERCOM_SESSION_NAME = input.intercomSessionName;
-	}
-	if (input.orchestratorIntercomTarget) {
-		env[SUBAGENT_ORCHESTRATOR_TARGET_ENV] = input.orchestratorIntercomTarget;
-	}
 	if (input.parentSessionId) {
 		env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV] = input.parentSessionId;
 	}
-	if (input.orchestratorIntercomTarget && input.parentSessionId && input.runId && input.childAgentName) {
+	if (input.parentSessionId && input.runId && input.childAgentName) {
 		const childIndex = input.childIndex ?? 0;
 		const channelDir = supervisorChannelDir(input.runId, input.childAgentName, childIndex);
 		fs.mkdirSync(path.join(channelDir, "requests"), { recursive: true });

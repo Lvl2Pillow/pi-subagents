@@ -12,7 +12,6 @@ import {
 	POLL_INTERVAL_MS,
 	RESULTS_DIR,
 	SUBAGENT_CONTROL_EVENT,
-	SUBAGENT_CONTROL_INTERCOM_EVENT,
 	SUBAGENT_STEERING_NOTICE_EVENT,
 } from "../../shared/types.ts";
 import { readStatus } from "../../shared/utils.ts";
@@ -193,24 +192,16 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 					return;
 				}
 				if ((parsed as { type?: unknown }).type !== "subagent.control") return;
-				const record = parsed as { event?: ControlEvent; channels?: string[]; childIntercomTarget?: string; noticeText?: string; intercom?: { to?: string; message?: string } };
+				const record = parsed as { event?: ControlEvent; channels?: string[]; noticeText?: string };
 				if (!record.event || !Array.isArray(record.channels)) return;
 				const payload = {
 					event: record.event,
 					source: "async" as const,
 					asyncDir: job.asyncDir,
-					childIntercomTarget: record.childIntercomTarget,
-					noticeText: record.noticeText ?? formatControlNoticeMessage(record.event, record.childIntercomTarget),
+					noticeText: record.noticeText ?? formatControlNoticeMessage(record.event),
 				};
 				if (record.channels.includes("event")) {
 					pi.events.emit(SUBAGENT_CONTROL_EVENT, payload);
-				}
-				if (record.event.type !== "active_long_running" && record.channels.includes("intercom") && record.intercom?.to && record.intercom.message) {
-					pi.events.emit(SUBAGENT_CONTROL_INTERCOM_EVENT, {
-						...payload,
-						to: record.intercom.to,
-						message: record.intercom.message,
-					});
 				}
 			};
 			let readCursor = cursor;

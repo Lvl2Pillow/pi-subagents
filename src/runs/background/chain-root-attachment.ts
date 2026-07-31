@@ -17,7 +17,6 @@ export interface ImportedAsyncRootResult {
 	exitCode: number;
 	error?: string;
 	sessionFile?: string;
-	intercomTarget?: string;
 	model?: string;
 	attemptedModels?: string[];
 	modelAttempts?: ModelAttempt[];
@@ -45,7 +44,6 @@ interface AsyncResultFile {
 		timedOut?: boolean;
 		stopped?: boolean;
 		sessionFile?: string;
-		intercomTarget?: string;
 		model?: string;
 		attemptedModels?: string[];
 		modelAttempts?: ModelAttempt[];
@@ -154,7 +152,6 @@ function buildImportedResult(root: ImportedAsyncRoot, status: AsyncStatus | null
 		...(timedOut ? { timedOut: true } : {}),
 		...(stopped ? { stopped: true } : {}),
 		...(child?.sessionFile ?? step?.sessionFile ?? status?.sessionFile ? { sessionFile: child?.sessionFile ?? step?.sessionFile ?? status?.sessionFile } : {}),
-		...(child?.intercomTarget ? { intercomTarget: child.intercomTarget } : {}),
 		...(child?.model ?? step?.model ? { model: child?.model ?? step?.model } : {}),
 		...(child?.attemptedModels ?? step?.attemptedModels ? { attemptedModels: child?.attemptedModels ?? step?.attemptedModels } : {}),
 		...(child?.modelAttempts ?? step?.modelAttempts ? { modelAttempts: child?.modelAttempts ?? step?.modelAttempts } : {}),

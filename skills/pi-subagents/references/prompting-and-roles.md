@@ -32,7 +32,7 @@ Humans often use the slash-command layer instead:
 - `/subagent-cost` — show parent plus child token usage and cost for the session
 - `/subagents-fleet` — open the live, inspection-only foreground/async fleet; `Ctrl+Alt+F` opens it during an active foreground turn, `↑↓`/`jk` selects children, and `PgUp`/`PgDn` scrolls transcript detail
 - `/subagents-watchdog` — inspect or configure the opt-in adversarial change watchdog (model, on/off, recommend-model, check)
-- `/subagents-doctor` — diagnose setup, discovery, async paths, and intercom bridge state
+- `/subagents-doctor` — diagnose setup, discovery, async paths, and supervisor channel state
 - `/subagents-models [agent]` — show the live runtime-loaded builtin model mapping
 - `/subagents-profiles`, `/subagents-load-profile`, `/subagents-refresh-provider-models`, `/subagents-generate-profiles`, `/subagents-check-profile` — manage model profiles and provider catalogs
 - `/prompt-workflow` and `/chain-prompts` — run prompt templates through native subagent single/chain workflows
@@ -185,7 +185,7 @@ and user/project agents override builtins with the same name.
 | `context-builder` | Requirements/codebase handoff builder | inherits default | Writes structured context files |
 | `researcher` | Web research brief generator | inherits default | Writes `research.md` |
 | `delegate` | Lightweight generic delegate | inherits default | No fixed output; generic delegated work |
-| `oracle` | Decision-consistency advisory review | inherits default | Advisory review, intercom coordination |
+| `oracle` | Decision-consistency advisory review | inherits default | Advisory review, supervisor coordination |
 | `advisor` | Claude Code-compatible alias for `oracle` | inherits default | Same advisory role as `oracle` |
 
 Builtin `worker` and `delegate` use strict tool allowlists and do not inherit ambient parent extension tools. To give a child an extension tool, name it in `tools` and load its provider via `extensions`, a path-like `tools` entry, or `subagentOnlyExtensions`. Custom agents without an `extensions` field follow `subagents.defaultExtensions` when set.
@@ -225,7 +225,7 @@ A strong subagent prompt usually includes:
 - **Hard constraints**: true invariants only, such as no edits for review-only tasks, one writer thread, child must not run subagents unless it is an explicitly assigned `tools: subagent` fanout child, or escalation for unapproved decisions.
 - **Validation**: targeted checks to run, or the next-best check when validation is impossible.
 - **Output**: the expected summary shape, artifact path, or finding format.
-- **Stop rules**: when to ask via `intercom`, when to stop after enough evidence, and when not to keep searching.
+- **Stop rules**: when to ask via `contact_supervisor`, when to stop after enough evidence, and when not to keep searching.
 
 Avoid carrying over old prompt habits that over-specify every step. Use `must`, `always`, and `never` for real invariants; for judgment calls, give decision rules. For example, tell a reviewer to inspect the staged diff directly and report only evidence-backed findings, rather than prescribing every file or command. Tell a researcher the retrieval budget: start with broad targeted searches, fetch only the strongest sources, search again only when a required fact is missing, then stop.
 

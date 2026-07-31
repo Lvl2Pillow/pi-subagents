@@ -1048,90 +1048,6 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 		}
 	});
 
-	it("honors async control notification channels", async () => {
-		const asyncRoot = createTempDir("pi-async-job-tracker-");
-		try {
-			const runDir = path.join(asyncRoot, "run-channels");
-			fs.mkdirSync(runDir, { recursive: true });
-			fs.writeFileSync(path.join(runDir, "status.json"), JSON.stringify({
-				runId: "run-channels",
-				mode: "single",
-				state: "running",
-				startedAt: Date.now() - 1000,
-				lastUpdate: Date.now(),
-				steps: [{ agent: "worker", status: "running" }],
-			}), "utf-8");
-			fs.writeFileSync(path.join(runDir, "events.jsonl"), `${JSON.stringify({
-				type: "subagent.control",
-				channels: ["intercom"],
-				event: {
-					type: "needs_attention",
-					to: "needs_attention",
-					ts: 123,
-					runId: "run-channels",
-					agent: "worker",
-					message: "worker needs attention",
-				},
-				intercom: { to: "main", message: "SUBAGENT NEEDS ATTENTION: worker in run run-channels." },
-			})}\n`, "utf-8");
-
-			const state = createState();
-			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
-				pollIntervalMs: 10,
-			});
-			tracker.handleStarted({ id: "run-channels", asyncDir: runDir, agent: "worker" });
-
-			await new Promise((resolve) => setTimeout(resolve, 30));
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-event"), false);
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-intercom"), true);
-		} finally {
-			removeTempDir(asyncRoot);
-		}
-	});
-
-	it("does not bridge active-long-running records to intercom", async () => {
-		const asyncRoot = createTempDir("pi-async-job-tracker-");
-		try {
-			const runDir = path.join(asyncRoot, "run-active-intercom");
-			fs.mkdirSync(runDir, { recursive: true });
-			fs.writeFileSync(path.join(runDir, "status.json"), JSON.stringify({
-				runId: "run-active-intercom",
-				mode: "single",
-				state: "running",
-				startedAt: Date.now() - 1000,
-				lastUpdate: Date.now(),
-				steps: [{ agent: "worker", status: "running" }],
-			}), "utf-8");
-			fs.writeFileSync(path.join(runDir, "events.jsonl"), `${JSON.stringify({
-				type: "subagent.control",
-				channels: ["event", "intercom"],
-				event: {
-					type: "active_long_running",
-					to: "active_long_running",
-					ts: 123,
-					runId: "run-active-intercom",
-					agent: "worker",
-					message: "worker is still active but long-running",
-				},
-				intercom: { to: "main", message: "stale active notice" },
-			})}\n`, "utf-8");
-
-			const state = createState();
-			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
-				pollIntervalMs: 10,
-			});
-			tracker.handleStarted({ id: "run-active-intercom", asyncDir: runDir, agent: "worker" });
-
-			await new Promise((resolve) => setTimeout(resolve, 30));
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-event"), true);
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-intercom"), false);
-		} finally {
-			removeTempDir(asyncRoot);
-		}
-	});
-
 	it("bridges async control events from events.jsonl to the parent event bus", async () => {
 		const asyncRoot = createTempDir("pi-async-job-tracker-");
 		try {
@@ -1147,9 +1063,8 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			}), "utf-8");
 			fs.writeFileSync(path.join(runDir, "events.jsonl"), `${JSON.stringify({
 				type: "subagent.control",
-				channels: ["event", "intercom"],
-				childIntercomTarget: "subagent-worker-run-3-1",
-				noticeText: "Subagent needs attention: worker\nNudge: intercom({ action: \"send\", to: \"subagent-worker-run-3-1\", message: \"<message>\" })",
+				channels: ["event"],
+				noticeText: "Subagent needs attention: worker",
 				event: {
 					type: "needs_attention",
 					to: "needs_attention",
@@ -1158,7 +1073,6 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 					agent: "worker",
 					message: "worker needs attention",
 				},
-				intercom: { to: "main", message: "SUBAGENT NEEDS ATTENTION: worker in run run-3." },
 			})}\n`, "utf-8");
 
 			const state = createState();
@@ -1172,8 +1086,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const controlEvent = recorder.events.find((event) => event.channel === "subagent:control-event");
 			assert.ok(controlEvent);
-			assert.match((controlEvent.data as { noticeText?: string }).noticeText ?? "", /subagent-worker-run-3-1/);
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-intercom"), true);
+			assert.match((controlEvent.data as { noticeText?: string }).noticeText ?? "", /Subagent needs attention: worker/);
 		} finally {
 			removeTempDir(asyncRoot);
 		}

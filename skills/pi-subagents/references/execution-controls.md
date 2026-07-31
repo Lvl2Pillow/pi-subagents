@@ -210,7 +210,7 @@ subagent({ action: "schedule-cancel", id: "ab12" })
 
 Schedules are persisted per session and restored after a Pi restart. A job whose scheduled time passed by more than `scheduledRuns.maxLatenessMs` (default 5 minutes) while Pi was unavailable is marked `missed` instead of firing late. `scheduledRuns.maxPending` (default 20) caps pending or running scheduled jobs per session.
 
-Humans can use `/subagents-doctor` for the same read-only report. It checks runtime paths, discovery counts, async support, current session context, and intercom bridge state.
+Humans can use `/subagents-doctor` for the same read-only report. It checks runtime paths, discovery counts, async support, current session context, and supervisor channel state.
 
 ### Subagent control
 
@@ -246,7 +246,7 @@ subagent({
 })
 ```
 
-If the run already has an active intercom bridge target, needs-attention notifications can also prepare a compact intercom ping for the orchestrator. When a child route is available, the ping tells the orchestrator which agent needs attention and includes the exact `intercom({ action: "send", to: "..." })` target for a nudge. Do not invent a target or ask the child to self-report when no bridge exists.
+If the run already has an active supervisor bridge target, needs-attention notifications can also prepare a compact supervisor nudge for the orchestrator. When a child route is available, the nudge tells the orchestrator which agent needs attention. Do not invent a target or ask the child to self-report when no bridge exists.
 
 Steering is acknowledged delivery, not a send attempt or model-compliance signal:
 
@@ -360,11 +360,11 @@ history as a baseline contract.
 
 Use `oracle` as a smart-friend escalation when the parent needs help with trajectory rather than diff inspection: architectural boundaries, model capability routing, merge conflicts, reviewer disagreement, context drift after long work, a worker about to invent a pattern, or fixes that require product/scope tradeoffs. Ask broad questions when the right concern is unclear, and let `oracle` point out missing context or files the parent should inspect before asking again. Keep `oracle` advisory unless it has been explicitly assigned the single writer role.
 
-## Subagent + Intercom Coordination
+## Subagent + Supervisor Coordination
 
 `pi-subagents` includes native supervisor coordination. Child agents can use `contact_supervisor` to ask the exact parent session that spawned them; messages are scoped by parent session id and should not appear in other Pi sessions.
 
-Most agents should not call generic `intercom` directly unless bridge instructions provide a target and `contact_supervisor` is unavailable. Do not invent a target. Prefer the tool from the injected bridge instructions.
+Do not invent a target. Prefer the tool from the injected bridge instructions.
 
 Use `contact_supervisor` with `reason: "need_decision"` when:
 - a subagent is blocked on a decision
@@ -406,6 +406,6 @@ Or inspects unresolved asks first:
 subagent_supervisor({ action: "pending" })
 ```
 
-If no external `pi-intercom` tool owns the `intercom` name, native supervisor coordination may also expose `intercom` as a compatibility fallback. Prefer `subagent_supervisor` for parent replies because it never overrides installed `pi-intercom`.
+Prefer `subagent_supervisor` for parent replies; it never conflicts with other installed tools.
 
-If intercom messages do not show up, run `subagent({ action: "doctor" })` or `/subagents-doctor`.
+If supervisor messages do not show up, run `subagent({ action: "doctor" })` or `/subagents-doctor`.

@@ -140,12 +140,6 @@ describe("registerSubagentNotify", () => {
 		assert.equal(sent.length, 1);
 	});
 
-	it("suppresses local delivery after an acknowledged grouped intercom relay", async () => {
-		const { notifier, sent } = createPi("session-a");
-		assert.equal(await notifier.deliver(completionResult({ id: "intercom-delivered", intercomDelivered: true })), true);
-		assert.equal(sent.length, 0);
-	});
-
 	it("rejects a pending batch when the notifier is disposed", async () => {
 		const clock = createFakeClock();
 		const { notifier, sent } = createBatchingPi(clock);

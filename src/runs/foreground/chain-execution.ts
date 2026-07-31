@@ -128,8 +128,6 @@ interface ParallelChainRunInput {
 	onControlEvent?: (event: ControlEvent) => void;
 	controlConfig: ResolvedControlConfig;
 	agentContract?: AgentContract;
-	childIntercomTarget?: (agent: string, index: number) => string | undefined;
-	orchestratorIntercomTarget?: string;
 	foregroundControl?: ForegroundRunControl;
 	results: SingleResult[];
 	allProgress: AgentProgress[];
@@ -365,8 +363,6 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 				maxSubagentDepth,
 				controlConfig: input.controlConfig,
 				onControlEvent: input.onControlEvent,
-				intercomSessionName: input.childIntercomTarget?.(task.agent, childIndex),
-				orchestratorIntercomTarget: input.orchestratorIntercomTarget,
 				nestedRoute: input.nestedRoute,
 				modelOverride: effectiveModel,
 				availableModels: input.availableModels,
@@ -455,8 +451,6 @@ interface ChainExecutionParams {
 	onControlEvent?: (event: ControlEvent) => void;
 	controlConfig: ResolvedControlConfig;
 	agentContract?: AgentContract;
-	childIntercomTarget?: (agent: string, index: number) => string | undefined;
-	orchestratorIntercomTarget?: string;
 	foregroundControl?: ForegroundRunControl;
 	chainSkills?: string[];
 	chainDir?: string;
@@ -512,8 +506,6 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		onControlEvent,
 		controlConfig,
 		onDetachedExit,
-		childIntercomTarget,
-		orchestratorIntercomTarget,
 		foregroundControl,
 		intercomEvents,
 		chainSkills: chainSkillsParam,
@@ -759,8 +751,6 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 					controlConfig,
 					agentContract: params.agentContract,
 					onControlEvent,
-					childIntercomTarget,
-					orchestratorIntercomTarget,
 					foregroundControl,
 					nestedRoute: params.nestedRoute,
 					worktreeSetup,
@@ -1016,8 +1006,6 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 				controlConfig,
 				agentContract: params.agentContract,
 				onControlEvent,
-				childIntercomTarget,
-				orchestratorIntercomTarget,
 				foregroundControl,
 				nestedRoute: params.nestedRoute,
 				maxSubagentDepth: params.maxSubagentDepth,
@@ -1273,8 +1261,6 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 				maxSubagentDepth,
 				controlConfig,
 				onControlEvent,
-				intercomSessionName: childIntercomTarget?.(seqStep.agent, childIndex),
-				orchestratorIntercomTarget,
 				nestedRoute: params.nestedRoute,
 				modelOverride: effectiveModel,
 				availableModels,

@@ -417,7 +417,7 @@ describe("subagent_wait tool", () => {
 			setTimeout(() => {
 				const child = state.foregroundRuns!.get("foreground-repeated")!.children[0]!;
 				child.activityState = "needs_attention";
-				events.emit("pi-intercom:detach-request", { runId: "foreground-repeated", childIndex: 0 });
+				events.emit("subagent:detach-request", { runId: "foreground-repeated", childIndex: 0 });
 			}, 15);
 
 			const result = await waiting;

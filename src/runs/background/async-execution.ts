@@ -19,7 +19,6 @@ import type { RunnerStep } from "../shared/parallel-utils.ts";
 import type { ContextMode } from "../shared/context-mode.ts";
 import { resolvePiPackageRoot } from "../shared/pi-spawn.ts";
 import { buildSkillInjection, normalizeSkillInput, resolveSkillsWithFallback } from "../../agents/skills.ts";
-import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { PI_CODING_AGENT_PACKAGE_ROOT_ENV, resolveChildCwd } from "../../shared/utils.ts";
 import { buildModelCandidates, resolveEffectiveSubagentModel, resolveModelCandidate, resolveSubagentModelOverride, type AvailableModelInfo, type ParentModel } from "../shared/model-fallback.ts";
 import type { ModelScopeConfig } from "../shared/model-scope.ts";
@@ -152,8 +151,6 @@ interface AsyncChainParams {
 	worktreeSetupHookTimeoutMs?: number;
 	worktreeBaseDir?: string;
 	controlConfig?: ResolvedControlConfig;
-	controlIntercomTarget?: string;
-	childIntercomTarget?: (agent: string, index: number) => string | undefined;
 	nestedRoute?: NestedRouteInfo;
 	acceptance?: AcceptanceInput;
 	timeoutMs?: number;
@@ -197,8 +194,6 @@ interface AsyncSingleParams {
 	worktreeSetupHookTimeoutMs?: number;
 	worktreeBaseDir?: string;
 	controlConfig?: ResolvedControlConfig;
-	controlIntercomTarget?: string;
-	childIntercomTarget?: (agent: string, index: number) => string | undefined;
 	nestedRoute?: NestedRouteInfo;
 	acceptance?: AcceptanceInput;
 	timeoutMs?: number;
@@ -664,10 +659,6 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 			const injection = buildSkillInjection(resolvedSkills);
 			systemPrompt = systemPrompt ? `${systemPrompt}\n\n${injection}` : injection;
 		}
-		const memoryInjection = buildAgentMemoryInjection(a, stepCwd);
-		if (memoryInjection) {
-			systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memoryInjection}` : memoryInjection;
-		}
 
 		const readInstructions = buildChainInstructions({ ...behavior, output: false, progress: false }, instructionCwd, false);
 		const isFirstProgressAgent = behavior.progress && !progressPrecreated && !progressInstructionCreated;
@@ -890,8 +881,6 @@ export function executeAsyncChain(
 		worktreeSetupHookTimeoutMs,
 		worktreeBaseDir,
 		controlConfig,
-		controlIntercomTarget,
-		childIntercomTarget,
 		nestedRoute,
 	} = params;
 	const resultMode = params.resultMode ?? "chain";
@@ -948,21 +937,6 @@ export function executeAsyncChain(
 	const { steps, runnerCwd, workflowGraph, eventChain } = built;
 	const deadlineAt = params.timeoutMs !== undefined ? Date.now() + params.timeoutMs : undefined;
 	const initialTurnBudget = params.turnBudget ? initialTurnBudgetState(params.turnBudget) : undefined;
-	let childTargetIndex = 0;
-	const childIntercomTargets = childIntercomTarget ? steps.flatMap((step) => {
-		if (!("parallel" in step) && step.importAsyncRoot) {
-			childTargetIndex++;
-			return [undefined];
-		}
-		if ("parallel" in step) {
-			if (!Array.isArray(step.parallel)) {
-				childTargetIndex++;
-				return [undefined];
-			}
-			return step.parallel.map((task) => childIntercomTarget(task.agent, childTargetIndex++));
-		}
-		return [childIntercomTarget(step.agent, childTargetIndex++)];
-	}) : undefined;
 
 	let spawnResult: { pid?: number; error?: string } = {};
 	try {
@@ -989,8 +963,6 @@ export function executeAsyncChain(
 				controlConfig,
 				turnBudget: params.turnBudget,
 				toolBudget: params.toolBudget,
-				controlIntercomTarget,
-				childIntercomTargets,
 				resultMode,
 				dynamicFanoutMaxItems: params.dynamicFanoutMaxItems,
 				timeoutMs: params.timeoutMs,
@@ -1065,9 +1037,6 @@ export function executeAsyncChain(
 						path: nestedAddress.path,
 						asyncDir,
 						pid: spawnResult.pid,
-						ownerIntercomTarget: process.env.PI_SUBAGENT_INTERCOM_SESSION_NAME,
-						leafIntercomTarget: childIntercomTargets?.[0],
-						intercomTarget: childIntercomTargets?.[0],
 						ownerState: "live",
 						mode: resultMode,
 						state: "running",
@@ -1146,8 +1115,6 @@ export function executeAsyncSingle(
 		worktreeSetupHookTimeoutMs,
 		worktreeBaseDir,
 		controlConfig,
-		controlIntercomTarget,
-		childIntercomTarget,
 		nestedRoute,
 	} = params;
 	const task = params.task ?? "";
@@ -1167,10 +1134,6 @@ export function executeAsyncSingle(
 	if (resolvedSkills.length > 0) {
 		const injection = buildSkillInjection(resolvedSkills);
 		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${injection}` : injection;
-	}
-	const memoryInjection = buildAgentMemoryInjection(agentConfig, runnerCwd);
-	if (memoryInjection) {
-		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memoryInjection}` : memoryInjection;
 	}
 
 	const inheritedNestedRoute = resolveInheritedNestedRouteFromEnv();
@@ -1282,7 +1245,6 @@ export function executeAsyncSingle(
 		...(agentConfig.skillPath ? { skillPath: [...agentConfig.skillPath] } : {}),
 		...(agentConfig.filePath ? { agentFilePath: agentConfig.filePath } : {}),
 		...(agentConfig.completionGuard !== undefined ? { completionGuard: agentConfig.completionGuard } : {}),
-		...(agentConfig.memory ? { memory: { ...agentConfig.memory } } : {}),
 		...(outputPath ? { outputPath } : {}),
 		outputMode,
 		...(params.structuredOutputSchema ? { structuredOutputSchema: params.structuredOutputSchema } : {}),
@@ -1366,8 +1328,6 @@ export function executeAsyncSingle(
 				deadlineAt,
 				turnBudget: params.turnBudget,
 				toolBudget: params.toolBudget,
-				controlIntercomTarget,
-				childIntercomTargets: childIntercomTarget ? [childIntercomTarget(agent, 0)] : undefined,
 				resultMode: "single",
 				launchContractDigest,
 				...(params.revivalLease ? { revivalLease: params.revivalLease } : {}),
@@ -1409,9 +1369,6 @@ export function executeAsyncSingle(
 						path: nestedAddress.path,
 						asyncDir,
 						pid: spawnResult.pid,
-						ownerIntercomTarget: process.env.PI_SUBAGENT_INTERCOM_SESSION_NAME,
-						leafIntercomTarget: childIntercomTarget?.(agent, 0),
-						intercomTarget: childIntercomTarget?.(agent, 0),
 						ownerState: "live",
 						mode: "single",
 						state: "running",

@@ -64,7 +64,6 @@ export function projectAgentDefinition(agent: AgentConfig): Record<string, unkno
 		maxSubagentDepth: agent.maxSubagentDepth,
 		completionGuard: agent.completionGuard,
 		toolBudget: agent.toolBudget,
-		memory: agent.memory,
 	};
 }
 

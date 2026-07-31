@@ -9,7 +9,7 @@
  * Toggle: async parameter (default: false, configurable via config.json)
  *
  * Config file: ~/.pi/agent/extensions/subagent/config.json
- *   { "asyncByDefault": true, "forceTopLevelAsync": true, "maxSubagentDepth": 1, "intercomBridge": { "mode": "always", "instructionFile": "./intercom-bridge.md" }, "worktreeSetupHook": "./scripts/setup-worktree.mjs" }
+ *   { "asyncByDefault": true, "forceTopLevelAsync": true, "maxSubagentDepth": 1, "worktreeSetupHook": "./scripts/setup-worktree.mjs" }
  */
 
 import { randomUUID } from "node:crypto";
@@ -247,10 +247,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		state,
 		RESULTS_DIR,
 		10 * 60 * 1000,
-		{
-			notifier: completionNotifier,
-			deliverIntercomResults: config.intercomBridge?.resultDelivery !== false,
-		},
 	);
 
 	const runtimeCleanup = () => {

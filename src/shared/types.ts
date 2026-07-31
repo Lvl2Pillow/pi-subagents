@@ -143,7 +143,7 @@ export interface TokenUsage {
 
 export type ActivityState = "active_long_running" | "needs_attention";
 export type ControlEventType = "active_long_running" | "needs_attention";
-export type ControlNotificationChannel = "event" | "async" | "intercom";
+export type ControlNotificationChannel = "event" | "async";
 
 export interface ControlConfig {
 	enabled?: boolean;
@@ -466,7 +466,6 @@ export interface SteeringRecoveryDescriptor {
 	skillPath?: string[];
 	agentFilePath?: string;
 	completionGuard?: boolean;
-	memory?: { scope: "project" | "user"; path: string };
 	outputPath?: string;
 	outputMode: "inline" | "file-only";
 	structuredOutputSchema?: JsonSchemaObject;
@@ -499,42 +498,11 @@ export type CostSummary = {
 
 export type PublicNestedRunSummary = Pick<
 	NestedRunSummary,
-	"id" | "parentRunId" | "parentStepIndex" | "parentAgent" | "depth" | "path" | "asyncDir" | "sessionId" | "sessionFile" | "intercomTarget" | "ownerIntercomTarget" | "leafIntercomTarget" | "ownerState" | "mode" | "state" | "agent" | "agents" | "currentStep" | "chainStepCount" | "parallelGroups" | "activityState" | "lastActivityAt" | "currentTool" | "currentToolStartedAt" | "currentPath" | "turnCount" | "toolCount" | "toolBudget" | "toolBudgetBlocked" | "totalTokens" | "totalCost" | "startedAt" | "endedAt" | "lastUpdate" | "error" | "timeoutMs" | "deadlineAt" | "timedOut" | "stopped" | "turnBudget" | "turnBudgetExceeded" | "wrapUpRequested"
+	"id" | "parentRunId" | "parentStepIndex" | "parentAgent" | "depth" | "path" | "asyncDir" | "sessionId" | "sessionFile" | "ownerState" | "mode" | "state" | "agent" | "agents" | "currentStep" | "chainStepCount" | "parallelGroups" | "activityState" | "lastActivityAt" | "currentTool" | "currentToolStartedAt" | "currentPath" | "turnCount" | "toolCount" | "toolBudget" | "toolBudgetBlocked" | "totalTokens" | "totalCost" | "startedAt" | "endedAt" | "lastUpdate" | "error" | "timeoutMs" | "deadlineAt" | "timedOut" | "stopped" | "turnBudget" | "turnBudgetExceeded" | "wrapUpRequested"
 > & {
 	steps?: PublicNestedStepSummary[];
 	children?: PublicNestedRunSummary[];
 };
-
-export interface SubagentResultIntercomChild {
-	agent: string;
-	status: SubagentResultStatus;
-	summary: string;
-	index?: number;
-	artifactPath?: string;
-	sessionPath?: string;
-	intercomTarget?: string;
-	children?: PublicNestedRunSummary[];
-}
-
-export interface SubagentResultIntercomPayload {
-	to: string;
-	message: string;
-	requestId?: string;
-	runId: string;
-	mode: SubagentRunMode;
-	status: SubagentResultStatus;
-	summary: string;
-	source: "foreground" | "async";
-	children: SubagentResultIntercomChild[];
-	asyncId?: string;
-	asyncDir?: string;
-	chainSteps?: number;
-	agent?: string;
-	index?: number;
-	artifactPath?: string;
-	sessionPath?: string;
-	parallelHandoff?: ParallelHandoffReference;
-}
 
 // ============================================================================
 // Progress Tracking
@@ -969,9 +937,6 @@ export interface NestedRunSummary extends NestedRunAddress {
 	pid?: number;
 	sessionId?: string;
 	sessionFile?: string;
-	intercomTarget?: string;
-	ownerIntercomTarget?: string;
-	leafIntercomTarget?: string;
 	ownerState?: NestedOwnerState;
 	controlInbox?: string;
 	capabilityToken?: string;
@@ -1366,17 +1331,14 @@ export interface IntercomEventBus {
 	emit(channel: string, data: unknown): void;
 }
 
-export const INTERCOM_DETACH_REQUEST_EVENT = "pi-intercom:detach-request";
-export const INTERCOM_DETACH_RESPONSE_EVENT = "pi-intercom:detach-response";
+export const SUBAGENT_DETACH_REQUEST_EVENT = "subagent:detach-request";
+export const SUBAGENT_DETACH_RESPONSE_EVENT = "subagent:detach-response";
 export const SUBAGENT_ASYNC_STARTED_EVENT = "subagent:async-started";
 export const SUBAGENT_ASYNC_COMPLETE_EVENT = "subagent:async-complete";
 export const SUBAGENT_PROCESS_TERMINAL_EVENT = "subagent:process-terminal";
 export const SUBAGENT_FOREGROUND_COMPLETE_EVENT = "subagent:foreground-complete";
 export const SUBAGENT_CONTROL_EVENT = "subagent:control-event";
-export const SUBAGENT_CONTROL_INTERCOM_EVENT = "subagent:control-intercom";
 export const SUBAGENT_STEERING_NOTICE_EVENT = "subagent:steering-notice";
-export const SUBAGENT_RESULT_INTERCOM_EVENT = "subagent:result-intercom";
-export const SUBAGENT_RESULT_INTERCOM_DELIVERY_EVENT = "subagent:result-intercom-delivery";
 
 // ============================================================================
 // Execution Options
@@ -1403,8 +1365,6 @@ export interface RunSyncOptions {
 	onControlEvent?: (event: ControlEvent) => void;
 	onDetachedExit?: (result: SingleResult) => void;
 	controlConfig?: ResolvedControlConfig;
-	intercomSessionName?: string;
-	orchestratorIntercomTarget?: string;
 	maxOutput?: MaxOutputConfig;
 	artifactsDir?: string;
 	artifactConfig?: ArtifactConfig;
@@ -1452,8 +1412,6 @@ export type IntercomBridgeMode = "off" | "fork-only" | "always";
 export interface IntercomBridgeConfig {
 	mode?: IntercomBridgeMode;
 	instructionFile?: string;
-	/** Deliver grouped completion messages through an external acknowledged intercom listener. */
-	resultDelivery?: boolean;
 }
 
 interface TopLevelParallelConfig {

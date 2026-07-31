@@ -24,7 +24,6 @@ import { drainOutstandingWork } from "../background/auto-drain.ts";
 
 const SUBAGENT_INHERIT_PROJECT_CONTEXT_ENV = "PI_SUBAGENT_INHERIT_PROJECT_CONTEXT";
 const SUBAGENT_INHERIT_SKILLS_ENV = "PI_SUBAGENT_INHERIT_SKILLS";
-export const SUBAGENT_INTERCOM_SESSION_NAME_ENV = "PI_SUBAGENT_INTERCOM_SESSION_NAME";
 
 const STRUCTURED_OUTPUT_INSTRUCTIONS = [
 	"This subagent step has a strict structured output contract.",
@@ -366,16 +365,9 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 	} as unknown as SubagentState;
 	if (typeof pi.registerTool === "function") registerWaitTool(pi, waitState, waitToolEnabled);
 	let nativeSupervisorClientRegistered = false;
-	let nativeSupervisorFallbackRegistered = false;
 	const registerNativeSupervisorClientOnce = (): void => {
 		if (nativeSupervisorClientRegistered) return;
 		nativeSupervisorClientRegistered = true;
-		registerNativeSupervisorClient(pi, { includeIntercomFallback: false });
-	};
-	const registerNativeSupervisorFallbackOnce = (): void => {
-		registerNativeSupervisorClientOnce();
-		if (nativeSupervisorFallbackRegistered) return;
-		nativeSupervisorFallbackRegistered = true;
 		registerNativeSupervisorClient(pi);
 	};
 	const onRuntimeEvent = pi.on as unknown as (event: string, handler: (event: unknown) => unknown) => void;
@@ -383,7 +375,6 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 		const sessionManager = (ctx as { sessionManager?: Parameters<typeof resolveCurrentSessionId>[0] } | undefined)?.sessionManager;
 		waitState.currentSessionId = sessionManager ? resolveCurrentSessionId(sessionManager) : null;
 		registerNativeSupervisorClientOnce();
-		if (readRequiredChildTools()?.includes("intercom")) registerNativeSupervisorFallbackOnce();
 	});
 	onRuntimeEvent("agent_start", () => {
 		refreshChildToolDiagnostic(pi);
@@ -432,12 +423,6 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 	});
 
 	onRuntimeEvent("before_agent_start", async (event: { systemPrompt: string }) => {
-		registerNativeSupervisorFallbackOnce();
-		const intercomSessionName = process.env[SUBAGENT_INTERCOM_SESSION_NAME_ENV]?.trim();
-		if (intercomSessionName && typeof pi.setSessionName === "function") {
-			pi.setSessionName(intercomSessionName);
-		}
-
 		const inheritProjectContext = readBooleanEnv(SUBAGENT_INHERIT_PROJECT_CONTEXT_ENV);
 		const inheritSkills = readBooleanEnv(SUBAGENT_INHERIT_SKILLS_ENV);
 		const fanoutChild = readBooleanEnv(SUBAGENT_FANOUT_CHILD_ENV);

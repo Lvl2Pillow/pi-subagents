@@ -7,16 +7,14 @@ import {
 	type IntercomEventBus,
 	type NestedRunSummary,
 	type ParallelHandoffReference,
-	type SubagentResultIntercomChild,
 	type SubagentState,
 } from "../../shared/types.ts";
 import {
 	attachNestedChildrenToResultChildren,
-	buildSubagentResultIntercomPayload,
 	compactNestedResultChildren,
-	deliverSubagentResultIntercomEvent,
 	resolveSubagentResultStatus,
-} from "../../intercom/result-intercom.ts";
+	type NormalizedResultChild,
+} from "./result-normalize.ts";
 import { projectNestedRegistryForRoot, sanitizeSummary } from "../shared/nested-events.ts";
 import { resolveWatchPath } from "../../shared/utils.ts";
 import type { CompletionNotifier, CompletionNotification } from "./notify.ts";
@@ -38,8 +36,6 @@ type ResultWatcherDeps = {
 	fs?: ResultWatcherFs;
 	timers?: ResultWatcherTimers;
 	notifier?: Pick<CompletionNotifier, "deliver">;
-	/** External grouped-result transport. Disable when native completion notifications own delivery. */
-	deliverIntercomResults?: boolean;
 };
 
 type ResultFileChild = {
@@ -51,7 +47,6 @@ type ResultFileChild = {
 	stopped?: boolean;
 	sessionFile?: string;
 	artifactPaths?: { outputPath?: string };
-	intercomTarget?: string;
 	children?: unknown;
 };
 
@@ -61,7 +56,6 @@ type ResultFileData = CompletionNotification & {
 	results?: ResultFileChild[];
 	nestedChildren?: unknown;
 	asyncDir?: string;
-	intercomTarget?: string;
 	parallelHandoff?: ParallelHandoffReference;
 };
 
@@ -110,7 +104,6 @@ export function createResultWatcher(
 	const fsApi = deps.fs ?? fs;
 	const timers = deps.timers ?? { setTimeout, clearTimeout, setInterval, clearInterval };
 	const notifier = deps.notifier ?? { deliver: async () => true };
-	const deliverIntercomResults = deps.deliverIntercomResults !== false;
 	const pendingTriggerTurn = new Map<string, boolean>();
 	const processing = new Set<string>();
 	let deliveryActive = true;
@@ -175,7 +168,7 @@ export function createResultWatcher(
 			const resultChildren: ResultFileChild[] = hasResultChildren
 				? data.results!
 				: [{ agent: data.agent ?? undefined, output: data.summary, success: data.success }];
-			const normalizedChildren = attachNestedChildrenToResultChildren(runId, resultChildren.map((result = {}, index): SubagentResultIntercomChild => {
+			const normalizedChildren = attachNestedChildrenToResultChildren(runId, resultChildren.map((result = {}, index): NormalizedResultChild => {
 				const baseOutput = result.output ?? data.summary;
 				const hasRealOutput = typeof baseOutput === "string" && baseOutput.trim().length > 0;
 				const output = hasRealOutput ? baseOutput : "(no output)";
@@ -198,37 +191,15 @@ export function createResultWatcher(
 					index,
 					artifactPath: result.artifactPaths?.outputPath,
 					...(typeof sessionPath === "string" && fsApi.existsSync(sessionPath) ? { sessionPath } : {}),
-					...(result.intercomTarget ? { intercomTarget: result.intercomTarget } : {}),
 					...(childNestedChildren ? { children: childNestedChildren } : {}),
 				};
 			}), nestedChildren);
-
-			const intercomTarget = data.intercomTarget?.trim();
-			let intercomDelivered = false;
-			if (deliverIntercomResults && intercomTarget && triggerTurn) {
-				const mode = data.mode === "single" || data.mode === "parallel" || data.mode === "chain"
-					? data.mode
-					: resultChildren.length > 1 ? "chain" : "single";
-				intercomDelivered = await deliverSubagentResultIntercomEvent(pi.events, buildSubagentResultIntercomPayload({
-					to: intercomTarget,
-					runId,
-					mode,
-					source: "async",
-					children: normalizedChildren,
-					asyncId: data.id,
-					asyncDir: data.asyncDir,
-					...(data.parallelHandoff ? { parallelHandoff: data.parallelHandoff } : {}),
-				}));
-				if (!ownsSession(data.sessionId, epoch)) return;
-				if (!intercomDelivered) console.error(`Subagent async grouped result intercom delivery was not acknowledged for '${resultPath}'.`);
-			}
 
 			const accepted = await notifier.deliver({
 				...data,
 				id: data.id ?? runId,
 				runId,
 				triggerTurn,
-				intercomDelivered,
 				...(nestedChildren?.length ? { nestedChildren } : {}),
 				...(Array.isArray(data.results) ? {
 					results: hasResultChildren ? normalizedChildren.map((child, index) => ({
@@ -254,7 +225,6 @@ export function createResultWatcher(
 					...data,
 					runId,
 					triggerTurn,
-					intercomDelivered,
 					...(nestedChildren?.length ? { nestedChildren } : {}),
 					...(Array.isArray(data.results) ? {
 						results: hasResultChildren ? normalizedChildren.map((child, index) => ({

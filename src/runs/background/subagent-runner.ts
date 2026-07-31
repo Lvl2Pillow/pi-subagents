@@ -43,7 +43,6 @@ import {
 	buildControlEvent,
 	deriveActivityState,
 	claimControlNotification,
-	formatControlIntercomMessage,
 	formatControlNoticeMessage,
 } from "../shared/subagent-control.ts";
 import {
@@ -102,7 +101,6 @@ import {
 import { resolveEffectiveThinking } from "../../shared/model-info.ts";
 import { launchBindingDigest } from "../../shared/launch-contract.ts";
 import { writeInitialProgressFile } from "../../shared/settings.ts";
-import { resolveSubagentIntercomTarget } from "../../intercom/intercom-bridge.ts";
 import { acceptanceFailureMessage, aggregateAcceptanceReport, buildSkippedAcceptanceLedger, evaluateAcceptance, formatAcceptancePrompt, resolveEffectiveAcceptance, stripAcceptanceReport } from "../shared/acceptance.ts";
 import { attachContractProjections, isAgentContractV1 } from "../shared/agent-contract.ts";
 import { waitForImportedAsyncRoot } from "./chain-root-attachment.ts";
@@ -145,8 +143,6 @@ interface SubagentRunConfig {
 	worktreeSetupHookTimeoutMs?: number;
 	worktreeBaseDir?: string;
 	controlConfig?: ResolvedControlConfig;
-	controlIntercomTarget?: string;
-	childIntercomTargets?: Array<string | undefined>;
 	resultMode?: SubagentRunMode;
 	dynamicFanoutMaxItems?: number;
 	workflowGraph?: WorkflowGraphSnapshot;
@@ -185,7 +181,6 @@ interface StepResult {
 	toolBudget?: ToolBudgetState;
 	toolBudgetBlocked?: boolean;
 	sessionFile?: string;
-	intercomTarget?: string;
 	model?: string;
 	attemptedModels?: string[];
 	modelAttempts?: ModelAttempt[];
@@ -289,7 +284,7 @@ function isBlockingSupervisorTool(toolName: string | undefined, args: unknown): 
 		const reason = (args as Record<string, unknown>).reason;
 		return reason === "need_decision" || reason === "interview_request";
 	}
-	return toolName === "intercom" && (args as Record<string, unknown>).action === "ask";
+	return false;
 }
 
 function findLatestSessionFile(sessionDir: string): string | null {
@@ -987,8 +982,6 @@ interface SingleStepContext {
 	timeoutMessage?: string;
 	stopMessage?: string;
 	turnBudget?: ResolvedTurnBudget;
-	childIntercomTarget?: string;
-	orchestratorIntercomTarget?: string;
 	nestedRoute?: NestedRouteInfo;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
 	onAttemptStart?: (attempt: { model?: string; thinking?: string }) => void;
@@ -1024,7 +1017,6 @@ async function runSingleStep(
 	toolBudget?: ToolBudgetState;
 	toolBudgetBlocked?: boolean;
 	sessionFile?: string;
-	intercomTarget?: string;
 	completionGuardTriggered?: boolean;
 	effects?: import("../../shared/types.ts").EffectsProjection;
 	execution?: import("../../shared/types.ts").ExecutionProjection;
@@ -1087,7 +1079,6 @@ async function runSingleStep(
 				timedOut: timedOut ? true : undefined,
 				stopped: stopped ? true : undefined,
 				sessionFile: imported.sessionFile,
-				intercomTarget: imported.intercomTarget,
 				model: imported.model,
 				attemptedModels: imported.attemptedModels,
 				modelAttempts: imported.modelAttempts,
@@ -1202,8 +1193,6 @@ async function runSingleStep(
 			capabilityCeiling: step.capabilityCeiling ?? ctx.capabilityCeiling,
 			cwd: step.cwd ?? ctx.cwd,
 			promptFileStem: step.agent,
-			intercomSessionName: ctx.childIntercomTarget,
-			orchestratorIntercomTarget: ctx.orchestratorIntercomTarget,
 			runId: ctx.id,
 			childAgentName: step.agent,
 			childIndex: ctx.flatIndex,
@@ -1553,7 +1542,6 @@ async function runSingleStep(
 		error: effectiveFinalError,
 		protocolError: finalResult?.protocolError,
 		sessionFile: step.sessionFile,
-		intercomTarget: ctx.childIntercomTarget,
 		model: finalResult?.model,
 		attemptedModels: attemptedModels.length > 0 ? attemptedModels : undefined,
 		modelAttempts,
@@ -2153,9 +2141,6 @@ async function runSubagent(
 		});
 		mutatingFailureStates.push(...Array.from({ length: added.addedFlatSteps }, () => createMutatingFailureState()));
 		pendingToolResults.push(...Array.from({ length: added.addedFlatSteps }, () => undefined));
-		if (config.childIntercomTargets) {
-			config.childIntercomTargets = statusPayload.steps.map((statusStep, index) => resolveSubagentIntercomTarget(id, statusStep.agent, index));
-		}
 		writeStatusPayload();
 		for (const request of requests) {
 			appendJsonl(eventsPath, JSON.stringify({
@@ -2197,23 +2182,13 @@ async function runSubagent(
 	const mutatingFailureWindowMs = 5 * 60_000;
 	const appendControlEvent = (event: ReturnType<typeof buildControlEvent>) => {
 		if (!controlConfig.enabled) return;
-		const childIntercomTarget = config.childIntercomTargets?.[event.index ?? statusPayload.currentStep];
-		const channels = event.type === "active_long_running"
-			? controlConfig.notifyChannels.filter((channel) => channel !== "intercom")
-			: controlConfig.notifyChannels;
-		if (channels.length === 0 || !claimControlNotification(controlConfig, event, emittedControlEventKeys, childIntercomTarget)) return;
+		const channels = controlConfig.notifyChannels;
+		if (channels.length === 0 || !claimControlNotification(controlConfig, event, emittedControlEventKeys)) return;
 		appendJsonl(eventsPath, JSON.stringify({
 			type: "subagent.control",
 			event,
 			channels,
-			childIntercomTarget,
-			noticeText: formatControlNoticeMessage(event, childIntercomTarget),
-			...(config.controlIntercomTarget && channels.includes("intercom") ? {
-				intercom: {
-					to: config.controlIntercomTarget,
-					message: formatControlIntercomMessage(event, childIntercomTarget),
-				},
-			} : {}),
+			noticeText: formatControlNoticeMessage(event),
 		}));
 	};
 	const syncTopLevelCurrentTool = (): void => {
@@ -3010,9 +2985,6 @@ async function runSubagent(
 				};
 			});
 			statusPayload.steps.splice(groupStartFlatIndex, 1, ...dynamicStatusSteps);
-			if (config.childIntercomTargets) {
-				config.childIntercomTargets = statusPayload.steps.map((statusStep, index) => resolveSubagentIntercomTarget(id, statusStep.agent, index));
-			}
 			mutatingFailureStates.splice(groupStartFlatIndex, 1, ...dynamicStatusSteps.map(() => createMutatingFailureState()));
 			pendingToolResults.splice(groupStartFlatIndex, 1, ...dynamicStatusSteps.map(() => undefined));
 			const materializedDelta = dynamicStatusSteps.length - 1;
@@ -3098,8 +3070,6 @@ async function runSubagent(
 					steerAckDir: steerAcksDir(asyncDir, fi),
 					piPackageRoot: config.piPackageRoot,
 					piArgv1: config.piArgv1,
-					childIntercomTarget: config.childIntercomTargets?.[fi],
-					orchestratorIntercomTarget: config.controlIntercomTarget,
 					nestedRoute: config.nestedRoute,
 					capabilityCeiling: config.capabilityCeiling,
 					registerInterrupt: (interrupt) => registerStepInterrupt(fi, interrupt),
@@ -3191,7 +3161,6 @@ async function runSubagent(
 					toolBudget: pr.toolBudget,
 					toolBudgetBlocked: pr.toolBudgetBlocked,
 					sessionFile: pr.sessionFile,
-					intercomTarget: pr.intercomTarget,
 					model: pr.model,
 					attemptedModels: pr.attemptedModels,
 					modelAttempts: pr.modelAttempts,
@@ -3433,8 +3402,6 @@ async function runSubagent(
 							steerAckDir: steerAcksDir(asyncDir, fi),
 							piPackageRoot: config.piPackageRoot,
 							piArgv1: config.piArgv1,
-							childIntercomTarget: config.childIntercomTargets?.[fi],
-							orchestratorIntercomTarget: config.controlIntercomTarget,
 							nestedRoute: config.nestedRoute,
 							capabilityCeiling: config.capabilityCeiling,
 							registerInterrupt: (interrupt) => registerStepInterrupt(fi, interrupt),
@@ -3567,7 +3534,6 @@ async function runSubagent(
 						toolBudget: pr.toolBudget,
 						toolBudgetBlocked: pr.toolBudgetBlocked,
 						sessionFile: pr.sessionFile,
-						intercomTarget: pr.intercomTarget,
 						model: pr.model,
 						attemptedModels: pr.attemptedModels,
 						modelAttempts: pr.modelAttempts,
@@ -3699,8 +3665,6 @@ async function runSubagent(
 				steerAckDir: steerAcksDir(asyncDir, flatIndex),
 				piPackageRoot: config.piPackageRoot,
 				piArgv1: config.piArgv1,
-				childIntercomTarget: config.childIntercomTargets?.[flatIndex],
-				orchestratorIntercomTarget: config.controlIntercomTarget,
 				nestedRoute: config.nestedRoute,
 				capabilityCeiling: config.capabilityCeiling,
 				registerInterrupt: (interrupt) => registerStepInterrupt(flatIndex, interrupt),
@@ -3734,7 +3698,6 @@ async function runSubagent(
 				success: !stopped && !childStopped && !timedOut && singleResult.interrupted !== true && singleResult.exitCode === 0,
 				exitCode: stopped || childStopped ? 1 : timedOut ? 1 : singleResult.interrupted === true ? 0 : singleResult.exitCode,
 				sessionFile: singleResult.sessionFile,
-				intercomTarget: singleResult.intercomTarget,
 				model: singleResult.model,
 				attemptedModels: singleResult.attemptedModels,
 				modelAttempts: singleResult.modelAttempts,
@@ -4049,7 +4012,6 @@ async function runSubagent(
 				toolBudget: r.toolBudget,
 				toolBudgetBlocked: r.toolBudgetBlocked || undefined,
 				sessionFile: r.sessionFile,
-				intercomTarget: r.intercomTarget,
 				model: r.model,
 				attemptedModels: r.attemptedModels,
 				modelAttempts: r.modelAttempts,
@@ -4088,7 +4050,6 @@ async function runSubagent(
 			launchContractDigest: config.launchContractDigest,
 			sessionId: config.sessionId,
 			sessionFile: effectiveSessionFile,
-			intercomTarget: config.controlIntercomTarget,
 			shareUrl,
 			gistUrl,
 			shareError,

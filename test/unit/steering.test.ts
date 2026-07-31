@@ -133,7 +133,6 @@ describe("steering lifecycle ledger", () => {
 			skillPath: ["current-skill-path"],
 			filePath: "/current/agent.md",
 			completionGuard: true,
-			memory: { scope: "user", path: "/current/memory.md" },
 			output: "/current/output.md",
 			toolBudget: { hard: 99, block: "*" },
 			maxSubagentDepth: 9,
@@ -160,7 +159,7 @@ describe("steering lifecycle ledger", () => {
 		assert.equal(recovered.inheritProjectContext, false);
 		assert.deepEqual(recovered.toolBudget, { hard: 7, block: ["read"] });
 		assert.equal(recovered.maxSubagentDepth, 2);
-		for (const field of ["fallbackModels", "extensions", "subagentOnlyExtensions", "mcpDirectTools", "skills", "skillPath", "filePath", "completionGuard", "memory", "output"] as const) {
+		for (const field of ["fallbackModels", "extensions", "subagentOnlyExtensions", "mcpDirectTools", "skills", "skillPath", "filePath", "completionGuard", "output"] as const) {
 			assert.equal(recovered[field], undefined, `${field} leaked from current config`);
 		}
 	});

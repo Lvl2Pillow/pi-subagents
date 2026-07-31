@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Creates implementation plans from context and requirements
-tools: read, grep, find, ls, intercom
+tools: read, grep, find, ls, contact_supervisor
 thinking: high
 acceptanceRole: read-only
 systemPromptMode: replace

@@ -24,8 +24,8 @@ import {
 	type SingleResult,
 	type Usage,
 	DEFAULT_MAX_OUTPUT,
-	INTERCOM_DETACH_REQUEST_EVENT,
-	INTERCOM_DETACH_RESPONSE_EVENT,
+	SUBAGENT_DETACH_REQUEST_EVENT,
+	SUBAGENT_DETACH_RESPONSE_EVENT,
 	type AcceptanceLedger,
 	type ResolvedAcceptanceConfig,
 	truncateOutput,
@@ -50,7 +50,6 @@ import {
 	boundStreamedToolCalls,
 } from "../../shared/utils.ts";
 import { buildSkillInjection, resolveSkillsWithFallback } from "../../agents/skills.ts";
-import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
@@ -263,8 +262,6 @@ async function runSingleAttempt(
 		mcpDirectTools: agent.mcpDirectTools,
 		cwd: options.cwd ?? runtimeCwd,
 		promptFileStem: agent.name,
-		intercomSessionName: options.intercomSessionName,
-		orchestratorIntercomTarget: options.orchestratorIntercomTarget,
 		runId: options.runId,
 		childAgentName: agent.name,
 		childIndex: options.index ?? 0,
@@ -534,7 +531,7 @@ async function runSingleAttempt(
 			if (action === "start-drain") startFinalDrain();
 		};
 
-		const unsubscribeIntercomDetach = options.intercomEvents?.on?.(INTERCOM_DETACH_REQUEST_EVENT, (payload) => {
+		const unsubscribeIntercomDetach = options.intercomEvents?.on?.(SUBAGENT_DETACH_REQUEST_EVENT, (payload) => {
 			if (!options.allowIntercomDetach || detached || processClosed) return;
 			if (!payload || typeof payload !== "object") return;
 			const event = payload as { requestId?: unknown; runId?: unknown; agent?: unknown; childIndex?: unknown };
@@ -546,7 +543,7 @@ async function runSingleAttempt(
 				if (typeof event.agent === "string" && event.agent !== agent.name) return;
 				if (typeof event.childIndex === "number" && event.childIndex !== (options.index ?? 0)) return;
 			} else if (!intercomStarted) return;
-			options.intercomEvents?.emit(INTERCOM_DETACH_RESPONSE_EVENT, { requestId, accepted: true, runId: options.runId, agent: agent.name, childIndex: options.index ?? 0 });
+			options.intercomEvents?.emit(SUBAGENT_DETACH_RESPONSE_EVENT, { requestId, accepted: true, runId: options.runId, agent: agent.name, childIndex: options.index ?? 0 });
 			detachForIntercom();
 		});
 
@@ -780,7 +777,7 @@ async function runSingleAttempt(
 					? evt.args as Record<string, unknown>
 					: {};
 				if (options.structuredOutput && evt.toolName === "structured_output") structuredOutputToolInvoked = true;
-				if (options.allowIntercomDetach && (evt.toolName === "intercom" || evt.toolName === "contact_supervisor")) {
+				if (options.allowIntercomDetach && evt.toolName === "contact_supervisor") {
 					intercomStarted = true;
 				}
 				progress.toolCount++;
@@ -1338,10 +1335,6 @@ export async function runSync(
 	if (resolvedSkills.length > 0) {
 		const skillInjection = buildSkillInjection(resolvedSkills);
 		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${skillInjection}` : skillInjection;
-	}
-	const memoryInjection = buildAgentMemoryInjection(agent, skillCwd);
-	if (memoryInjection) {
-		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memoryInjection}` : memoryInjection;
 	}
 	systemPrompt = injectOutputPathSystemPrompt(systemPrompt, options.outputPath, agent);
 
