@@ -151,7 +151,7 @@ const run = subagent({
 
 Inspect async runs with `subagent({ action: "status", id: "..." })` or `subagent({ action: "status" })` for active runs. Use `subagent({ action: "status", view: "fleet" })` when supervising several active foreground/background runs and `subagent({ action: "status", id: "...", view: "transcript", index: 0 })` when you need the latest child output without digging through artifacts. If a delegated fanout child launches nested runs, the parent status view shows them as a tree and you can target a nested run directly with its nested id.
 
-Stop a current-session top-level async run with `stop` (or `/subagents-stop`). Stopped runs finish as `stopped`/cancelled and are not resumable. Append one more step to the tail of a still-running async chain with `append-step` (`chain` must contain exactly one step). Use checkpoint steps for planned human gates; they pause without launching a child and are approved or rejected through current-session control actions:
+Stop a current-session top-level async run with `stop` (or `/subagents-stop`). Stopped runs finish as `stopped`/cancelled and are not resumable. For an active foreground single-subagent run, `/subagents-detach [run-id]` leaves the child running without terminating it and returns the eventual result through status/wait. Append one more step to the tail of a still-running async chain with `append-step` (`chain` must contain exactly one step). Use checkpoint steps for planned human gates; they pause without launching a child and are approved or rejected through current-session control actions:
 
 ```typescript
 subagent({ action: "stop", id: "run-id" })

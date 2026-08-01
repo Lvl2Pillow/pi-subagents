@@ -3263,6 +3263,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 		effectiveSkills = skillOverride;
 	}
 	const interruptController = new AbortController();
+	let detachForeground: ((reason?: string) => boolean) | undefined;
 	const foregroundControl = deps.state.foregroundControls.get(runId);
 	if (foregroundControl) {
 		const thinking = resolveEffectiveThinking(modelOverride, thinkingOverrideForTask(params.agent!, 0, modelOverride));
@@ -3277,6 +3278,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 				interruptController.abort();
 				return true;
 			},
+			detach: () => detachForeground?.("user request") === true,
 		});
 	}
 
@@ -3324,6 +3326,9 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			agentContract: params.agentContract,
 			acceptance: params.acceptance,
 			acceptanceContext: { mode: "single" },
+			onDetachReady: (detach) => {
+				detachForeground = detach;
+			},
 			onDetachedExit: (result) => {
 				try {
 					try {

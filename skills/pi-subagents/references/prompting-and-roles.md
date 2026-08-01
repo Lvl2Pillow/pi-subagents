@@ -29,6 +29,7 @@ Humans often use the slash-command layer instead:
 - `/run-chain` — launch a saved `.chain.md` or `.chain.json` workflow
 - `/subagents` — interactive admin for inspecting agents and editing model, thinking, or system prompt
 - `/subagents-stop [run-id]` — stop a current-session top-level async run; opens a selector when no id is given
+- `/subagents-detach [run-id]` — detach an active foreground single-subagent run without terminating its child
 - `/subagent-cost` — show parent plus child token usage and cost for the session
 - `/subagents-fleet` — open the live, inspection-only foreground/async fleet; `Ctrl+Alt+F` opens it during an active foreground turn, `↑↓`/`jk` selects children, and `PgUp`/`PgDn` scrolls transcript detail
 - `/subagents-watchdog` — inspect or configure the opt-in adversarial change watchdog (model, on/off, recommend-model, check)
