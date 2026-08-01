@@ -17,6 +17,7 @@ interface AsyncRunStepSummary {
 	agent: string;
 	context?: ContextMode;
 	label?: string;
+	description?: string;
 	phase?: string;
 	outputName?: string;
 	structured?: boolean;
@@ -230,6 +231,7 @@ function statusToSummary(asyncDir: string, status: AsyncStatus & { cwd?: string 
 			agent: step.agent,
 			...(step.context ? { context: step.context } : {}),
 			...(step.label ? { label: step.label } : {}),
+			...(step.description ? { description: step.description } : {}),
 			...(step.phase ? { phase: step.phase } : {}),
 			...(step.outputName ? { outputName: step.outputName } : {}),
 			...(step.structured ? { structured: step.structured } : {}),

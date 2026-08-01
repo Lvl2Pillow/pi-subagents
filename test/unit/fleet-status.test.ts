@@ -415,8 +415,8 @@ describe("below-editor subagent FleetView", () => {
 			startedAt: 100,
 			updatedAt: 200,
 			steps: [
-				{ agent: "reviewer", index: 0, status: "running", startedAt: 120, model: "openai/gpt-5", thinking: "medium", tokens: { input: 4_000, output: 200, total: 4_200 } },
-				{ agent: "worker", index: 1, status: "complete", tokens: { input: 100, output: 20, total: 120 } },
+				{ agent: "reviewer", index: 0, status: "running", description: "Review only authentication", startedAt: 120, model: "openai/gpt-5", thinking: "medium", tokens: { input: 4_000, output: 200, total: 4_200 } },
+				{ agent: "worker", index: 1, status: "running", description: "Implement only billing", startedAt: 121, tokens: { input: 100, output: 20, total: 120 } },
 			],
 		});
 		const fleet = new SubagentFleetStatus(state, () => {}, { refreshMs: 60_000 });
@@ -435,9 +435,10 @@ describe("below-editor subagent FleetView", () => {
 		try {
 			fleet.setContext(ctx);
 			const lines = widgetFactory!({ requestRender() {} }, theme).render(100);
-			assert.ok(lines.some((line) => line.includes("reviewer (gpt-5 · thinking medium)") && line.includes("Review the authentication")));
+			assert.ok(lines.some((line) => line.includes("reviewer (gpt-5 · thinking medium)") && line.includes("Review only authentication")));
+			assert.ok(lines.some((line) => line.includes("worker") && line.includes("Implement only billing")));
+			assert.ok(lines.every((line) => !line.includes("Review the authentication changes")), "per-child descriptions should replace the run-level fallback when present");
 			assert.ok(lines.some((line) => line.includes("↓ 4.2k tokens")));
-			assert.ok(!lines.some((line) => line.includes("worker")), "completed async children should leave the status fleet");
 		} finally {
 			fleet.dispose();
 		}

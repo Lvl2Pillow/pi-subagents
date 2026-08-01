@@ -17,6 +17,7 @@
 - Reduced repeated runtime filesystem work by caching stable Pi config-directory resolution, incrementally sanitizing run history, and limiting nested control-result polling to files created for the active request.
 
 ### Fixed
+- Show per-child async task descriptions in the persistent running-subagents status widget instead of repeating the run-level description for every parallel child.
 - Restored model and thinking-effort badges in the persistent running-subagents status widget.
 - Retained foreground controls until scheduling owners and active children settle, keeping queued foreground work steerable after early result handling. Thanks to @magoz for #708/#709/#710.
 - Render resolved model and thinking effort for active and recent foreground children in Fleet inspector summaries and details. Thanks to @saleemlala for #706.

@@ -119,7 +119,7 @@ export function collectFleetStatusEntries(state: SubagentState): FleetStatusEntr
 				key: `async:${job.asyncId}:${index}`,
 				agent: step.label ? `${step.label} (${step.agent})` : step.agent,
 				...(modelThinking ? { modelThinking } : {}),
-				description: job.description,
+				description: step.description ?? job.description,
 				startedAt: step.startedAt ?? startedAt,
 				tokens: step.tokens?.total ?? (steps.length === 1 ? job.totalTokens?.total ?? 0 : 0),
 			});

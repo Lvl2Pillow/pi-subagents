@@ -130,9 +130,22 @@ export function consumeChainAppendRequests(asyncDir: string): ChainAppendRequest
 	return requests.sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
 }
 
+const MAX_STATUS_STEP_DESCRIPTION_CHARS = 160;
+
+/** Bounded one-line per-step task description persisted into status.json for fleet display. */
+export function statusStepDescription(task: string | undefined): string | undefined {
+	const description = task?.replace(/\s+/g, " ").trim();
+	if (!description) return undefined;
+	return description.length > MAX_STATUS_STEP_DESCRIPTION_CHARS
+		? `${description.slice(0, MAX_STATUS_STEP_DESCRIPTION_CHARS - 1)}…`
+		: description;
+}
+
 function statusStepForTask(task: RunnerSubagentStep): StatusStep {
+	const description = statusStepDescription(task.task);
 	return {
 		agent: task.agent,
+		...(description ? { description } : {}),
 		...(task.context ? { context: task.context } : {}),
 		phase: task.phase,
 		label: task.label,
