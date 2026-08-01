@@ -28,11 +28,11 @@ function parentToolEnv(agentDir?: string): NodeJS.ProcessEnv {
 }
 
 describe("registered subagent tool description", () => {
-	it("keeps full mode safe and free of hardcoded builtin agent names", () => {
+	it("keeps full mode safe and free of hardcoded agent names", () => {
 		const description = buildSubagentToolDescription();
 
-		for (const builtinName of ["scout", "worker", "planner"]) {
-			assert.doesNotMatch(description, new RegExp(`\\b${builtinName}\\b`));
+		for (const agentName of ["scout", "worker", "planner"]) {
+			assert.doesNotMatch(description, new RegExp(`\\b${agentName}\\b`));
 		}
 		assert.match(description, /^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i);
 		assert.match(description, /Use action only for management\/control actions listed below/i);

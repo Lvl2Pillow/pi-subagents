@@ -16,7 +16,6 @@ export type SkillSource =
 	| "project-settings"
 	| "user-settings"
 	| "extension"
-	| "builtin"
 	| "unknown";
 
 interface ResolvedSkill {
@@ -61,7 +60,6 @@ const SOURCE_PRIORITY: Record<SkillSource, number> = {
 	"user-settings": 250,
 	"user-package": 200,
 	extension: 150,
-	builtin: 100,
 	unknown: 0,
 };
 

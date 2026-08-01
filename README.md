@@ -20,24 +20,24 @@ That is the only required step. You can add optional pieces later.
 
 You do not need to create agents, write config, or learn slash commands. After installing, ask Pi for delegation in plain language:
 
-| Want | Ask naturally |
-|------|---------------|
-| Get a second opinion | “Ask oracle for a second opinion on my current plan.” |
-| Solve a hard problem | “Use oracle to investigate this bug before we edit.” |
-| Review a diff | “Use reviewer to review this diff.” |
-| Understand code first | “Use scout to understand this code based on our discussion then ask me clarification questions.” |
-| Run parallel reviewers | “Run parallel reviewers: one for correctness, one for tests, and one for unnecessary complexity.” |
-| Implement then review | “Implement this, then review it.” |
-| Review until clean | “Run a review loop on this change until reviewers stop finding fixes worth doing, with a max of 3 rounds.” |
+| Want                     | Ask naturally                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Get a second opinion     | “Ask oracle for a second opinion on my current plan.”                                                                                         |
+| Solve a hard problem     | “Use oracle to investigate this bug before we edit.”                                                                                          |
+| Review a diff            | “Use reviewer to review this diff.”                                                                                                           |
+| Understand code first    | “Use scout to understand this code based on our discussion then ask me clarification questions.”                                              |
+| Run parallel reviewers   | “Run parallel reviewers: one for correctness, one for tests, and one for unnecessary complexity.”                                             |
+| Implement then review    | “Implement this, then review it.”                                                                                                             |
+| Review until clean       | “Run a review loop on this change until reviewers stop finding fixes worth doing, with a max of 3 rounds.”                                    |
 | Execute a plan carefully | “Have worker implement this approved plan. Afterward, run parallel reviewers, summarize their feedback, and apply the fixes that make sense.” |
-| Scout before planning | “Use scout to understand the auth flow, then have planner turn that into an implementation plan.” |
-| Run in the background | “Run this in the background.” |
-| Browse agents | “Show me the available subagents.” |
-| Use a saved workflow | “Run the review chain on this branch.” |
-| See running work | “Show active async runs.” or “Show the subagent fleet.” |
-| Check setup | “Check whether subagents are configured correctly.” |
+| Scout before planning    | “Use scout to understand the auth flow, then have planner turn that into an implementation plan.”                                             |
+| Run in the background    | “Run this in the background.”                                                                                                                 |
+| Browse agents            | “Show me the available subagents.”                                                                                                            |
+| Use a saved workflow     | “Run the review chain on this branch.”                                                                                                        |
+| See running work         | “Show active async runs.” or “Show the subagent fleet.”                                                                                       |
+| Check setup              | “Check whether subagents are configured correctly.”                                                                                           |
 
-Pi decides whether to call `subagent`, which agent to use, and whether a chain or parallel run makes sense. The extension ships with builtin agents you can use immediately.
+Pi decides whether to call `subagent`, which agent to use, and whether a chain or parallel run makes sense. Agents are defined as markdown files in your user, project, or package agent directories, so you can use them immediately or write your own.
 
 ## What happens
 
@@ -51,36 +51,36 @@ Installing the extension does not start an automatic reviewer in the background.
 When you finish implementing, run a reviewer subagent before summarizing.
 ```
 
-## Builtin agents in plain English
+## Common agent roles in plain English
 
-| Agent | Use it when you want... |
-|-------|--------------------------|
-| `scout` | Fast local codebase recon: relevant files, entry points, data flow, risks, and where another agent should start. |
-| `researcher` | Web/docs research with sources: official docs, specs, benchmarks, recent changes, and a concise research brief. |
-| `planner` | A concrete implementation plan from existing context. It should read and plan, not edit code. |
-| `worker` | Implementation work, including approved oracle handoffs. It edits files, validates, and escalates unapproved decisions instead of guessing. |
-| `reviewer` | Code review and small fixes. It checks the implementation against the task/plan, tests, edge cases, and simplicity. |
-| `context-builder` | A stronger setup pass before planning: gathers code context and writes handoff material such as `context.md` and `meta-prompt.md`. |
-| `oracle` | A second opinion before acting. It challenges assumptions, catches drift, and recommends the safest next move without editing. |
-| `delegate` | A lightweight general delegate when you want a child agent that behaves close to the parent session. |
+| Agent             | Use it when you want...                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scout`           | Fast local codebase recon: relevant files, entry points, data flow, risks, and where another agent should start.                            |
+| `researcher`      | Web/docs research with sources: official docs, specs, benchmarks, recent changes, and a concise research brief.                             |
+| `planner`         | A concrete implementation plan from existing context. It should read and plan, not edit code.                                               |
+| `worker`          | Implementation work, including approved oracle handoffs. It edits files, validates, and escalates unapproved decisions instead of guessing. |
+| `reviewer`        | Code review and small fixes. It checks the implementation against the task/plan, tests, edge cases, and simplicity.                         |
+| `context-builder` | A stronger setup pass before planning: gathers code context and writes handoff material such as `context.md` and `meta-prompt.md`.          |
+| `oracle`          | A second opinion before acting. It challenges assumptions, catches drift, and recommends the safest next move without editing.              |
+| `delegate`        | A lightweight general delegate when you want a child agent that behaves close to the parent session.                                        |
 
 A simple rule of thumb: use `scout` before you understand the code, `researcher` before you trust external facts, `planner` before a bigger change, `worker` to implement, `reviewer` to check, and `oracle` when the decision itself feels risky.
 
 ## Changing an agent's model
 
-Builtin agents inherit your current Pi default model by default. This keeps new installs from depending on a provider you may not have configured. If you want every subagent without its own model to use a different default, set `subagents.defaultModel`. If you want a role to use a specific model, set an override instead of copying the bundled agent file.
+Agents inherit your current Pi default model by default. This keeps new installs from depending on a provider you may not have configured. If you want every subagent without its own model to use a different default, set `subagents.defaultModel`. If you want a role to use a specific model, set an override instead of copying the agent file.
 
 ```json
 {
-  "defaultModel": "deepseek-v4-pro",
-  "subagents": {
-    "defaultModel": "deepseek-v4-flash",
-    "agentOverrides": {
-      "oracle": {
-        "model": "deepseek-v4-pro"
-      }
-    }
-  }
+	"defaultModel": "deepseek-v4-pro",
+	"subagents": {
+		"defaultModel": "deepseek-v4-flash",
+		"agentOverrides": {
+			"oracle": {
+				"model": "deepseek-v4-pro"
+			}
+		}
+	}
 }
 ```
 
@@ -90,63 +90,61 @@ For one run, put the override in the command:
 /run reviewer[model=anthropic/claude-sonnet-4:high] "Review this diff"
 ```
 
-For a persistent override, edit settings. This example pins the reviewer everywhere, adds a backup model for provider failures, and keeps the other builtins on your normal default model:
+For a persistent override, edit settings. This example pins the reviewer everywhere and adds a backup model for provider failures, while the other agents stay on your normal default model:
 
 ```json
 {
-  "subagents": {
-    "agentOverrides": {
-      "reviewer": {
-        "model": "anthropic/claude-sonnet-4",
-        "thinking": "high",
-        "fallbackModels": ["openai/gpt-5-mini"]
-      }
-    }
-  }
+	"subagents": {
+		"agentOverrides": {
+			"reviewer": {
+				"model": "anthropic/claude-sonnet-4",
+				"thinking": "high",
+				"fallbackModels": ["openai/gpt-5-mini"]
+			}
+		}
+	}
 }
 ```
 
-Use `~/.pi/agent/settings.json` for a user override or the project config settings file (`.pi/settings.json` in standard Pi) for a project override. `subagents.defaultModel` applies to builtin, package, user, and project agents that do not set `model` in frontmatter. Per-run model overrides and `agentOverrides.<name>.model` still win, and explicit agent frontmatter still wins over the global default. The same `agentOverrides` block can change `tools`, `skills`, inherited context, prompt text, or disable a builtin. Matching user and project agents also receive override fields that their frontmatter leaves unset, so a shared project config agent can keep the persona while local settings choose the model.
+Use `~/.pi/agent/settings.json` for a user override or the project config settings file (`.pi/settings.json` in standard Pi) for a project override. `subagents.defaultModel` applies to package, user, and project agents that do not set `model` in frontmatter. Per-run model overrides and `agentOverrides.<name>.model` still win, and explicit agent frontmatter still wins over the global default. The same `agentOverrides` block can change `tools`, `skills`, inherited context, prompt text, or disable an agent. Matching user and project agents also receive override fields that their frontmatter leaves unset, so a shared project config agent can keep the persona while local settings choose the model.
 
 By default, project settings resolve from the nearest parent directory that contains `.pi` or `.agents`, preserving existing nested-project behavior. In monorepos or git worktrees where an incidental nested `.pi` directory should not shadow the repository-level config, set this in the repository root `.pi/settings.json`:
 
 ```json
 {
-  "subagents": {
-    "projectRootResolution": "git-root"
-  }
+	"subagents": {
+		"projectRootResolution": "git-root"
+	}
 }
 ```
 
 `"git-root"` keeps package discovery, project agents, chains, and `agentOverrides` anchored to the git worktree root when that root also has Pi project config. A nested project can still opt back into nearest-root behavior by setting `"projectRootResolution": "nearest"` in its own `.pi/settings.json`.
 
-Set `subagents.defaultThinking` to give builtin, package, user, and project agents without a `thinking` value a shared thinking level, independent of the parent session's default. Project settings win over user settings. Explicit frontmatter, `agentOverrides.<name>.thinking`, and per-run thinking overrides still win; `thinking: false` remains an explicit opt-out:
+Set `subagents.defaultThinking` to give package, user, and project agents without a `thinking` value a shared thinking level, independent of the parent session's default. Project settings win over user settings. Explicit frontmatter, `agentOverrides.<name>.thinking`, and per-run thinking overrides still win; `thinking: false` remains an explicit opt-out:
 
 ```json
 {
-  "subagents": {
-    "defaultThinking": "medium",
-    "agentOverrides": {
-      "reviewer": { "thinking": "high" }
-    }
-  }
+	"subagents": {
+		"defaultThinking": "medium",
+		"agentOverrides": {
+			"reviewer": { "thinking": "high" }
+		}
+	}
 }
 ```
 
-If your provider rejects model IDs with thinking suffixes, set `subagents.disableThinking: true` in user or project settings. That clears bundled builtin thinking defaults in one place; an explicit higher-precedence `agentOverrides.<name>.thinking` value can opt a role back in. Existing custom-agent frontmatter remains authoritative.
-
-Set `subagents.defaultExtensions` to give builtin, package, user, and project agents without an `extensions` field a shared extension allowlist. Absent preserves Pi's normal ambient extension discovery. Present as an empty array, the default sets `extensions: []` for agents that do not explicitly define it, disabling ambient extension loading. Present as a non-empty array, the default supplies that allowlist to agents that do not explicitly define one. Project settings win over user settings. Use `agentOverrides.<name>.extensions` for per-agent settings; explicit custom-agent frontmatter remains authoritative.
+Set `subagents.defaultExtensions` to give package, user, and project agents without an `extensions` field a shared extension allowlist. Absent preserves Pi's normal ambient extension discovery. Present as an empty array, the default sets `extensions: []` for agents that do not explicitly define it, disabling ambient extension loading. Present as a non-empty array, the default supplies that allowlist to agents that do not explicitly define one. Project settings win over user settings. Use `agentOverrides.<name>.extensions` for per-agent settings; explicit custom-agent frontmatter remains authoritative.
 
 ```json
 {
-  "subagents": {
-    "defaultExtensions": [],
-    "agentOverrides": {
-      "researcher": {
-        "extensions": ["./tools/research.ts"]
-      }
-    }
-  }
+	"subagents": {
+		"defaultExtensions": [],
+		"agentOverrides": {
+			"researcher": {
+				"extensions": ["./tools/research.ts"]
+			}
+		}
+	}
 }
 ```
 
@@ -194,15 +192,15 @@ For settings files, use `subagents.watchdog.main.model` and `subagents.watchdog.
 
 ```json
 {
-  "subagents": {
-    "watchdog": {
-      "enabled": true,
-      "main": {
-        "model": "anthropic/claude-opus-4-8",
-        "thinking": "high"
-      }
-    }
-  }
+	"subagents": {
+		"watchdog": {
+			"enabled": true,
+			"main": {
+				"model": "anthropic/claude-opus-4-8",
+				"thinking": "high"
+			}
+		}
+	}
 }
 ```
 
@@ -211,9 +209,17 @@ For child subagent watchdogs, use `subagents.watchdog.children.model` as the def
 Agents can configure the same values through the tool when you ask them to set up the watchdog:
 
 ```ts
-subagent({ action: "watchdog.recommend-model" })
-subagent({ action: "watchdog.configure", model: "recommended", scope: "session" })
-subagent({ action: "watchdog.configure", model: "recommended", scope: "project" })
+subagent({ action: "watchdog.recommend-model" });
+subagent({
+	action: "watchdog.configure",
+	model: "recommended",
+	scope: "session",
+});
+subagent({
+	action: "watchdog.configure",
+	model: "recommended",
+	scope: "project",
+});
 ```
 
 Persistent scopes (`user` or `project`) should only be used when you ask for a lasting default. Otherwise the agent should use `scope: "session"`.
@@ -222,12 +228,12 @@ To keep subagents inside a budget or compliance profile, enforce a model scope. 
 
 ```json
 {
-  "subagents": {
-    "modelScope": {
-      "enforce": true,
-      "allow": ["anthropic/*", "openai/gpt-5-*"]
-    }
-  }
+	"subagents": {
+		"modelScope": {
+			"enforce": true,
+			"allow": ["anthropic/*", "openai/gpt-5-*"]
+		}
+	}
 }
 ```
 
@@ -262,14 +268,18 @@ Other Pi extensions can use the versioned in-process event-bus RPC instead of sc
 ```typescript
 const requestId = crypto.randomUUID();
 pi.events.on(`subagents:rpc:v1:reply:${requestId}`, (reply) => {
-  // { version: 1, requestId, success: true, data } or
-  // { version: 1, requestId, success: false, error: { code, message } }
+	// { version: 1, requestId, success: true, data } or
+	// { version: 1, requestId, success: false, error: { code, message } }
 });
 pi.events.emit("subagents:rpc:v1:request", {
-  version: 1,
-  requestId,
-  method: "spawn",
-  params: { agent: "reviewer", task: "Review the current diff", context: "fresh" }
+	version: 1,
+	requestId,
+	method: "spawn",
+	params: {
+		agent: "reviewer",
+		task: "Review the current diff",
+		context: "fresh",
+	},
 });
 ```
 
@@ -307,15 +317,15 @@ Child-safety boundaries are enforced at runtime. Spawned child sessions do not r
 
 The package includes reusable prompt templates for common workflows. You do not need them, but they are handy when you want the same shape every time:
 
-| Prompt | Use it for |
-|--------|------------|
-| `/parallel-review` | Launch fresh-context reviewers with distinct angles, then synthesize what to fix. |
-| `/review-loop` | Run parent-controlled worker, reviewer, and fix-worker cycles until clean or capped. |
-| `/parallel-research` | Combine `researcher` and `scout` for external evidence, local code context, and practical tradeoffs. |
-| `/parallel-context-build` | Run `context-builder` agents in parallel to produce planning handoff context and meta-prompts. |
-| `/parallel-handoff-plan` | Combine external research and `context-builder` passes into an implementation handoff plan and meta-prompt. |
-| `/gather-context-and-clarify` | Scout/research first, then ask the user the clarification questions that matter. |
-| `/parallel-cleanup` | Run review-only cleanup passes after implementation. |
+| Prompt                        | Use it for                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `/parallel-review`            | Launch fresh-context reviewers with distinct angles, then synthesize what to fix.                           |
+| `/review-loop`                | Run parent-controlled worker, reviewer, and fix-worker cycles until clean or capped.                        |
+| `/parallel-research`          | Combine `researcher` and `scout` for external evidence, local code context, and practical tradeoffs.        |
+| `/parallel-context-build`     | Run `context-builder` agents in parallel to produce planning handoff context and meta-prompts.              |
+| `/parallel-handoff-plan`      | Combine external research and `context-builder` passes into an implementation handoff plan and meta-prompt. |
+| `/gather-context-and-clarify` | Scout/research first, then ask the user the clarification questions that matter.                            |
+| `/parallel-cleanup`           | Run review-only cleanup passes after implementation.                                                        |
 
 Add `autofix` to `/parallel-review` or `/parallel-cleanup` to apply only the synthesized fixes worth doing now after reviewers return.
 
@@ -359,10 +369,10 @@ pi-subagents' visibility-based tool restrictions.
 
 The two compose independently:
 
-| Layer | What it controls | Who provides it |
-|-------|-----------------|-----------------|
-| Visibility | Which tools are registered before the session starts | pi-subagents (`tools:` frontmatter key) |
-| Policy  | Runtime allow/ask/deny decisions on every tool call, bash command, MCP operation | pi-permission-system (`permission:` frontmatter key) |
+| Layer      | What it controls                                                                 | Who provides it                                      |
+| ---------- | -------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Visibility | Which tools are registered before the session starts                             | pi-subagents (`tools:` frontmatter key)              |
+| Policy     | Runtime allow/ask/deny decisions on every tool call, bash command, MCP operation | pi-permission-system (`permission:` frontmatter key) |
 
 ### Installing
 
@@ -380,22 +390,22 @@ subagent processes back to the parent session's UI.
 
 Skip this section until you want exact syntax.
 
-| Command | Description |
-|---------|-------------|
-| `/run <agent> [task]` | Run one agent; omit the task for self-contained agents |
-| `/chain agent1 "task1" -> agent2 "task2"` | Run agents in sequence |
-| `/chain scout "scan" -> (reviewer "A" \| reviewer "B") -> writer "fix"` | Run a chain with a static parallel group inline |
-| `/parallel agent1 "task1" -> agent2 "task2"` | Run agents in parallel |
-| `/run-chain <chainName> -- <task>` | Launch a saved `.chain.md` or `.chain.json` workflow |
-| `/subagent-cost` | Show parent plus child subagent token usage and cost for this session |
-| `/subagents [agent] [model\|thinking\|prompt\|details]` | Interactively inspect or edit an agent's model, thinking level, or system prompt |
-| `/subagents-doctor` | Show read-only setup diagnostics |
-| `/subagents-models [agent]` | Show the runtime-loaded builtin model mapping, optionally filtered to one builtin |
-| `/subagents-watchdog [status|on|off|recommend-model|model ...|session model ...|check]` | Show or configure the opt-in watchdog; use a strong complementary model such as Opus 4.8 high or GPT 5.5 high |
+| Command                                                                 | Description                                                                       |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `/run <agent> [task]`                                                   | Run one agent; omit the task for self-contained agents                            |
+| `/chain agent1 "task1" -> agent2 "task2"`                               | Run agents in sequence                                                            |
+| `/chain scout "scan" -> (reviewer "A" \| reviewer "B") -> writer "fix"` | Run a chain with a static parallel group inline                                   |
+| `/parallel agent1 "task1" -> agent2 "task2"`                            | Run agents in parallel                                                            |
+| `/run-chain <chainName> -- <task>`                                      | Launch a saved `.chain.md` or `.chain.json` workflow                              |
+| `/subagent-cost`                                                        | Show parent plus child subagent token usage and cost for this session             |
+| `/subagents [agent] [model\|thinking\|prompt\|details]`                 | Interactively inspect or edit an agent's model, thinking level, or system prompt  |
+| `/subagents-doctor`                                                     | Show read-only setup diagnostics                                                  |
+| `/subagents-models [agent]`                                             | Show the runtime-loaded model mapping, optionally filtered to one agent            |
+| `/subagents-watchdog [status                                            | on                                                                                | off | recommend-model | model ... | session model ... | check]` | Show or configure the opt-in watchdog; use a strong complementary model such as Opus 4.8 high or GPT 5.5 high |
 
 Commands validate agent names locally, support tab completion, and send results back into the conversation.
 
-`/subagents` opens a compact administration flow for builtin, package, user, and project agents. Model choices refresh Pi's model registry first, thinking choices are filtered to levels declared by the selected model, and prompt editing uses Pi's native multiline editor; press Ctrl+G to open the configured external editor. Full metadata is opt-in through `details`. Edits are persisted to the field-owning layer: explicit custom-agent frontmatter remains in the agent file, while settings-managed fields remain in `settings.subagents.agentOverrides`. Package-owned fields and definitions loaded through `PI_SUBAGENT_EXTRA_AGENT_DIRS` stay read-only; settings can still supply model or thinking fields omitted by a package definition.
+`/subagents` opens a compact administration flow for package, user, and project agents. Model choices refresh Pi's model registry first, thinking choices are filtered to levels declared by the selected model, and prompt editing uses Pi's native multiline editor; press Ctrl+G to open the configured external editor. Full metadata is opt-in through `details`. Edits are persisted to the field-owning layer: explicit custom-agent frontmatter remains in the agent file, while settings-managed fields remain in `settings.subagents.agentOverrides`. Package-owned fields and definitions loaded through `PI_SUBAGENT_EXTRA_AGENT_DIRS` stay read-only; settings can still supply model or thinking fields omitted by a package definition.
 
 ### Per-step tasks
 
@@ -424,9 +434,9 @@ Wrap a group of agents in parentheses and separate them with `|` to fan them out
 
 Notes:
 
-- Groups must contain at least two tasks separated by ` | `, each with its own task.
-- Group syntax is only valid between ` -> ` separators, and the group must appear as a complete step.
-- Only a step that *opens* with `(` is a group. Parentheses inside a shared `--` task (e.g. `/chain scout -- inspect auth (backend)`) stay literal text and keep the legacy single-agent behavior.
+- Groups must contain at least two tasks separated by `|`, each with its own task.
+- Group syntax is only valid between `->` separators, and the group must appear as a complete step.
+- Only a step that _opens_ with `(` is a group. Parentheses inside a shared `--` task (e.g. `/chain scout -- inspect auth (backend)`) stay literal text and keep the legacy single-agent behavior.
 - A group is treated as the prior step’s output for the next sequential step.
 - Tab completion suggests agents inside groups — after `(`, after `|`, and on each new `->` step.
 
@@ -436,11 +446,11 @@ Add a `[...]` suffix right after the closing `)` to set step-level options on th
 /chain scout "scan" -> (reviewer "A" | reviewer "B")[concurrency=2,failFast,worktree] -> writer "fix"
 ```
 
-| Group option | Description |
-|--------------|-------------|
-| `concurrency=N` | Max tasks running at once within the group. |
-| `failFast` | Stop the group as soon as one task fails. |
-| `worktree` | Run each group task in its own git worktree. |
+| Group option    | Description                                  |
+| --------------- | -------------------------------------------- |
+| `concurrency=N` | Max tasks running at once within the group.  |
+| `failFast`      | Stop the group as soon as one task fails.    |
+| `worktree`      | Run each group task in its own git worktree. |
 
 Dynamic fanout (`expand` / `collect`) is intentionally not available inline — use the
 `subagent({ chain: [...] })` tool API or a saved `.chain.json` for data-driven fan-out.
@@ -467,21 +477,21 @@ Append `[key=value,...]` to an agent name to override defaults. `/chain` applies
 /parallel reviewer[skills=code-review+security] "review backend" -> reviewer[model=openai/gpt-5-mini] "review frontend"
 ```
 
-| Key | Example | Description |
-|-----|---------|-------------|
-| `output` | `output=context.md` | Write results to a file. Absolute paths are used as-is. Relative paths in `/run` resolve under `singleRunOutputBaseDir` when configured, otherwise under the run's output artifact directory. Relative paths in `/chain` and `/parallel` live under the chain or parallel run directory. |
-| `outputMode` | `outputMode=file-only` | Return only a concise file reference for saved output instead of the full saved content. Requires `output`; default is `inline`. |
-| `reads` | `reads=a.md+b.md` | Read files before executing. `+` separates multiple paths. |
-| `model` | `model=anthropic/claude-sonnet-4` | Override model for this step. |
-| `skills` | `skills=planning+review` | Override available skills. `+` separates multiple skills. |
-| `progress` | `progress` | Enable progress tracking. |
-| `as` | `as=context` | Name this step’s output so later steps can reference it. |
-| `label` | `label=Recon` | Human-readable label for the step. |
-| `phase` | `phase=analysis` | Group steps into a named phase. |
-| `cwd` | `cwd=packages/api` | Run the step in a subdirectory. |
-| `count` | `count=3` | Fan a group task into N copies (only inside a `( ... )` group). |
-| `outputSchema` | `outputSchema=schema.json` | Validate structured output against a JSON Schema file (path resolved against the session cwd, not an inline step `cwd`). |
-| `acceptance` | `acceptance=checked` | Inline evidence level: `auto`, `attested`, or `checked`. Use the tool API or saved `.chain.json` for object contracts such as `none`, `verified`, or an orthogonal review requirement. `reviewed` is an achieved status, not an input level. |
+| Key            | Example                           | Description                                                                                                                                                                                                                                                                              |
+| -------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `output`       | `output=context.md`               | Write results to a file. Absolute paths are used as-is. Relative paths in `/run` resolve under `singleRunOutputBaseDir` when configured, otherwise under the run's output artifact directory. Relative paths in `/chain` and `/parallel` live under the chain or parallel run directory. |
+| `outputMode`   | `outputMode=file-only`            | Return only a concise file reference for saved output instead of the full saved content. Requires `output`; default is `inline`.                                                                                                                                                         |
+| `reads`        | `reads=a.md+b.md`                 | Read files before executing. `+` separates multiple paths.                                                                                                                                                                                                                               |
+| `model`        | `model=anthropic/claude-sonnet-4` | Override model for this step.                                                                                                                                                                                                                                                            |
+| `skills`       | `skills=planning+review`          | Override available skills. `+` separates multiple skills.                                                                                                                                                                                                                                |
+| `progress`     | `progress`                        | Enable progress tracking.                                                                                                                                                                                                                                                                |
+| `as`           | `as=context`                      | Name this step’s output so later steps can reference it.                                                                                                                                                                                                                                 |
+| `label`        | `label=Recon`                     | Human-readable label for the step.                                                                                                                                                                                                                                                       |
+| `phase`        | `phase=analysis`                  | Group steps into a named phase.                                                                                                                                                                                                                                                          |
+| `cwd`          | `cwd=packages/api`                | Run the step in a subdirectory.                                                                                                                                                                                                                                                          |
+| `count`        | `count=3`                         | Fan a group task into N copies (only inside a `( ... )` group).                                                                                                                                                                                                                          |
+| `outputSchema` | `outputSchema=schema.json`        | Validate structured output against a JSON Schema file (path resolved against the session cwd, not an inline step `cwd`).                                                                                                                                                                 |
+| `acceptance`   | `acceptance=checked`              | Inline evidence level: `auto`, `attested`, or `checked`. Use the tool API or saved `.chain.json` for object contracts such as `none`, `verified`, or an orthogonal review requirement. `reviewed` is an achieved status, not an input level.                                             |
 
 Set `output=false`, `reads=false`, or `skills=false` to disable that behavior explicitly. Do not use `output=false` for file-only returns; use `outputMode=file-only` with an `output` path.
 
@@ -518,7 +528,7 @@ A foreground child can detach while it waits for a supervisor reply. Reply first
 
 Headless sessions also auto-drain current-session subagent and registered provider work at `agent_end`, using one absolute timeout and continuing through attention states. This is a final lifecycle safeguard rather than a replacement for explicit orchestration: `subagent_wait` still lets a model react to each result during the turn. Provider, reconciliation, timeout, and malformed-state failures remain visible errors instead of being treated as successful drains.
 
-The `oracle`/`advisor` and `worker` builtins are designed for an explicit decision loop. A typical pattern is to ask `oracle` or its `advisor` alias for diagnosis and a recommended execution prompt, then only run `worker` after the main agent approves that direction.
+An explicit decision loop pairs an advisory agent with a worker: ask the advisor (for example an `oracle`/`advisor` role) for diagnosis and a recommended execution prompt, then only run the worker after the main agent approves that direction.
 
 ## Clarify and launch UI
 
@@ -537,7 +547,7 @@ Common clarify keys:
 - `w` edits output/write behavior where supported
 - `r` edits reads where supported
 - `p` toggles progress tracking where supported
-Picker screens use `↑↓`, `Enter`, `Esc`, and type-to-filter. The full-screen editor supports word wrapping, paste, `Esc` to save, and `Ctrl+C` to discard.
+  Picker screens use `↑↓`, `Enter`, `Esc`, and type-to-filter. The full-screen editor supports word wrapping, paste, `Esc` to save, and `Ctrl+C` to discard.
 
 ## Agents and chains
 
@@ -545,26 +555,25 @@ Agents are markdown files with YAML frontmatter and a system prompt body. They d
 
 Agent locations, lowest to highest priority:
 
-| Scope | Path |
-|-------|------|
-| Builtin | `~/.pi/agent/extensions/subagent/agents/` |
-| Installed package | `package.json` `pi-subagents.agents` or `pi.subagents.agents` |
-| User | `~/.pi/agent/agents/**/*.md` |
-| Project | Project config `agents/**/*.md` (`.pi/agents/**/*.md` in standard Pi) |
+| Scope             | Path                                                                  |
+| ----------------- | --------------------------------------------------------------------- |
+| Installed package | `package.json` `pi-subagents.agents` or `pi.subagents.agents`         |
+| User              | `~/.pi/agent/agents/**/*.md`                                          |
+| Project           | Project config `agents/**/*.md` (`.pi/agents/**/*.md` in standard Pi) |
 
-Project discovery also reads legacy `.agents/**/*.md` files. Nested subdirectories are discovered recursively. `.chain.md` files do not define agents. Installed Pi packages can expose agent directories from either `{"pi-subagents":{"agents":["./agents"]}}` or `{"pi":{"subagents":{"agents":["./agents"]}}}` in their package manifest. Package agents load above builtins and below user/project agents. If both `.agents/` and the project config agents directory define the same parsed runtime agent name, the project config directory wins. Use `agentScope: "user" | "project" | "both"` to control discovery; `both` is the default and project definitions win runtime-name collisions.
+Project discovery also reads legacy `.agents/**/*.md` files. Nested subdirectories are discovered recursively. `.chain.md` files do not define agents. Installed Pi packages can expose agent directories from either `{"pi-subagents":{"agents":["./agents"]}}` or `{"pi":{"subagents":{"agents":["./agents"]}}}` in their package manifest. Package agents load below user/project agents. If both `.agents/` and the project config agents directory define the same parsed runtime agent name, the project config directory wins. Use `agentScope: "user" | "project" | "both"` to control discovery; `both` is the default and project definitions win runtime-name collisions.
 
-Builtin agents load at the lowest priority, so a user or project agent with the same name overrides them. They do not pin a provider model; they inherit your current Pi default model unless you set `subagents.defaultModel` or `subagents.agentOverrides.<name>.model`. `oracle` is an advisory reviewer that critiques direction and proposes an execution prompt without editing files; `advisor` is the same bundled role under the Claude Code-compatible name. `worker` is the implementation agent for normal tasks and approved oracle handoffs.
+Agents do not pin a provider model; they inherit your current Pi default model unless you set `subagents.defaultModel` or `subagents.agentOverrides.<name>.model`.
 
-The `researcher` builtin uses `web_search`, `fetch_content`, and `get_search_content`; those require [pi-web-access](https://github.com/nicobailon/pi-web-access):
+A `researcher`-style agent that uses `web_search`, `fetch_content`, and `get_search_content` requires [pi-web-access](https://github.com/nicobailon/pi-web-access):
 
 ```bash
 pi install npm:pi-web-access
 ```
 
-### Builtin overrides
+### Overrides
 
-You can override selected builtin fields without copying the whole agent. Overrides live in settings:
+You can override selected agent fields without copying the whole agent. Overrides live in settings:
 
 - User: `~/.pi/agent/settings.json`
 - Project: project config settings file (`.pi/settings.json` in standard Pi)
@@ -573,23 +582,21 @@ Example:
 
 ```json
 {
-  "subagents": {
-    "agentOverrides": {
-      "reviewer": {
-        "inheritProjectContext": false
-      }
-    }
-  }
+	"subagents": {
+		"agentOverrides": {
+			"reviewer": {
+				"inheritProjectContext": false
+			}
+		}
+	}
 }
 ```
 
-Supported override fields are `model`, `fallbackModels`, `thinking`, `systemPromptMode`, `inheritProjectContext`, `inheritSkills`, `defaultContext`, `acceptanceRole`, `disabled`, `skills`, `tools`, and `systemPrompt`. Use `defaultContext: false` or `acceptanceRole: false` to clear an inherited override. Project overrides beat user overrides.
+Supported override fields are `model`, `fallbackModels`, `thinking`, `systemPromptMode`, `inheritProjectContext`, `inheritSkills`, `defaultContext`, `acceptanceRole`, `disabled`, `skills`, `tools`. Use `defaultContext: false` or `acceptanceRole: false` to clear an inherited override. Project overrides beat user overrides.
 
 Set `subagents.defaultModel` to give all subagents without an explicit model their own default model, separate from the parent session model. Per-agent model overrides and agent frontmatter still win.
 
-Set `disabled: true` to hide a builtin from runtime discovery and agent-facing `subagent({ action: "list" })` output. For bulk control, set `subagents.disableBuiltins: true` in settings. You can also toggle a single agent without editing settings by hand: `subagent({ action: "disable", agent: "reviewer" })` writes that override, and `subagent({ action: "enable", agent: "reviewer" })` removes it.
-
-Set `subagents.disableThinking: true` to clear bundled builtin thinking defaults globally for providers that do not support `:low`, `:medium`, `:high`, or similar model suffixes. A higher-precedence per-agent `thinking` override can opt one builtin back in.
+Set `disabled: true` to hide an agent from runtime discovery and agent-facing `subagent({ action: "list" })` output. You can toggle a single agent without editing settings by hand: `subagent({ action: "disable", agent: "reviewer" })` writes that override, and `subagent({ action: "enable", agent: "reviewer" })` removes it.
 
 ### Prompt assembly
 
@@ -597,14 +604,14 @@ Subagents are designed to be narrow by default. Custom agents start with a clean
 
 Use these fields when an agent should see more:
 
-| Field | Effect |
-|-------|--------|
-| `systemPromptMode: append` | Append the agent prompt to Pi’s normal base prompt. |
-| `inheritProjectContext: true` | Keep inherited project instructions from files like `AGENTS.md` and `CLAUDE.md`. |
-| `inheritSkills: true` | Let the child see Pi’s discovered skills catalog. |
-| `defaultContext: fork` | Use forked session context when a launch omits `context`; explicit `context: "fresh"` still wins. |
+| Field                         | Effect                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `systemPromptMode: append`    | Append the agent prompt to Pi’s normal base prompt.                                               |
+| `inheritProjectContext: true` | Keep inherited project instructions from files like `AGENTS.md` and `CLAUDE.md`.                  |
+| `inheritSkills: true`         | Let the child see Pi’s discovered skills catalog.                                                 |
+| `defaultContext: fork`        | Use forked session context when a launch omits `context`; explicit `context: "fresh"` still wins. |
 
-Builtin agents opt into project instruction inheritance by default so they follow repo-specific rules out of the box. `delegate` also uses append mode because its job is orchestration inside the parent workflow.
+Packaged role agents opt into project instruction inheritance by default so they follow repo-specific rules out of the box. `delegate` also uses append mode because its job is orchestration inside the parent workflow.
 
 ### Agent frontmatter
 
@@ -633,14 +640,13 @@ defaultReads: context.md
 defaultProgress: true
 async: true
 timeoutMs: 900000
-turnBudget: {"maxTurns":20,"graceTurns":2}
-acceptance: {"level":"none","reason":"lightweight lookup"}
+turnBudget: { "maxTurns": 20, "graceTurns": 2 }
+acceptance: { "level": "none", "reason": "lightweight lookup" }
 acceptanceRole: read-only
 completionGuard: false
 interactive: true
 maxSubagentDepth: 1
 ---
-
 Your system prompt goes here.
 ```
 
@@ -657,33 +663,33 @@ fallbackModels:
 
 Important fields:
 
-| Field | Notes |
-|-------|-------|
-| `package` | Optional package identifier. A file with `name: scout` and `package: code-analysis` registers as `code-analysis.scout`; serialization keeps `name` and `package` separate. |
-| `aliases` | Optional comma-separated or block-list names that resolve to this agent for selection and explicit `agent`/chain/task inputs. Runtime status, persistence, and config still use the canonical `name`; exact canonical names take precedence over aliases, and alias collisions between distinct canonical agents fail as ambiguous. |
-| `tools` | Strict child tool allowlist. Named extension tools must also have their provider loaded. `mcp:` entries select direct MCP tools when `pi-mcp-adapter` is installed. |
-| `extensions` | Omitted means normal extensions; empty means no extensions; list values allowlist specific extensions. |
-| `subagentOnlyExtensions` | Extension paths loaded only in spawned child sessions for this agent. Tools registered there are unavailable to the main agent unless also installed through normal Pi extension configuration. |
-| `model` | Default model. Bare ids prefer the current provider when possible, then unique registry matches. |
-| `fallbackModels` | Ordered backup models for provider/model failures such as quota, auth, timeout, or unavailable model. Ordinary task failures do not trigger fallback. |
-| `thinking` | Appended as a `:level` suffix at runtime unless a suffix is already present. |
-| `systemPromptMode` | `replace` by default; `append` keeps Pi’s base prompt. |
-| `inheritProjectContext` | Keeps or strips inherited project instruction blocks. |
-| `inheritSkills` | Keeps or strips Pi’s discovered skills catalog. |
-| `defaultContext` | Optional `fresh` or `fork` launch context default for this agent. |
-| `skills` | Selects specific skills for the child, regardless of `inheritSkills`. |
-| `skillPath` | Invocation-private skill files or discovery directories. Relative paths resolve from the agent definition file. Local matches take precedence, while unresolved or unreadable matches fall back to normal skill discovery. This field discovers candidates only; `skills` still selects what the child receives. |
-| `output` | Default single-agent output file. |
-| `defaultReads` | Files to read before running in chain/parallel behavior. |
-| `defaultProgress` | Maintain `progress.md`. |
-| `async` | Default a single-agent launch to background (`true`) or foreground (`false`) when the call omits `async`. Explicit call values and `forceTopLevelAsync` win. |
-| `timeoutMs` | Positive integer default runtime deadline in milliseconds for single-agent launches. Foreground launches use 30 minutes when neither the call nor agent provides a timeout; explicit `timeoutMs`/`maxRuntimeMs` and agent defaults win. |
-| `turnBudget` | JSON object default such as `{"maxTurns":20,"graceTurns":2}` for single-agent launches. An explicit call value wins, followed by this agent default, then global `turnBudget` config. |
-| `acceptance` | Acceptance default for single-agent launches. Use a scalar level such as `checked` or an inline/block YAML map such as `{ level: "none", reason: "lightweight lookup" }`. Explicit call values win; chain and parallel acceptance remains task/step configuration. |
-| `acceptanceRole` | Optional `read-only` or `writer` role for automatic acceptance inference. Explicit task mutation or no-edit intent wins; otherwise the declared role replaces agent-name guessing. This does not grant or revoke tools. |
-| `completionGuard` | Set `false` only for non-implementation agents that may mention implementation words while using mutation-capable tools such as `bash`. |
-| `interactive` | Parsed for compatibility but not enforced in v1. |
-| `maxSubagentDepth` | Tightens nested delegation for this agent's children. |
+| Field                    | Notes                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package`                | Optional package identifier. A file with `name: scout` and `package: code-analysis` registers as `code-analysis.scout`; serialization keeps `name` and `package` separate.                                                                                                                                                          |
+| `aliases`                | Optional comma-separated or block-list names that resolve to this agent for selection and explicit `agent`/chain/task inputs. Runtime status, persistence, and config still use the canonical `name`; exact canonical names take precedence over aliases, and alias collisions between distinct canonical agents fail as ambiguous. |
+| `tools`                  | Strict child tool allowlist. Named extension tools must also have their provider loaded. `mcp:` entries select direct MCP tools when `pi-mcp-adapter` is installed.                                                                                                                                                                 |
+| `extensions`             | Omitted means normal extensions; empty means no extensions; list values allowlist specific extensions.                                                                                                                                                                                                                              |
+| `subagentOnlyExtensions` | Extension paths loaded only in spawned child sessions for this agent. Tools registered there are unavailable to the main agent unless also installed through normal Pi extension configuration.                                                                                                                                     |
+| `model`                  | Default model. Bare ids prefer the current provider when possible, then unique registry matches.                                                                                                                                                                                                                                    |
+| `fallbackModels`         | Ordered backup models for provider/model failures such as quota, auth, timeout, or unavailable model. Ordinary task failures do not trigger fallback.                                                                                                                                                                               |
+| `thinking`               | Appended as a `:level` suffix at runtime unless a suffix is already present.                                                                                                                                                                                                                                                        |
+| `systemPromptMode`       | `replace` by default; `append` keeps Pi’s base prompt.                                                                                                                                                                                                                                                                              |
+| `inheritProjectContext`  | Keeps or strips inherited project instruction blocks.                                                                                                                                                                                                                                                                               |
+| `inheritSkills`          | Keeps or strips Pi’s discovered skills catalog.                                                                                                                                                                                                                                                                                     |
+| `defaultContext`         | Optional `fresh` or `fork` launch context default for this agent.                                                                                                                                                                                                                                                                   |
+| `skills`                 | Selects specific skills for the child, regardless of `inheritSkills`.                                                                                                                                                                                                                                                               |
+| `skillPath`              | Invocation-private skill files or discovery directories. Relative paths resolve from the agent definition file. Local matches take precedence, while unresolved or unreadable matches fall back to normal skill discovery. This field discovers candidates only; `skills` still selects what the child receives.                    |
+| `output`                 | Default single-agent output file.                                                                                                                                                                                                                                                                                                   |
+| `defaultReads`           | Files to read before running in chain/parallel behavior.                                                                                                                                                                                                                                                                            |
+| `defaultProgress`        | Maintain `progress.md`.                                                                                                                                                                                                                                                                                                             |
+| `async`                  | Default a single-agent launch to background (`true`) or foreground (`false`) when the call omits `async`. Explicit call values and `forceTopLevelAsync` win.                                                                                                                                                                        |
+| `timeoutMs`              | Positive integer default runtime deadline in milliseconds for single-agent launches. Foreground launches use 30 minutes when neither the call nor agent provides a timeout; explicit `timeoutMs`/`maxRuntimeMs` and agent defaults win.                                                                                             |
+| `turnBudget`             | JSON object default such as `{"maxTurns":20,"graceTurns":2}` for single-agent launches. An explicit call value wins, followed by this agent default, then global `turnBudget` config.                                                                                                                                               |
+| `acceptance`             | Acceptance default for single-agent launches. Use a scalar level such as `checked` or an inline/block YAML map such as `{ level: "none", reason: "lightweight lookup" }`. Explicit call values win; chain and parallel acceptance remains task/step configuration.                                                                  |
+| `acceptanceRole`         | Optional `read-only` or `writer` role for automatic acceptance inference. Explicit task mutation or no-edit intent wins; otherwise the declared role replaces agent-name guessing. This does not grant or revoke tools.                                                                                                             |
+| `completionGuard`        | Set `false` only for non-implementation agents that may mention implementation words while using mutation-capable tools such as `bash`.                                                                                                                                                                                             |
+| `interactive`            | Parsed for compatibility but not enforced in v1.                                                                                                                                                                                                                                                                                    |
+| `maxSubagentDepth`       | Tightens nested delegation for this agent's children.                                                                                                                                                                                                                                                                               |
 
 Agent-local `skillPath` candidates never enter Pi's parent/global skills catalog. Pair `inheritSkills: false` with explicit `skills` and `skillPath` when a child should receive only its selected private skills.
 
@@ -725,11 +731,11 @@ Before the first model turn, the child runtime compares every explicit tool name
 
 Chains are reusable workflows stored separately from agent files. Use `.chain.md` for simple sequential saved chains. Use `.chain.json` when a chain needs dynamic fanout.
 
-| Scope | Path |
-|-------|------|
-| Installed package | `package.json` `pi-subagents.chains` or `pi.subagents.chains` |
-| User | `~/.pi/agent/chains/**/*.chain.md`, `~/.pi/agent/chains/**/*.chain.json` |
-| Project | Project config `chains/**/*.chain.md`, `chains/**/*.chain.json` (`.pi/chains/...` in standard Pi) |
+| Scope             | Path                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| Installed package | `package.json` `pi-subagents.chains` or `pi.subagents.chains`                                     |
+| User              | `~/.pi/agent/chains/**/*.chain.md`, `~/.pi/agent/chains/**/*.chain.json`                          |
+| Project           | Project config `chains/**/*.chain.md`, `chains/**/*.chain.json` (`.pi/chains/...` in standard Pi) |
 
 Nested subdirectories are discovered recursively. Installed Pi packages can expose chain directories from either `{"pi-subagents":{"chains":["./chains"]}}` or `{"pi":{"subagents":{"chains":["./chains"]}}}` in their package manifest. Package chains load below user/project chains. If both `.chain.md` and `.chain.json` define the same parsed runtime chain name in the same scope, `.chain.json` wins. If user and project scopes define the same parsed runtime chain name, the project chain wins. Chains support the same optional `package` frontmatter as agents; `name: review-flow` plus `package: code-analysis` runs as `code-analysis.review-flow`.
 
@@ -742,6 +748,7 @@ description: Gather context then plan implementation
 ---
 
 ## scout
+
 phase: Context
 label: Map auth flow
 as: context
@@ -750,6 +757,7 @@ output: context.md
 Analyze the codebase for {task}
 
 ## planner
+
 phase: Planning
 label: Implementation plan
 reads: context.md
@@ -769,36 +777,36 @@ Dynamic fanout is available only through direct `subagent({ chain: [...] })` JSO
 
 ```json
 {
-  "name": "dynamic-review",
-  "description": "Find review targets, fan out reviewers, then synthesize.",
-  "chain": [
-    {
-      "agent": "scout",
-      "task": "Return {\"items\":[{\"path\":\"...\",\"reason\":\"...\"}]} via structured_output.",
-      "as": "targets",
-      "outputSchema": { "type": "object" }
-    },
-    {
-      "expand": {
-        "from": { "output": "targets", "path": "/items" },
-        "item": "target",
-        "key": "/path",
-        "maxItems": 12
-      },
-      "parallel": {
-        "agent": "reviewer",
-        "label": "Review {target.path}",
-        "task": "Review {target.path}. Reason: {target.reason}",
-        "outputSchema": { "type": "object" }
-      },
-      "collect": { "as": "reviews" },
-      "concurrency": 4
-    },
-    {
-      "agent": "worker",
-      "task": "Synthesize fixes from {outputs.reviews}"
-    }
-  ]
+	"name": "dynamic-review",
+	"description": "Find review targets, fan out reviewers, then synthesize.",
+	"chain": [
+		{
+			"agent": "scout",
+			"task": "Return {\"items\":[{\"path\":\"...\",\"reason\":\"...\"}]} via structured_output.",
+			"as": "targets",
+			"outputSchema": { "type": "object" }
+		},
+		{
+			"expand": {
+				"from": { "output": "targets", "path": "/items" },
+				"item": "target",
+				"key": "/path",
+				"maxItems": 12
+			},
+			"parallel": {
+				"agent": "reviewer",
+				"label": "Review {target.path}",
+				"task": "Review {target.path}. Reason: {target.reason}",
+				"outputSchema": { "type": "object" }
+			},
+			"collect": { "as": "reviews" },
+			"concurrency": 4
+		},
+		{
+			"agent": "worker",
+			"task": "Synthesize fixes from {outputs.reviews}"
+		}
+	]
 }
 ```
 
@@ -812,11 +820,11 @@ Create simple `.chain.md` chains by writing files directly or with the `subagent
 
 Task templates support:
 
-| Variable | Description |
-|----------|-------------|
-| `{task}` | Original task from the first step. |
-| `{previous}` | Output from the prior step, or aggregated output from a parallel step. |
-| `{chain_dir}` | Path to the chain artifact directory. |
+| Variable         | Description                                                                |
+| ---------------- | -------------------------------------------------------------------------- |
+| `{task}`         | Original task from the first step.                                         |
+| `{previous}`     | Output from the prior step, or aggregated output from a parallel step.     |
+| `{chain_dir}`    | Path to the chain artifact directory.                                      |
 | `{outputs.name}` | Text value from a prior step or completed parallel task with `as: "name"`. |
 
 Parallel outputs are aggregated with clear separators before being passed to the next step:
@@ -901,18 +909,18 @@ Use `pi-subagents/preflight` when an extension needs to inspect the resolved chi
 import { resolveSubagentLaunchContract } from "pi-subagents/preflight";
 
 const result = await resolveSubagentLaunchContract({
-  agent: "reviewer",
-  task: "Review the current diff.",
-  context: "fresh",
-  cwd: ctx.cwd,
-  sessionRoot: "/tmp/my-extension-preflight-session-root",
-  availableModels: ctx.modelRegistry.getAvailable(),
+	agent: "reviewer",
+	task: "Review the current diff.",
+	context: "fresh",
+	cwd: ctx.cwd,
+	sessionRoot: "/tmp/my-extension-preflight-session-root",
+	availableModels: ctx.modelRegistry.getAvailable(),
 });
 
 if (!result.ok) {
-  // missing_agent, ambiguous_agent, missing_skill, denied_required_tool,
-  // invalid_artifact_dir, invalid_cwd, or unsupported_mode
-  throw new Error(result.message);
+	// missing_agent, ambiguous_agent, missing_skill, denied_required_tool,
+	// invalid_artifact_dir, invalid_cwd, or unsupported_mode
+	throw new Error(result.message);
 }
 
 console.log(result.contract.digest, result.contract.tools.effectiveAllowlist);
@@ -926,29 +934,32 @@ The compatibility v1 contract runs one configured foreground agent per request:
 
 ```ts
 import {
-  SUBAGENT_DELEGATION_REQUEST_EVENT,
-  SUBAGENT_DELEGATION_RESPONSE_EVENT,
-  type SubagentDelegationRequest,
-  type SubagentDelegationResponse,
+	SUBAGENT_DELEGATION_REQUEST_EVENT,
+	SUBAGENT_DELEGATION_RESPONSE_EVENT,
+	type SubagentDelegationRequest,
+	type SubagentDelegationResponse,
 } from "pi-subagents/delegation";
 
 const request: SubagentDelegationRequest = {
-  version: 1,
-  requestId: crypto.randomUUID(),
-  agent: "reviewer",
-  task: "Review the supplied evidence.",
-  context: "fresh",
-  cwd: ctx.cwd,
-  timeoutMs: 120_000,
-  toolBudget: { soft: 10, hard: 16, block: "*" },
+	version: 1,
+	requestId: crypto.randomUUID(),
+	agent: "reviewer",
+	task: "Review the supplied evidence.",
+	context: "fresh",
+	cwd: ctx.cwd,
+	timeoutMs: 120_000,
+	toolBudget: { soft: 10, hard: 16, block: "*" },
 };
 
-const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => {
-  const response = payload as SubagentDelegationResponse;
-  if (response.requestId !== request.requestId) return;
-  unsubscribe();
-  // Inspect response.status and the metadata present for this run.
-});
+const unsubscribe = pi.events.on(
+	SUBAGENT_DELEGATION_RESPONSE_EVENT,
+	(payload) => {
+		const response = payload as SubagentDelegationResponse;
+		if (response.requestId !== request.requestId) return;
+		unsubscribe();
+		// Inspect response.status and the metadata present for this run.
+	},
+);
 pi.events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, request);
 ```
 
@@ -970,40 +981,48 @@ model-facing tool's one-foreground-call-per-turn guard.
 
 ```ts
 import {
-  SUBAGENT_DELEGATION_REQUEST_EVENT,
-  SUBAGENT_DELEGATION_RESPONSE_EVENT,
-  type SubagentDelegationV2Request,
-  type SubagentDelegationV2Response,
+	SUBAGENT_DELEGATION_REQUEST_EVENT,
+	SUBAGENT_DELEGATION_RESPONSE_EVENT,
+	type SubagentDelegationV2Request,
+	type SubagentDelegationV2Response,
 } from "pi-subagents/delegation";
 
 const request: SubagentDelegationV2Request = {
-  version: 2,
-  requestId: crypto.randomUUID(),
-  ownerRunId: workflowRunId,
-  nodeId: "review-accuracy",
-  agent: "reviewer",
-  task: "Review the supplied evidence.",
-  context: "fresh",
-  cwd: ctx.cwd,
-  thinking: "high",
-  result: {
-    kind: "structured",
-    schema: {
-      type: "object",
-      properties: { verdict: { type: "string" } },
-      required: ["verdict"],
-      additionalProperties: false,
-    },
-  },
+	version: 2,
+	requestId: crypto.randomUUID(),
+	ownerRunId: workflowRunId,
+	nodeId: "review-accuracy",
+	agent: "reviewer",
+	task: "Review the supplied evidence.",
+	context: "fresh",
+	cwd: ctx.cwd,
+	thinking: "high",
+	result: {
+		kind: "structured",
+		schema: {
+			type: "object",
+			properties: { verdict: { type: "string" } },
+			required: ["verdict"],
+			additionalProperties: false,
+		},
+	},
 };
 
-const unsubscribe = pi.events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => {
-  const response = payload as SubagentDelegationV2Response;
-  if (response.version !== 2 || response.requestId !== request.requestId) return;
-  if (response.ownerRunId !== request.ownerRunId || response.nodeId !== request.nodeId) return;
-  unsubscribe();
-  // Inspect response.status, response.result, response.usage, model, and thinking.
-});
+const unsubscribe = pi.events.on(
+	SUBAGENT_DELEGATION_RESPONSE_EVENT,
+	(payload) => {
+		const response = payload as SubagentDelegationV2Response;
+		if (response.version !== 2 || response.requestId !== request.requestId)
+			return;
+		if (
+			response.ownerRunId !== request.ownerRunId ||
+			response.nodeId !== request.nodeId
+		)
+			return;
+		unsubscribe();
+		// Inspect response.status, response.result, response.usage, model, and thinking.
+	},
+);
 pi.events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, request);
 ```
 
@@ -1045,9 +1064,12 @@ Parent extensions can enforce an out-of-band, session-scoped capability ceiling 
 import { registerSubagentCapabilityCeiling } from "pi-subagents/capability-ceiling";
 
 const restriction = registerSubagentCapabilityCeiling({
-  sessionId: ctx.sessionManager.getSessionId(),
-  source: "plan-mode",
-  ceiling: { allowedTools: ["read", "grep", "find", "ls"], denyExtensions: true },
+	sessionId: ctx.sessionManager.getSessionId(),
+	source: "plan-mode",
+	ceiling: {
+		allowedTools: ["read", "grep", "find", "ls"],
+		denyExtensions: true,
+	},
 });
 // restriction.update(...) replaces this provider's policy atomically.
 // restriction.dispose() removes only this provider's registration.
@@ -1065,12 +1087,13 @@ Other Pi extensions can make their current-session jobs visible to `subagent_wai
 import { registerBackgroundWorkProvider } from "pi-subagents/background-work";
 
 const dispose = registerBackgroundWorkProvider({
-  name: "my-background-extension",
-  wakeChannels: ["my-extension:job-finished"],
-  listActiveWork: () => jobs
-    .filter((job) => job.status === "running")
-    .map((job) => ({ id: job.id, sessionId: job.ownerSessionId })),
-  reconcile: ({ sessionId, nowMs }) => reconcileJobs(sessionId, nowMs),
+	name: "my-background-extension",
+	wakeChannels: ["my-extension:job-finished"],
+	listActiveWork: () =>
+		jobs
+			.filter((job) => job.status === "running")
+			.map((job) => ({ id: job.id, sessionId: job.ownerSessionId })),
+	reconcile: ({ sessionId, nowMs }) => reconcileJobs(sessionId, nowMs),
 });
 ```
 
@@ -1226,45 +1249,45 @@ Agent definitions are not loaded into context by default. Management actions let
 
 `create` uses `config.scope`, not `agentScope`. `config.name` is the local frontmatter name; optional `config.package` registers the runtime name as `{package}.{name}` and is saved as separate `name` and `package` frontmatter. `config.aliases` accepts a comma-separated string, string array, or `false` to clear aliases; aliases resolve to the canonical agent name for execution and are shown by `list`/`get`. `update` and `delete` use the runtime name and `agentScope` only when the same runtime name exists in multiple scopes. To clear optional string fields, including `package`, set them to `false` or `""`.
 
-`eject` copies a bundled builtin or package agent verbatim into the user or project agent dir (default `user`) as an editable custom file that shadows the original, so you can customize a builtin without hunting package files. `disable` writes a reversible `agentOverrides.<name>.disabled: true` entry to the user or project settings file (default `user`); the agent stays on disk but is hidden from runtime discovery and `list`. `enable` removes that `disabled` field while preserving any other override fields on the same entry. `reset` deletes the scope's custom agent file and/or settings override entry, restoring the bundled default; it refuses if no bundled default exists (use `delete` for purely custom agents). All four accept `agentScope: "user" | "project"` and operate in one scope at a time; project overrides still win over user ones, so a project-scope disable survives a user-scope `enable` until you target the project scope.
+`eject` copies a bundled package agent verbatim into the user or project agent dir (default `user`) as an editable custom file that shadows the original, so you can customize a package agent locally. `disable` writes a reversible `agentOverrides.<name>.disabled: true` entry to the user or project settings file (default `user`); the agent stays on disk but is hidden from runtime discovery and `list`. `enable` removes that `disabled` field while preserving any other override fields on the same entry. `reset` deletes the scope's custom agent file and/or settings override entry, restoring the package default; it refuses if no package default exists (use `delete` for purely custom agents). All four accept `agentScope: "user" | "project"` and operate in one scope at a time; project overrides still win over user ones, so a project-scope disable survives a user-scope `enable` until you target the project scope.
 
 ### Parameter reference
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `agent` | string | - | Agent name or alias for single mode, or target for management actions. Execution records use the canonical agent name. |
-| `task` | string | - | Task string for single mode. |
-| `action` | string | - | `list`, `get`, `create`, `update`, `delete`, `status`, `interrupt`, `stop`, `resume`, `steer`, `append-step`, `approve-checkpoint`, `reject-checkpoint`, or `doctor`. |
-| `chainName` | string | - | Chain name for management actions. |
-| `config` | object/string | - | Agent or chain config for create/update. |
-| `output` | `string \| false` | agent default | Override single-agent output file. |
-| `outputMode` | `"inline" \| "file-only"` | `inline` | Return saved output inline or as a concise saved-file reference. `file-only` requires an `output` path. |
-| `skill` | `string \| string[] \| false` | agent default | Override skills or disable all. |
-| `model` | string | agent default | Override model. |
-| `outputSchema` | object | - | Require schema-valid structured output for a direct single-agent run. |
-| `agentContract` | `{ version: 1 }` | - | Opt into generic agent contract v1. Omit to keep the current/default contract. |
-| `tasks` | array | - | Top-level parallel tasks. Supports `agent`, `task`, `cwd`, `count`, `output`, `outputMode`, `outputSchema`, `reads`, `progress`, `skill`, `model`, `toolBudget`, `acceptance`, and `agentContract`. |
-| `concurrency` | number | config or `4` | Top-level parallel concurrency. |
-| `worktree` | boolean | false | Create isolated git worktrees for parallel tasks. |
-| `chain` | array | - | Sequential, checkpoint, static parallel, and dynamic fanout chain steps. Steps and chain parallel tasks support `phase`, `label`, `as`, `outputSchema`, `acceptance`, `agentContract`, and v1-only `gateOn` in addition to the usual execution fields. Dynamic fanout uses `expand`, one child `parallel` template, and `collect`. With `action: "append-step"`, pass exactly one step to append to a running async chain. |
-| `context` | `fresh \| fork` | per-agent default or `fresh` | Explicit `fresh` or `fork` overrides every child. When omitted, each agent uses its own `defaultContext`; `fork` creates real branched sessions from the parent leaf. Packaged `planner`, `worker`, `oracle`, and `advisor` default to `fork`. |
-| `chainDir` | string | temp chain dir | Persistent directory for chain artifacts. Relative chain `output`, `reads`, and `progress` paths live under this directory. |
-| `view` | `fleet \| transcript` | - | Optional `status` view for the active fleet surface or transcript tail inspection. |
-| `lines` | number | `80` | Maximum transcript lines for `action: "status", view: "transcript"`; capped at 500. |
-| `clarify` | boolean | false | Show TUI preview/edit flow. Explicit `clarify: true` keeps the run foreground for the clarify UI. |
-| `agentScope` | `user \| project \| both` | `both` | Agent discovery scope. Project wins on collisions. |
-| `async` | boolean | false | Background execution. For chains, `clarify: true` explicitly keeps the run foreground for the clarify UI. |
-| `timeoutMs` / `maxRuntimeMs` | number | 30 min foreground; none async | Optional run-level max runtime in milliseconds. Foreground uses 30 minutes only when neither the call nor selected agent provides a timeout. |
-| `turnBudget` | object | none | Optional assistant-turn budget `{ maxTurns, graceTurns }`. At `maxTurns` the child is warned to wrap up. After the grace window (default 1), termination occurs at the next assistant boundary; a response that starts tool work records `termination-deferred` until a later boundary. Partial output is returned on abort. |
-| `toolBudget` | object | none | Optional child tool-call budget `{ soft?, hard, block? }`. At `soft` the child is nudged to finalize. After `hard`, configured tools are blocked; `block` defaults to `read`, `grep`, `find`, and `ls`, while `"*"` blocks every tool call. Final assistant text is never blocked. |
-| `usageBudget` | object | none | Optional root-only reported-usage budget `{ tokens?: { soft?, hard }, costUsd?: { soft?, hard } }`. Soft limits are status-only. Hard limits prevent later child launches after reported usage is reconciled; already-running children are not stopped and no reservations are made. |
-| `cwd` | string | runtime cwd | Override working directory. |
-| `maxOutput` | object | 200KB, 5000 lines | Final output truncation limits. |
-| `artifacts` | boolean | true | Write debug artifacts. |
-| `includeProgress` | boolean | false | Include full progress in result. |
-| `share` | boolean | false | Upload session export to GitHub Gist. |
-| `sessionDir` | string | derived | Override session log directory. |
-| `acceptance` | string/object/false | inferred | Configure evidence gates with `"auto"`, `"attested"`, `"checked"`, `"verified"`, or `{ level: "none", reason: "..." }`. Independent review is orthogonal: use `review: { required: true, agent?: "reviewer", focus?: "..." }`. `review-required` means evidence passed but review is pending; `reviewed` is achieved only after a real independent result. Explicit `"reviewed"` remains schema-recognized solely for actionable preflight recovery. For reviewer/read-only calls, omit acceptance. `false` disables gates. With `agentContract: { version: 1 }`, omitted, `"auto"`, and `false` mean no acceptance request for that run; explicit acceptance is reported separately from execution. |
+| Param                        | Type                          | Default                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------- | ----------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`                      | string                        | -                             | Agent name or alias for single mode, or target for management actions. Execution records use the canonical agent name.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `task`                       | string                        | -                             | Task string for single mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `action`                     | string                        | -                             | `list`, `get`, `create`, `update`, `delete`, `status`, `interrupt`, `stop`, `resume`, `steer`, `append-step`, `approve-checkpoint`, `reject-checkpoint`, or `doctor`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `chainName`                  | string                        | -                             | Chain name for management actions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `config`                     | object/string                 | -                             | Agent or chain config for create/update.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `output`                     | `string \| false`             | agent default                 | Override single-agent output file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `outputMode`                 | `"inline" \| "file-only"`     | `inline`                      | Return saved output inline or as a concise saved-file reference. `file-only` requires an `output` path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `skill`                      | `string \| string[] \| false` | agent default                 | Override skills or disable all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `model`                      | string                        | agent default                 | Override model.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `outputSchema`               | object                        | -                             | Require schema-valid structured output for a direct single-agent run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `agentContract`              | `{ version: 1 }`              | -                             | Opt into generic agent contract v1. Omit to keep the current/default contract.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `tasks`                      | array                         | -                             | Top-level parallel tasks. Supports `agent`, `task`, `cwd`, `count`, `output`, `outputMode`, `outputSchema`, `reads`, `progress`, `skill`, `model`, `toolBudget`, `acceptance`, and `agentContract`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `concurrency`                | number                        | config or `4`                 | Top-level parallel concurrency.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `worktree`                   | boolean                       | false                         | Create isolated git worktrees for parallel tasks.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `chain`                      | array                         | -                             | Sequential, checkpoint, static parallel, and dynamic fanout chain steps. Steps and chain parallel tasks support `phase`, `label`, `as`, `outputSchema`, `acceptance`, `agentContract`, and v1-only `gateOn` in addition to the usual execution fields. Dynamic fanout uses `expand`, one child `parallel` template, and `collect`. With `action: "append-step"`, pass exactly one step to append to a running async chain.                                                                                                                                                                                                                                                                           |
+| `context`                    | `fresh \| fork`               | per-agent default or `fresh`  | Explicit `fresh` or `fork` overrides every child. When omitted, each agent uses its own `defaultContext`; `fork` creates real branched sessions from the parent leaf. Packaged `planner`, `worker`, `oracle`, and `advisor` default to `fork`.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `chainDir`                   | string                        | temp chain dir                | Persistent directory for chain artifacts. Relative chain `output`, `reads`, and `progress` paths live under this directory.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `view`                       | `fleet \| transcript`         | -                             | Optional `status` view for the active fleet surface or transcript tail inspection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `lines`                      | number                        | `80`                          | Maximum transcript lines for `action: "status", view: "transcript"`; capped at 500.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `clarify`                    | boolean                       | false                         | Show TUI preview/edit flow. Explicit `clarify: true` keeps the run foreground for the clarify UI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `agentScope`                 | `user \| project \| both`     | `both`                        | Agent discovery scope. Project wins on collisions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `async`                      | boolean                       | false                         | Background execution. For chains, `clarify: true` explicitly keeps the run foreground for the clarify UI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `timeoutMs` / `maxRuntimeMs` | number                        | 30 min foreground; none async | Optional run-level max runtime in milliseconds. Foreground uses 30 minutes only when neither the call nor selected agent provides a timeout.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `turnBudget`                 | object                        | none                          | Optional assistant-turn budget `{ maxTurns, graceTurns }`. At `maxTurns` the child is warned to wrap up. After the grace window (default 1), termination occurs at the next assistant boundary; a response that starts tool work records `termination-deferred` until a later boundary. Partial output is returned on abort.                                                                                                                                                                                                                                                                                                                                                                         |
+| `toolBudget`                 | object                        | none                          | Optional child tool-call budget `{ soft?, hard, block? }`. At `soft` the child is nudged to finalize. After `hard`, configured tools are blocked; `block` defaults to `read`, `grep`, `find`, and `ls`, while `"*"` blocks every tool call. Final assistant text is never blocked.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `usageBudget`                | object                        | none                          | Optional root-only reported-usage budget `{ tokens?: { soft?, hard }, costUsd?: { soft?, hard } }`. Soft limits are status-only. Hard limits prevent later child launches after reported usage is reconciled; already-running children are not stopped and no reservations are made.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `cwd`                        | string                        | runtime cwd                   | Override working directory.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `maxOutput`                  | object                        | 200KB, 5000 lines             | Final output truncation limits.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `artifacts`                  | boolean                       | true                          | Write debug artifacts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `includeProgress`            | boolean                       | false                         | Include full progress in result.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `share`                      | boolean                       | false                         | Upload session export to GitHub Gist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `sessionDir`                 | string                        | derived                       | Override session log directory.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `acceptance`                 | string/object/false           | inferred                      | Configure evidence gates with `"auto"`, `"attested"`, `"checked"`, `"verified"`, or `{ level: "none", reason: "..." }`. Independent review is orthogonal: use `review: { required: true, agent?: "reviewer", focus?: "..." }`. `review-required` means evidence passed but review is pending; `reviewed` is achieved only after a real independent result. Explicit `"reviewed"` remains schema-recognized solely for actionable preflight recovery. For reviewer/read-only calls, omit acceptance. `false` disables gates. With `agentContract: { version: 1 }`, omitted, `"auto"`, and `false` mean no acceptance request for that run; explicit acceptance is reported separately from execution. |
 
 `agentContract: { version: 1 }` keeps existing fields and artifacts but adds derived `execution`, `acceptance`, `review`, and `effects` projections. In v1, acceptance failures do not rewrite execution success, and an explicit completion guard reports `effects.fileMutation` instead of failing the run by itself. Chain steps default to advancing on execution under v1; set `gateOn: "acceptance"` on a v1 step or parallel task when rejected acceptance should stop the chain.
 
@@ -1283,23 +1306,55 @@ Sequential and parallel chain tasks accept `agent`, `task`, `phase`, `label`, `a
 Status and control actions:
 
 ```ts
-subagent({ action: "status" })
-subagent({ action: "status", view: "fleet" })
-subagent({ action: "status", id: "<run-id>" })
-subagent({ action: "status", id: "<run-id>", view: "transcript", index: 0, lines: 80 })
-subagent({ action: "status", id: "<nested-run-id>" })
-subagent({ action: "interrupt", id: "<run-id>" })
-subagent({ action: "interrupt", id: "<nested-run-id>" })
-subagent({ action: "stop", id: "<run-id>" })
-subagent({ action: "resume", id: "<run-id>", message: "follow-up question after it pauses or finishes" })
-subagent({ action: "resume", id: "<run-id>", index: 1, message: "follow-up for child 2" })
-subagent({ action: "resume", id: "<nested-run-id>", message: "follow-up for a nested child" })
-subagent({ action: "steer", id: "<run-id>", message: "guidance for the running child" })
-subagent({ action: "steer", id: "<run-id>", index: 1, message: "guidance for child 2" })
-subagent({ action: "append-step", id: "<run-id>", chain: [{ agent: "worker", task: "Continue from {previous}" }] })
-subagent({ action: "approve-checkpoint", id: "<run-id>" })
-subagent({ action: "reject-checkpoint", id: "<run-id>" })
-subagent({ action: "doctor" })
+subagent({ action: "status" });
+subagent({ action: "status", view: "fleet" });
+subagent({ action: "status", id: "<run-id>" });
+subagent({
+	action: "status",
+	id: "<run-id>",
+	view: "transcript",
+	index: 0,
+	lines: 80,
+});
+subagent({ action: "status", id: "<nested-run-id>" });
+subagent({ action: "interrupt", id: "<run-id>" });
+subagent({ action: "interrupt", id: "<nested-run-id>" });
+subagent({ action: "stop", id: "<run-id>" });
+subagent({
+	action: "resume",
+	id: "<run-id>",
+	message: "follow-up question after it pauses or finishes",
+});
+subagent({
+	action: "resume",
+	id: "<run-id>",
+	index: 1,
+	message: "follow-up for child 2",
+});
+subagent({
+	action: "resume",
+	id: "<nested-run-id>",
+	message: "follow-up for a nested child",
+});
+subagent({
+	action: "steer",
+	id: "<run-id>",
+	message: "guidance for the running child",
+});
+subagent({
+	action: "steer",
+	id: "<run-id>",
+	index: 1,
+	message: "guidance for child 2",
+});
+subagent({
+	action: "append-step",
+	id: "<run-id>",
+	chain: [{ agent: "worker", task: "Continue from {previous}" }],
+});
+subagent({ action: "approve-checkpoint", id: "<run-id>" });
+subagent({ action: "reject-checkpoint", id: "<run-id>" });
+subagent({ action: "doctor" });
 ```
 
 `status` resolves exact foreground ids, top-level async ids, and nested run ids before falling back to prefix matching. `view: "fleet"` is an optional read-only active-run surface with transcript commands; it does not add steering or stop controls. `view: "transcript"` tails the selected run's live `output-<index>.log` or persisted session transcript, with `lines` capped at 500. Nested status shows the root/parent path, nested children, session/artifact paths when known, and nested control commands. Inside child-safe fanout mode, bare `status` requires an id when no local foreground run is active, so children cannot enumerate unrelated top-level async runs. Bare `interrupt` still targets only the visible top-level run; interrupting a nested run requires its explicit nested id.
@@ -1431,7 +1486,13 @@ A user may explicitly call `subagent({ action: "grant-spawn-budget", additional:
 ### `scheduledRuns`
 
 ```json
-{ "scheduledRuns": { "enabled": true, "maxPending": 20, "maxLatenessMs": 300000 } }
+{
+	"scheduledRuns": {
+		"enabled": true,
+		"maxPending": 20,
+		"maxLatenessMs": 300000
+	}
+}
 ```
 
 Enables optional one-shot scheduled subagent runs. When enabled, `subagent({ action: "schedule", agent, task?, schedule: "+10m" | "2030-01-01T09:00:00Z", scheduleName? })` defers a subagent launch until a future time. Absolute ISO timestamps must include a timezone (`Z` or an offset such as `+05:30`). The scheduled run launches as a normal tracked async run with fresh context once it fires, and joins the existing async widget, status, `subagent_wait`, and completion-notification paths. `schedule-list`, `schedule-status`, and `schedule-cancel` manage pending jobs. Schedules are persisted per session and restored after a Pi restart; a job missed by more than `maxLatenessMs` while Pi is unavailable is marked `missed` instead of firing late. `maxPending` caps the number of pending or running scheduled jobs per session (default `20`). The feature is opt-in: leave `enabled` unset to keep scheduling out of the tool surface and prompt. Only schedule explicit delayed runs the user asked for.
@@ -1440,10 +1501,10 @@ Enables optional one-shot scheduled subagent runs. When enabled, `subagent({ act
 
 ```json
 {
-  "parallel": {
-    "maxTasks": 12,
-    "concurrency": 6
-  }
+	"parallel": {
+		"maxTasks": 12,
+		"concurrency": 6
+	}
 }
 ```
 
@@ -1485,10 +1546,10 @@ Overrides the command used to launch child Pi processes. Package wrappers can se
 
 ```json
 {
-  "intercomBridge": {
-    "mode": "always",
-    "instructionFile": "./intercom-bridge.md"
-  }
+	"intercomBridge": {
+		"mode": "always",
+		"instructionFile": "./intercom-bridge.md"
+	}
 }
 ```
 
@@ -1498,7 +1559,7 @@ Fields:
 
 - `mode`: default `always`; use `fork-only` to inject only for forked runs, or `off` to disable the bridge.
 - `instructionFile`: optional Markdown template replacing the default bridge instructions. `{orchestratorTarget}` is interpolated. Relative paths resolve from `~/.pi/agent/extensions/subagent/`.
-Bridge activation requires a targetable current parent session id, which `pi-subagents` passes to children automatically. It no longer depends on an external `pi-intercom` installation or per-agent extension allowlists.
+  Bridge activation requires a targetable current parent session id, which `pi-subagents` passes to children automatically. It no longer depends on an external `pi-intercom` installation or per-agent extension allowlists.
 
 The default injected guidance tells children to use `contact_supervisor` with `reason: "need_decision"` when blocked or needing a decision, `reason: "progress_update"` only for meaningful blocked/progress updates, and avoid routine completion handoffs.
 
@@ -1514,8 +1575,8 @@ Sets the base directory for `worktree: true` runs. Relative paths resolve from t
 
 ```json
 {
-  "worktreeSetupHook": "./scripts/setup-worktree.mjs",
-  "worktreeSetupHookTimeoutMs": 45000
+	"worktreeSetupHook": "./scripts/setup-worktree.mjs",
+	"worktreeSetupHookTimeoutMs": 45000
 }
 ```
 
@@ -1533,7 +1594,7 @@ stdin is a JSON object with `repoRoot`, `worktreePath`, `agentCwd`, `branch`, `i
 
 ```json
 {
-  "artifactDir": "session"
+	"artifactDir": "session"
 }
 ```
 
@@ -1545,14 +1606,14 @@ The `"session"` option uses the same directory that `cleanupAllArtifactDirs` alr
 
 ```json
 {
-  "completionBatch": {
-    "enabled": true,
-    "debounceMs": 150,
-    "maxWaitMs": 1000,
-    "stragglerDebounceMs": 75,
-    "stragglerMaxWaitMs": 400,
-    "stragglerWindowMs": 2000
-  }
+	"completionBatch": {
+		"enabled": true,
+		"debounceMs": 150,
+		"maxWaitMs": 1000,
+		"stragglerDebounceMs": 75,
+		"stragglerMaxWaitMs": 400,
+		"stragglerWindowMs": 2000
+	}
 }
 ```
 
@@ -1692,6 +1753,7 @@ model: claude-sonnet-4-20250514
 subagent: browser-screenshoter
 cwd: /tmp/screenshots
 ---
+
 Use url in the prompt to take screenshot: $@
 ```
 
@@ -1715,18 +1777,18 @@ Each named prompt becomes a native `subagent` chain step. This is intentionally 
 
 The main runtime files are:
 
-| File | Purpose |
-|------|---------|
-| `src/extension/index.ts` | Extension registration, tool registration, message/render wiring. |
-| `src/agents/agents.ts` | Agent and chain discovery, frontmatter parsing. |
-| `src/runs/foreground/subagent-executor.ts` | Main execution routing for single, parallel, chain, management, status, interrupt, and doctor actions. |
-| `src/runs/foreground/execution.ts` | Core foreground `runSync` handling. |
-| `src/runs/background/subagent-runner.ts` | Detached async runner. |
-| `src/runs/background/async-execution.ts` | Background launch support. |
-| `src/runs/background/async-status.ts` | Status discovery and formatting for async runs. |
-| `src/runs/foreground/chain-execution.ts` / `src/agents/chain-serializer.ts` | Chain orchestration and `.chain.md` parsing. |
-| `src/shared/settings.ts` | Chain behavior, instructions, and config helpers. |
-| `src/runs/shared/worktree.ts` | Git worktree isolation. |
-| `src/intercom/intercom-bridge.ts` | Runtime supervisor bridge instructions. |
-| `src/extension/schemas.ts` / `src/shared/types.ts` | Tool schemas, shared types, and event constants. |
-| `test/unit/` / `test/integration/` / `test/e2e/` | Unit, loader-based integration, and real-session E2E tests. |
+| File                                                                        | Purpose                                                                                                |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/extension/index.ts`                                                    | Extension registration, tool registration, message/render wiring.                                      |
+| `src/agents/agents.ts`                                                      | Agent and chain discovery, frontmatter parsing.                                                        |
+| `src/runs/foreground/subagent-executor.ts`                                  | Main execution routing for single, parallel, chain, management, status, interrupt, and doctor actions. |
+| `src/runs/foreground/execution.ts`                                          | Core foreground `runSync` handling.                                                                    |
+| `src/runs/background/subagent-runner.ts`                                    | Detached async runner.                                                                                 |
+| `src/runs/background/async-execution.ts`                                    | Background launch support.                                                                             |
+| `src/runs/background/async-status.ts`                                       | Status discovery and formatting for async runs.                                                        |
+| `src/runs/foreground/chain-execution.ts` / `src/agents/chain-serializer.ts` | Chain orchestration and `.chain.md` parsing.                                                           |
+| `src/shared/settings.ts`                                                    | Chain behavior, instructions, and config helpers.                                                      |
+| `src/runs/shared/worktree.ts`                                               | Git worktree isolation.                                                                                |
+| `src/intercom/intercom-bridge.ts`                                           | Runtime supervisor bridge instructions.                                                                |
+| `src/extension/schemas.ts` / `src/shared/types.ts`                          | Tool schemas, shared types, and event constants.                                                       |
+| `test/unit/` / `test/integration/` / `test/e2e/`                            | Unit, loader-based integration, and real-session E2E tests.                                            |

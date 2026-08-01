@@ -440,7 +440,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			inheritSkills: true,
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
 		assert.ok(args.includes("--no-context-files"));
 		assert.equal(env.PI_SUBAGENT_CHILD, "1");
@@ -887,7 +887,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			mcpDirectTools: ["chrome-devtools"],
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.equal(args[args.indexOf("--tools") + 1], "read,chrome_devtools_take_screenshot");
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
 		assert.ok(extensionArgs.includes("./custom-tool.ts"));
@@ -906,7 +906,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			subagentOnlyExtensions: ["./child-tool.ts"],
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.ok(args.includes("--no-extensions"));
 		assert.equal(args[args.indexOf("--tools") + 1], "read");
 		assert.ok(extensionArgs.includes("./main-allowed-ext.ts"));
@@ -929,7 +929,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			parentCapabilityToken: "token-1",
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.equal(args[args.indexOf("--tools") + 1], "read,subagent");
 		assert.equal(env[SUBAGENT_FANOUT_CHILD_ENV], "1");
 		assert.equal(env[SUBAGENT_PARENT_EVENT_SINK_ENV], "/tmp/root/events");
@@ -959,7 +959,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			parentCapabilityToken: "token-should-not-leak",
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.equal(env[SUBAGENT_FANOUT_CHILD_ENV], "0");
 		assert.equal(env[SUBAGENT_PARENT_EVENT_SINK_ENV], "");
 		assert.equal(env[SUBAGENT_PARENT_CONTROL_INBOX_ENV], "");
@@ -1065,7 +1065,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			mcpDirectTools: ["delegator"],
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.equal(args[args.indexOf("--tools") + 1], "read,delegator_subagent");
 		assert.equal(env[SUBAGENT_FANOUT_CHILD_ENV], "0");
 		assert.ok(!extensionArgs.some((arg) => arg.endsWith(path.join("src", "extension", "fanout-child.ts"))));
@@ -1082,7 +1082,7 @@ describe("buildPiArgs system prompt mode wiring", () => {
 			extensions: ["./agent-allowed-ext.ts"],
 		});
 
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.ok(args.includes("--no-extensions"));
 		assert.equal(env[SUBAGENT_FANOUT_CHILD_ENV], "1");
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "extension", "fanout-child.ts"))));

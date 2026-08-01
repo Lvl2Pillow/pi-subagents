@@ -18,7 +18,7 @@ Discovery is recursive. `.chain.md` files do not define agents. Use `.chain.md` 
 Precedence is by parsed runtime name:
 1. project scope
 2. user scope
-3. builtin agents
+3. package scope
 
 ## Running Subagents
 

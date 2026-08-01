@@ -2912,7 +2912,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		assert.equal(result.exitCode, 0);
 		const args = readCallArgs();
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
 		assert.ok(extensionArgs.some((arg) => arg.replace(/\\/g, "/").endsWith("custom-tool.ts")));
 		assert.ok(extensionArgs.some((arg) => arg.replace(/\\/g, "/").endsWith("allowed-ext.ts")));
@@ -2931,7 +2931,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		assert.equal(result.exitCode, 0);
 		const args = readCallArgs();
-		const extensionArgs = args.filter((arg, index) => args[index - 1] === "--extension");
+		const extensionArgs = args.filter((_, index) => args[index - 1] === "--extension");
 		assert.ok(extensionArgs.some((arg) => arg.endsWith(path.join("src", "runs", "shared", "subagent-prompt-runtime.ts"))));
 		assert.ok(extensionArgs.some((arg) => arg.replace(/\\/g, "/").endsWith("child-only-tool.ts")));
 	});
@@ -3080,7 +3080,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const start = Date.now();
 		setTimeout(() => controller.abort(), 200);
 
-		const result = await runSync(tempDir, agents, "slow", "Slow task", {
+		await runSync(tempDir, agents, "slow", "Slow task", {
 			signal: controller.signal,
 		});
 		const elapsed = Date.now() - start;

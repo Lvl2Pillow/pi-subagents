@@ -36,7 +36,6 @@
     "index.ts",
     "src/**/*.ts",
     "*.mjs",
-    "agents/",
     "skills/**/*",
     "prompts/**/*",
     "README.md",

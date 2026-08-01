@@ -1,20 +1,34 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import {
 	agentHasFrontmatterField,
 	discoverAgentsAll,
 	EXTRA_AGENT_DIRS_ENV,
 	frontmatterNameForConfig,
-	mergeBuiltinAgentOverride,
-	removeBuiltinAgentOverrideFields,
+	mergeAgentOverride,
+	removeAgentOverrideFields,
 	type AgentConfig,
-	type BuiltinAgentOverrideBase,
+	type AgentOverrideBase,
 } from "../agents/agents.ts";
 import { serializeAgent } from "../agents/agent-serializer.ts";
-import { editableAgentConfig, preservedAgentFrontmatterFields } from "../agents/agent-management.ts";
-import { findModelInfo, getSupportedThinkingLevels, toModelInfo } from "../shared/model-info.ts";
-import { SelectorComponent, type SelectorItem, type SelectorResult } from "./selector.ts";
+import {
+	editableAgentConfig,
+	preservedAgentFrontmatterFields,
+} from "../agents/agent-management.ts";
+import {
+	findModelInfo,
+	getSupportedThinkingLevels,
+	toModelInfo,
+} from "../shared/model-info.ts";
+import {
+	SelectorComponent,
+	type SelectorItem,
+	type SelectorResult,
+} from "./selector.ts";
 
 const ADMIN_MESSAGE_TYPE = "subagents-admin";
 const INHERIT_MODEL_CHOICE = "Default / inherit session model";
@@ -31,9 +45,13 @@ function sourceRank(source: AgentConfig["source"]): number {
 
 function allVisibleAgents(cwd: string): AgentConfig[] {
 	const d = discoverAgentsAll(cwd);
-	return [...d.project, ...d.user, ...d.package, ...d.builtin]
+	return [...d.project, ...d.user, ...d.package]
 		.filter((agent) => !agent.disabled)
-		.sort((a, b) => a.name.localeCompare(b.name) || sourceRank(a.source) - sourceRank(b.source));
+		.sort(
+			(a, b) =>
+				a.name.localeCompare(b.name) ||
+				sourceRank(a.source) - sourceRank(b.source),
+		);
 }
 
 function agentLabel(agent: AgentConfig): string {
@@ -45,10 +63,15 @@ function agentChoices(agents: AgentConfig[]): Map<string, AgentConfig> {
 	const labels = agents.map(agentLabel);
 	const counts = new Map<string, number>();
 	for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
-	return new Map(agents.map((agent, index) => {
-		const label = labels[index]!;
-		return [counts.get(label) === 1 ? label : `${label} · ${agent.filePath}`, agent] as const;
-	}));
+	return new Map(
+		agents.map((agent, index) => {
+			const label = labels[index]!;
+			return [
+				counts.get(label) === 1 ? label : `${label} · ${agent.filePath}`,
+				agent,
+			] as const;
+		}),
+	);
 }
 
 function agentSelectItems(byLabel: Map<string, AgentConfig>): SelectorItem[] {
@@ -77,15 +100,20 @@ function liveAvailableModels(ctx: ExtensionContext) {
 		ctx.modelRegistry.refresh?.();
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		ctx.ui.notify(`Could not refresh the model registry; using the last loaded choices. ${message}`, "warning");
+		ctx.ui.notify(
+			`Could not refresh the model registry; using the last loaded choices. ${message}`,
+			"warning",
+		);
 	}
 	return ctx.modelRegistry.getAvailable();
 }
 
-function buildBuiltinBase(agent: AgentConfig): BuiltinAgentOverrideBase {
+function buildOverrideBase(agent: AgentConfig): AgentOverrideBase {
 	return {
 		model: agent.model,
-		fallbackModels: agent.fallbackModels ? [...agent.fallbackModels] : undefined,
+		fallbackModels: agent.fallbackModels
+			? [...agent.fallbackModels]
+			: undefined,
 		thinking: agent.thinking,
 		systemPromptMode: agent.systemPromptMode,
 		inheritProjectContext: agent.inheritProjectContext,
@@ -93,17 +121,20 @@ function buildBuiltinBase(agent: AgentConfig): BuiltinAgentOverrideBase {
 		defaultContext: agent.defaultContext,
 		acceptanceRole: agent.acceptanceRole,
 		disabled: agent.disabled,
-		systemPrompt: agent.systemPrompt,
 		skills: agent.skills ? [...agent.skills] : undefined,
 		tools: agent.tools ? [...agent.tools] : undefined,
-		mcpDirectTools: agent.mcpDirectTools ? [...agent.mcpDirectTools] : undefined,
-		subagentOnlyExtensions: agent.subagentOnlyExtensions ? [...agent.subagentOnlyExtensions] : undefined,
+		mcpDirectTools: agent.mcpDirectTools
+			? [...agent.mcpDirectTools]
+			: undefined,
+		subagentOnlyExtensions: agent.subagentOnlyExtensions
+			? [...agent.subagentOnlyExtensions]
+			: undefined,
 		completionGuard: agent.completionGuard,
 		toolBudget: agent.toolBudget,
 	};
 }
 
-type EditableOverrideField = "model" | "thinking" | "systemPrompt";
+type EditableOverrideField = "model" | "thinking";
 
 type AgentSelection =
 	| { kind: "selected"; agent: AgentConfig }
@@ -111,10 +142,11 @@ type AgentSelection =
 	| { kind: "not-found"; agents: AgentConfig[]; requestedName?: string }
 	| { kind: "ambiguous"; requestedName: string; matches: AgentConfig[] };
 
-function savesThroughSettings(agent: AgentConfig, field: EditableOverrideField): boolean {
-	if (agent.source === "builtin") return true;
+function savesThroughSettings(
+	agent: AgentConfig,
+	field: EditableOverrideField,
+): boolean {
 	if (agent.source === "package") {
-		if (field === "systemPrompt") return false;
 		return !agentHasFrontmatterField(agent, field);
 	}
 	if (!agent.override) return false;
@@ -132,14 +164,26 @@ function isReadOnlyExtraAgent(agent: AgentConfig): boolean {
 	const configured = process.env[EXTRA_AGENT_DIRS_ENV];
 	if (!configured || agent.source !== "user") return false;
 	const filePath = path.resolve(agent.filePath);
-	return configured.split(path.delimiter).map((dir) => dir.trim()).filter(Boolean).some((dir) => {
-		const root = path.resolve(dir);
-		const relative = path.relative(root, filePath);
-		return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
-	});
+	return configured
+		.split(path.delimiter)
+		.map((dir) => dir.trim())
+		.filter(Boolean)
+		.some((dir) => {
+			const root = path.resolve(dir);
+			const relative = path.relative(root, filePath);
+			return (
+				relative !== "" &&
+				relative !== ".." &&
+				!relative.startsWith(`..${path.sep}`) &&
+				!path.isAbsolute(relative)
+			);
+		});
 }
 
-function readOnlyAgentMessage(agent: AgentConfig, field: EditableOverrideField): string | undefined {
+function readOnlyAgentMessage(
+	agent: AgentConfig,
+	field: string,
+): string | undefined {
 	if (agent.source === "package") {
 		return `Cannot update '${agent.name}' ${field} because that field is owned by its read-only package definition.`;
 	}
@@ -148,31 +192,59 @@ function readOnlyAgentMessage(agent: AgentConfig, field: EditableOverrideField):
 		: undefined;
 }
 
-async function selectAgent(ctx: ExtensionContext, args: string): Promise<AgentSelection> {
+async function selectAgent(
+	ctx: ExtensionContext,
+	args: string,
+): Promise<AgentSelection> {
 	const agents = allVisibleAgents(ctx.cwd);
 	const requestedName = args.trim().split(/\s+/)[0] ?? "";
-	if (agents.length === 0) return { kind: "not-found", agents, requestedName: requestedName || undefined };
+	if (agents.length === 0)
+		return {
+			kind: "not-found",
+			agents,
+			requestedName: requestedName || undefined,
+		};
 
 	if (requestedName) {
-		const matches = agents.filter((agent) => agentMatches(agent, requestedName));
+		const matches = agents.filter((agent) =>
+			agentMatches(agent, requestedName),
+		);
 		if (matches.length === 1) return { kind: "selected", agent: matches[0]! };
-		if (matches.length > 1 && !ctx.hasUI) return { kind: "ambiguous", requestedName, matches };
+		if (matches.length > 1 && !ctx.hasUI)
+			return { kind: "ambiguous", requestedName, matches };
 		if (matches.length > 1) {
 			const byLabel = agentChoices(matches);
-			const choice = await selectFromList(ctx, `Multiple subagents named '${requestedName}'`, undefined, agentSelectItems(byLabel));
-			return choice ? { kind: "selected", agent: byLabel.get(choice)! } : { kind: "cancelled" };
+			const choice = await selectFromList(
+				ctx,
+				`Multiple subagents named '${requestedName}'`,
+				undefined,
+				agentSelectItems(byLabel),
+			);
+			return choice
+				? { kind: "selected", agent: byLabel.get(choice)! }
+				: { kind: "cancelled" };
 		}
 		return { kind: "not-found", agents, requestedName };
 	}
 
 	if (!ctx.hasUI) return { kind: "not-found", agents };
 	const byLabel = agentChoices(agents);
-	const choice = await selectFromList(ctx, "Select subagent", undefined, agentSelectItems(byLabel));
-	return choice ? { kind: "selected", agent: byLabel.get(choice)! } : { kind: "cancelled" };
+	const choice = await selectFromList(
+		ctx,
+		"Select subagent",
+		undefined,
+		agentSelectItems(byLabel),
+	);
+	return choice
+		? { kind: "selected", agent: byLabel.get(choice)! }
+		: { kind: "cancelled" };
 }
 
 function metadataFor(agent: AgentConfig): string {
-	const tools = [...(agent.tools ?? []), ...(agent.mcpDirectTools ?? []).map((tool) => `mcp:${tool}`)];
+	const tools = [
+		...(agent.tools ?? []),
+		...(agent.mcpDirectTools ?? []).map((tool) => `mcp:${tool}`),
+	];
 	const lines = [
 		`Agent: ${agent.name} (${agent.source})`,
 		`Path: ${agent.filePath}`,
@@ -183,78 +255,150 @@ function metadataFor(agent: AgentConfig): string {
 		lines.push(`Package: ${agent.packageName}`);
 	}
 	lines.push(`Model: ${agent.model ?? "default / inherit"}`);
-	if (agent.fallbackModels?.length) lines.push(`Fallback models: ${agent.fallbackModels.join(", ")}`);
-	if (agent.thinking !== undefined) lines.push(`Thinking: ${agent.thinking === false ? "off" : agent.thinking}`);
+	if (agent.fallbackModels?.length)
+		lines.push(`Fallback models: ${agent.fallbackModels.join(", ")}`);
+	if (agent.thinking !== undefined)
+		lines.push(
+			`Thinking: ${agent.thinking === false ? "off" : agent.thinking}`,
+		);
 	if (tools.length) lines.push(`Tools: ${tools.join(", ")}`);
 	if (agent.skills?.length) lines.push(`Skills: ${agent.skills.join(", ")}`);
 	lines.push(`System prompt mode: ${agent.systemPromptMode}`);
-	lines.push(`Inherit project context: ${agent.inheritProjectContext ? "true" : "false"}`);
+	lines.push(
+		`Inherit project context: ${agent.inheritProjectContext ? "true" : "false"}`,
+	);
 	lines.push(`Inherit skills: ${agent.inheritSkills ? "true" : "false"}`);
-	if (agent.defaultContext) lines.push(`Default context: ${agent.defaultContext}`);
+	if (agent.defaultContext)
+		lines.push(`Default context: ${agent.defaultContext}`);
 	if (agent.output) lines.push(`Output: ${agent.output}`);
-	if (agent.defaultReads?.length) lines.push(`Reads: ${agent.defaultReads.join(", ")}`);
+	if (agent.defaultReads?.length)
+		lines.push(`Reads: ${agent.defaultReads.join(", ")}`);
 	if (agent.defaultProgress) lines.push("Progress: true");
-	if (agent.maxSubagentDepth !== undefined) lines.push(`Max subagent depth: ${agent.maxSubagentDepth}`);
-	if (agent.source === "builtin") lines.push(`Disabled: ${agent.disabled ? "true" : "false"}`);
-	if (agent.override) lines.push(`Override: ${agent.override.scope} (${agent.override.path})`);
-	if (agent.systemPrompt.trim()) lines.push("", "System Prompt:", agent.systemPrompt);
+	if (agent.maxSubagentDepth !== undefined)
+	if (agent.override)
+		lines.push(`Override: ${agent.override.scope} (${agent.override.path})`);
+	if (agent.systemPrompt.trim())
+		lines.push("", "System Prompt:", agent.systemPrompt);
 	return lines.join("\n");
 }
 
-async function selectFromList(ctx: ExtensionContext, title: string, subtitle: string | undefined, items: SelectorItem[]): Promise<string | undefined> {
+async function selectFromList(
+	ctx: ExtensionContext,
+	title: string,
+	subtitle: string | undefined,
+	items: SelectorItem[],
+): Promise<string | undefined> {
 	if (typeof ctx.ui.custom === "function") {
 		const result = await ctx.ui.custom<SelectorResult>(
-			(tui, theme, kb, done) => new SelectorComponent(tui, theme, kb, { title, subtitle, items, done }),
+			(tui, theme, kb, done) =>
+				new SelectorComponent(tui, theme, kb, { title, subtitle, items, done }),
 			{ overlay: false },
 		);
 		return result?.confirmed ? result.value : undefined;
 	}
 	const flatTitle = subtitle ? `${title}\nCurrent: ${subtitle}` : title;
-	const labelToValue = new Map(items.map((item) => [item.label, item.value] as const));
-	const choice = await ctx.ui.select(flatTitle, items.map((item) => item.value));
-	return choice ? (items.find((item) => item.value === choice)?.value ?? labelToValue.get(choice)) : undefined;
+	const labelToValue = new Map(
+		items.map((item) => [item.label, item.value] as const),
+	);
+	const choice = await ctx.ui.select(
+		flatTitle,
+		items.map((item) => item.value),
+	);
+	return choice
+		? (items.find((item) => item.value === choice)?.value ??
+				labelToValue.get(choice))
+		: undefined;
 }
 
-async function chooseModel(ctx: ExtensionContext, agent: AgentConfig): Promise<string | undefined | null> {
+async function chooseModel(
+	ctx: ExtensionContext,
+	agent: AgentConfig,
+): Promise<string | undefined | null> {
 	const models = liveAvailableModels(ctx);
 	const current = agent.model ?? INHERIT_MODEL_CHOICE;
-	const items: SelectorItem[] = [{ value: INHERIT_MODEL_CHOICE, label: INHERIT_MODEL_CHOICE, current: !agent.model }];
-	if (agent.model && !models.some((model) => modelFullId(model) === agent.model)) {
+	const items: SelectorItem[] = [
+		{
+			value: INHERIT_MODEL_CHOICE,
+			label: INHERIT_MODEL_CHOICE,
+			current: !agent.model,
+		},
+	];
+	if (
+		agent.model &&
+		!models.some((model) => modelFullId(model) === agent.model)
+	) {
 		items.push({ value: agent.model, label: agent.model, current: true });
 	}
 	for (const model of models) {
 		const fullId = modelFullId(model);
-		items.push({ value: fullId, label: model.id, badge: model.provider, current: fullId === agent.model });
+		items.push({
+			value: fullId,
+			label: model.id,
+			badge: model.provider,
+			current: fullId === agent.model,
+		});
 	}
-	const choice = await selectFromList(ctx, `Select model for ${agent.name}`, current, items);
+	const choice = await selectFromList(
+		ctx,
+		`Select model for ${agent.name}`,
+		current,
+		items,
+	);
 	if (choice === undefined) return null;
 	return choice === INHERIT_MODEL_CHOICE ? undefined : choice;
 }
 
-async function chooseThinking(ctx: ExtensionContext, agent: AgentConfig): Promise<string | undefined | null> {
+async function chooseThinking(
+	ctx: ExtensionContext,
+	agent: AgentConfig,
+): Promise<string | undefined | null> {
 	const availableModels = liveAvailableModels(ctx).map(toModelInfo);
-	const effectiveModel = agent.model ?? (ctx.model ? modelFullId(ctx.model) : undefined);
-	const modelInfo = findModelInfo(effectiveModel, availableModels, ctx.model?.provider);
+	const effectiveModel =
+		agent.model ?? (ctx.model ? modelFullId(ctx.model) : undefined);
+	const modelInfo = findModelInfo(
+		effectiveModel,
+		availableModels,
+		ctx.model?.provider,
+	);
 	const levels = getSupportedThinkingLevels(modelInfo);
-	const current = agent.thinking === false ? "off" : agent.thinking ?? INHERIT_THINKING_CHOICE;
+	const current =
+		agent.thinking === false
+			? "off"
+			: (agent.thinking ?? INHERIT_THINKING_CHOICE);
 	const values: string[] = [INHERIT_THINKING_CHOICE, ...levels];
-	if (current !== INHERIT_THINKING_CHOICE && !values.includes(current)) values.splice(1, 0, current);
+	if (current !== INHERIT_THINKING_CHOICE && !values.includes(current))
+		values.splice(1, 0, current);
 	const modelNote = agent.model
 		? `Model: ${agent.model}`
 		: effectiveModel
 			? `Session model: ${effectiveModel}`
 			: "Model: default / inherit";
-	const items: SelectorItem[] = values.map((value) => ({ value, label: value, current: value === current }));
-	const choice = await selectFromList(ctx, `Select thinking level for ${agent.name}`, `${modelNote} · ${current}`, items);
+	const items: SelectorItem[] = values.map((value) => ({
+		value,
+		label: value,
+		current: value === current,
+	}));
+	const choice = await selectFromList(
+		ctx,
+		`Select thinking level for ${agent.name}`,
+		`${modelNote} · ${current}`,
+		items,
+	);
 	if (choice === undefined) return null;
 	return choice === INHERIT_THINKING_CHOICE ? undefined : choice;
 }
 
-async function chooseOverrideScope(ctx: ExtensionContext, agent: AgentConfig): Promise<"user" | "project" | undefined> {
+async function chooseOverrideScope(
+	ctx: ExtensionContext,
+	agent: AgentConfig,
+): Promise<"user" | "project" | undefined> {
 	if (agent.override?.scope) return agent.override.scope;
 	const d = discoverAgentsAll(ctx.cwd);
 	if (!d.projectSettingsPath || !ctx.hasUI) return "user";
-	const choice = await ctx.ui.select(`Save builtin override for ${agent.name}`, ["user", "project"]);
+	const choice = await ctx.ui.select(
+		`Save override for ${agent.name}`,
+		["user", "project"],
+	);
 	return choice === "user" || choice === "project" ? choice : undefined;
 }
 
@@ -265,24 +409,38 @@ function persistSettingsField(
 	field: EditableOverrideField,
 	value: string | undefined,
 ): { filePath: string; overridden: boolean } {
-	const base = agent.override?.base ?? buildBuiltinBase(agent);
+	const base = agent.override?.base ?? buildOverrideBase(agent);
 	if (value === undefined || value === base[field]) {
 		return {
-			filePath: removeBuiltinAgentOverrideFields(ctx.cwd, agent.name, scope, [field]).path,
+			filePath: removeAgentOverrideFields(ctx.cwd, agent.name, scope, [
+				field,
+			]).path,
 			overridden: false,
 		};
 	}
 	return {
-		filePath: mergeBuiltinAgentOverride(ctx.cwd, agent.name, scope, { [field]: value }),
+		filePath: mergeAgentOverride(ctx.cwd, agent.name, scope, {
+			[field]: value,
+		}),
 		overridden: true,
 	};
 }
 
-async function saveAgentModel(ctx: ExtensionContext, agent: AgentConfig, selectedModel: string | undefined): Promise<string | null> {
+async function saveAgentModel(
+	ctx: ExtensionContext,
+	agent: AgentConfig,
+	selectedModel: string | undefined,
+): Promise<string | null> {
 	if (savesThroughSettings(agent, "model")) {
 		const scope = await chooseOverrideScope(ctx, agent);
 		if (!scope) return null;
-		const { filePath, overridden } = persistSettingsField(ctx, agent, scope, "model", selectedModel);
+		const { filePath, overridden } = persistSettingsField(
+			ctx,
+			agent,
+			scope,
+			"model",
+			selectedModel,
+		);
 		return overridden
 			? `Saved ${scope} settings override for '${agent.name}' with model '${selectedModel}' in ${filePath}.`
 			: `Cleared model settings override for '${agent.name}' in ${filePath}.`;
@@ -290,20 +448,39 @@ async function saveAgentModel(ctx: ExtensionContext, agent: AgentConfig, selecte
 
 	const readOnlyMessage = readOnlyAgentMessage(agent, "model");
 	if (readOnlyMessage) return readOnlyMessage;
-	const updated: AgentConfig = { ...editableAgentConfig(agent), model: selectedModel };
-	fs.writeFileSync(updated.filePath, serializeAgent(updated, {
-		preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, { model: selectedModel }),
-	}), "utf-8");
+	const updated: AgentConfig = {
+		...editableAgentConfig(agent),
+		model: selectedModel,
+	};
+	fs.writeFileSync(
+		updated.filePath,
+		serializeAgent(updated, {
+			preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, {
+				model: selectedModel,
+			}),
+		}),
+		"utf-8",
+	);
 	return selectedModel
 		? `Updated '${agent.name}' model to '${selectedModel}' in ${updated.filePath}.`
 		: `Cleared '${agent.name}' model in ${updated.filePath}.`;
 }
 
-async function saveAgentThinking(ctx: ExtensionContext, agent: AgentConfig, selectedThinking: string | undefined): Promise<string | null> {
+async function saveAgentThinking(
+	ctx: ExtensionContext,
+	agent: AgentConfig,
+	selectedThinking: string | undefined,
+): Promise<string | null> {
 	if (savesThroughSettings(agent, "thinking")) {
 		const scope = await chooseOverrideScope(ctx, agent);
 		if (!scope) return null;
-		const { filePath, overridden } = persistSettingsField(ctx, agent, scope, "thinking", selectedThinking);
+		const { filePath, overridden } = persistSettingsField(
+			ctx,
+			agent,
+			scope,
+			"thinking",
+			selectedThinking,
+		);
 		return overridden
 			? `Saved ${scope} settings override for '${agent.name}' with thinking '${selectedThinking}' in ${filePath}.`
 			: `Cleared thinking settings override for '${agent.name}' in ${filePath}.`;
@@ -311,10 +488,19 @@ async function saveAgentThinking(ctx: ExtensionContext, agent: AgentConfig, sele
 
 	const readOnlyMessage = readOnlyAgentMessage(agent, "thinking");
 	if (readOnlyMessage) return readOnlyMessage;
-	const updated: AgentConfig = { ...editableAgentConfig(agent), thinking: selectedThinking };
-	fs.writeFileSync(updated.filePath, serializeAgent(updated, {
-		preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, { thinking: selectedThinking }),
-	}), "utf-8");
+	const updated: AgentConfig = {
+		...editableAgentConfig(agent),
+		thinking: selectedThinking,
+	};
+	fs.writeFileSync(
+		updated.filePath,
+		serializeAgent(updated, {
+			preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, {
+				thinking: selectedThinking,
+			}),
+		}),
+		"utf-8",
+	);
 	return selectedThinking
 		? `Updated '${agent.name}' thinking to '${selectedThinking}' in ${updated.filePath}.`
 		: `Cleared '${agent.name}' thinking in ${updated.filePath}.`;
@@ -325,47 +511,65 @@ function metadataSummary(agent: AgentConfig): string {
 	return [
 		`Source: ${agent.source}`,
 		`Model: ${agent.model ?? "default / inherit"}`,
-		`Thinking: ${agent.thinking === false ? "off" : agent.thinking ?? "default / inherit"}`,
+		`Thinking: ${agent.thinking === false ? "off" : (agent.thinking ?? "default / inherit")}`,
 	].join(" · ");
 }
 
-async function saveAgentSystemPrompt(ctx: ExtensionContext, agent: AgentConfig, systemPrompt: string): Promise<string | null> {
+async function saveAgentSystemPrompt(
+	agent: AgentConfig,
+	systemPrompt: string,
+): Promise<string | null> {
 	const nextPrompt = systemPrompt.replace(/\s+$/, "");
-	if (savesThroughSettings(agent, "systemPrompt")) {
-		const scope = await chooseOverrideScope(ctx, agent);
-		if (!scope) return null;
-		const { filePath, overridden } = persistSettingsField(ctx, agent, scope, "systemPrompt", nextPrompt);
-		return overridden
-			? `Saved ${scope} settings override for '${agent.name}' system prompt in ${filePath}.`
-			: `Cleared system prompt settings override for '${agent.name}' in ${filePath}.`;
-	}
 	const readOnlyMessage = readOnlyAgentMessage(agent, "systemPrompt");
 	if (readOnlyMessage) return readOnlyMessage;
-	const updated: AgentConfig = { ...editableAgentConfig(agent), systemPrompt: nextPrompt };
-	fs.writeFileSync(updated.filePath, serializeAgent(updated, {
-		preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, { systemPrompt: nextPrompt }),
-	}), "utf-8");
+	const updated: AgentConfig = {
+		...editableAgentConfig(agent),
+		systemPrompt: nextPrompt,
+	};
+	fs.writeFileSync(
+		updated.filePath,
+		serializeAgent(updated, {
+			preserveFrontmatterFields: preservedAgentFrontmatterFields(agent, {
+				systemPrompt: nextPrompt,
+			}),
+		}),
+		"utf-8",
+	);
 	return `Updated '${agent.name}' system prompt in ${updated.filePath}.`;
 }
 
-async function editSystemPrompt(ctx: ExtensionContext, agent: AgentConfig): Promise<string | null> {
-	if (!savesThroughSettings(agent, "systemPrompt")) {
-		const readOnlyMessage = readOnlyAgentMessage(agent, "systemPrompt");
-		if (readOnlyMessage) return readOnlyMessage;
-	}
-	const edited = await ctx.ui.editor(`Edit '${agent.name}' system prompt`, agent.systemPrompt ?? "");
+async function editSystemPrompt(
+	ctx: ExtensionContext,
+	agent: AgentConfig,
+): Promise<string | null> {
+	const readOnlyMessage = readOnlyAgentMessage(agent, "systemPrompt");
+	if (readOnlyMessage) return readOnlyMessage;
+	const edited = await ctx.ui.editor(
+		`Edit '${agent.name}' system prompt`,
+		agent.systemPrompt ?? "",
+	);
 	if (edited === undefined) return null;
-	if (edited.replace(/\s+$/, "") === (agent.systemPrompt ?? "").replace(/\s+$/, "")) {
+	if (
+		edited.replace(/\s+$/, "") ===
+		(agent.systemPrompt ?? "").replace(/\s+$/, "")
+	) {
 		return `System prompt for '${agent.name}' left unchanged.`;
 	}
-	return saveAgentSystemPrompt(ctx, agent, edited);
+	return saveAgentSystemPrompt(agent, edited);
 }
 
-export async function openSubagentsAdmin(pi: ExtensionAPI, ctx: ExtensionContext, args = ""): Promise<void> {
+export async function openSubagentsAdmin(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	args = "",
+): Promise<void> {
 	const selection = await selectAgent(ctx, args);
 	if (selection.kind === "cancelled") return;
 	if (selection.kind === "ambiguous") {
-		sendAdminMessage(pi, `Subagent '${selection.requestedName}' is ambiguous. Choose a scope in interactive mode:\n${selection.matches.map((agent) => `- ${agent.source}: ${agent.filePath}`).join("\n")}`);
+		sendAdminMessage(
+			pi,
+			`Subagent '${selection.requestedName}' is ambiguous. Choose a scope in interactive mode:\n${selection.matches.map((agent) => `- ${agent.source}: ${agent.filePath}`).join("\n")}`,
+		);
 		return;
 	}
 	if (selection.kind === "not-found") {
@@ -387,12 +591,24 @@ export async function openSubagentsAdmin(pi: ExtensionAPI, ctx: ExtensionContext
 	let action: string | undefined;
 	if (requestedAction === "model") action = "Change model";
 	else if (requestedAction === "thinking") action = "Change thinking level";
-	else if (requestedAction === "prompt" || requestedAction === "system-prompt" || requestedAction === "edit") action = "Edit system prompt";
-	else if (requestedAction === "details" || requestedAction === "info") action = "Show details";
+	else if (
+		requestedAction === "prompt" ||
+		requestedAction === "system-prompt" ||
+		requestedAction === "edit"
+	)
+		action = "Edit system prompt";
+	else if (requestedAction === "details" || requestedAction === "info")
+		action = "Show details";
 	if (!action) {
 		action = await ctx.ui.select(
 			`Administer ${agent.name}\n${metadataSummary(agent)}`,
-			["Change model", "Change thinking level", "Edit system prompt", "Show details", "Done"],
+			[
+				"Change model",
+				"Change thinking level",
+				"Edit system prompt",
+				"Show details",
+				"Done",
+			],
 		);
 	}
 

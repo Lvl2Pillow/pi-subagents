@@ -165,7 +165,7 @@ describe("native subagent fleet", () => {
 	it("renders selectable transcript detail and completed artifact paths within terminal width", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-render-"));
 		try {
-			const asyncDir = writeAsyncRun(root, { id: "async-finished", state: "complete", contexts: ["fork"], output: "FINAL ASYNC OUTPUT" });
+			writeAsyncRun(root, { id: "async-finished", state: "complete", contexts: ["fork"], output: "FINAL ASYNC OUTPUT" });
 			const state = stateForTest();
 			let closed = false;
 			let renderRequests = 0;

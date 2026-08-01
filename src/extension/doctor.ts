@@ -78,7 +78,7 @@ function formatExistingDirectory(label: string, dirPath: string): string {
 }
 
 function formatSourceCounts(counts: Record<AgentSource, number>): string {
-	return `builtin ${counts.builtin}, package ${counts.package}, user ${counts.user}, project ${counts.project}`;
+	return `package ${counts.package}, user ${counts.user}, project ${counts.project}`;
 }
 
 function formatSkillSourceCounts(skills: Array<{ source: SkillSource }>): string {
@@ -92,7 +92,6 @@ function formatSkillSourceCounts(skills: Array<{ source: SkillSource }>): string
 		"user-settings",
 		"user-package",
 		"extension",
-		"builtin",
 		"unknown",
 	];
 	const parts = ordered
@@ -128,7 +127,6 @@ function formatDiscovery(input: DoctorReportInput, deps: DoctorDeps): string[] {
 		lineFromCheck("agents/chains", () => {
 			const discovered = deps.discoverAgentsAll(input.cwd);
 			const agentCounts = {
-				builtin: discovered.builtin.length,
 				package: discovered.package?.length ?? 0,
 				user: discovered.user.length,
 				project: discovered.project.length,
@@ -136,9 +134,9 @@ function formatDiscovery(input: DoctorReportInput, deps: DoctorDeps): string[] {
 			const chainCounts = discovered.chains.reduce<Record<AgentSource, number>>((counts, chain) => {
 				counts[chain.source] += 1;
 				return counts;
-			}, { builtin: 0, package: 0, user: 0, project: 0 });
+			}, { package: 0, user: 0, project: 0 });
 			return [
-				`- agents: total ${agentCounts.builtin + agentCounts.package + agentCounts.user + agentCounts.project} (${formatSourceCounts(agentCounts)})`,
+				`- agents: total ${agentCounts.package + agentCounts.user + agentCounts.project} (${formatSourceCounts(agentCounts)})`,
 				`- chains: total ${discovered.chains.length} (${formatSourceCounts(chainCounts)})`,
 			].join("\n");
 		}),

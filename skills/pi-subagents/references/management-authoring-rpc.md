@@ -50,7 +50,7 @@ subagent({ action: "delete", agent: "code-analysis.my-agent" })
 ### Eject, disable, enable, and reset
 
 ```typescript
-// Copy a bundled builtin/package agent to user scope as an editable custom file.
+// Copy a bundled package agent to user scope as an editable custom file.
 subagent({ action: "eject", agent: "reviewer" })
 subagent({ action: "eject", agent: "reviewer", agentScope: "project" })
 
@@ -62,12 +62,12 @@ subagent({ action: "enable", agent: "reviewer", agentScope: "project" })
 subagent({ action: "reset", agent: "reviewer" })
 ```
 
-`eject` copies a builtin or package agent verbatim into the user (default) or project agent dir so it can be customized without hunting package files; the copy shadows the original by runtime name. `disable` writes a reversible `agentOverrides.<name>.disabled: true` entry to the user or project settings file. `enable` removes that `disabled` field while keeping any other override fields. `reset` removes the scope's custom file and settings override to restore the bundled default, and refuses if no bundled default exists (use `delete` for purely custom agents). All four take optional `agentScope: "user" | "project"`; project overrides win over user ones, so target the project scope to undo a project-scope disable.
+`eject` copies a package agent verbatim into the user (default) or project agent dir so it can be customized without hunting package files; the copy shadows the original by runtime name. `disable` writes a reversible `agentOverrides.<name>.disabled: true` entry to the user or project settings file. `enable` removes that `disabled` field while keeping any other override fields. `reset` removes the scope's custom file and settings override to restore the package default, and refuses if no package default exists (use `delete` for purely custom agents). All four take optional `agentScope: "user" | "project"`; project overrides win over user ones, so target the project scope to undo a project-scope disable.
 
 Use management actions when the system needs to create or edit subagents on
 demand without dropping into raw file editing.
 
-Management actions create or update user/project agent files. `config.name` is the local frontmatter name; optional `config.package` registers and looks up the runtime name as `{package}.{name}`. Use the dotted runtime name for `get`, `update`, `delete`, slash commands, and chain steps. For small builtin changes such as a model swap, prefer `subagents.agentOverrides` in settings.
+Management actions create or update user/project agent files. `config.name` is the local frontmatter name; optional `config.package` registers and looks up the runtime name as `{package}.{name}`. Use the dotted runtime name for `get`, `update`, `delete`, slash commands, and chain steps. For small changes such as a model swap, prefer `subagents.agentOverrides` in settings.
 
 ## Creating and Editing Agents by File
 
@@ -118,8 +118,8 @@ That is only a starting point. Omit `package` for the traditional unqualified ru
 
 `skillPath` adds invocation-private skill files or discovery directories relative to the agent file; it does not select them, so list the desired names under `skills`. Local matches win, unresolved or unreadable matches use normal discovery, and local candidates never enter the parent/global catalog.
 
-For many customizations, builtin overrides in settings are lower-friction than
-copying a full builtin file.
+For many customizations, overrides in settings are lower-friction than
+copying a full agent file.
 
 ## Prompt Template Integration
 

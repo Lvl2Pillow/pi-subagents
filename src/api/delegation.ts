@@ -196,8 +196,6 @@ export interface SubagentDelegationResponse extends SubagentDelegationStarted {
 	warnings?: string[];
 }
 
-export interface SubagentDelegationCancel extends SubagentDelegationStarted {}
-
 export type SubagentDelegationV2Thinking = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export type SubagentDelegationV2ResultRequest =
@@ -284,5 +282,3 @@ export interface SubagentDelegationV2InvalidResponse {
 }
 
 export type SubagentDelegationV2Response = SubagentDelegationV2TerminalResponse | SubagentDelegationV2InvalidResponse;
-
-export interface SubagentDelegationV2Cancel extends SubagentDelegationV2Started {}

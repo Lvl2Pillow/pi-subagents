@@ -33,13 +33,14 @@ Humans often use the slash-command layer instead:
 - `/subagents-fleet` — open the live, inspection-only foreground/async fleet; `Ctrl+Alt+F` opens it during an active foreground turn, `↑↓`/`jk` selects children, and `PgUp`/`PgDn` scrolls transcript detail
 - `/subagents-watchdog` — inspect or configure the opt-in adversarial change watchdog (model, on/off, recommend-model, check)
 - `/subagents-doctor` — diagnose setup, discovery, async paths, and supervisor channel state
-- `/subagents-models [agent]` — show the live runtime-loaded builtin model mapping
+- `/subagents-models [agent]` — show the live runtime-loaded model mapping
 - `/prompt-workflow` and `/chain-prompts` — run prompt templates through native subagent single/chain workflows
 
 Prefer the tool when you are writing agent logic. Prefer the slash commands when
 you are guiding a human through an interactive flow.
 
 Packaged prompt shortcuts are also available for repeatable workflows. Treat them as reusable orchestration recipes, not just human slash commands. When the user asks for one of these shapes, or when the workflow clearly fits, apply the same pattern directly with `subagent(...)` and other tools:
+
 - `/parallel-review` — fresh-context reviewers with distinct review angles, then synthesis
 - `/review-loop` — parent-orchestrated worker, fresh-reviewer, and fix-worker cycles until clean or capped
 - `/parallel-research` — combine `researcher` and `scout` for external evidence plus local code context
@@ -61,6 +62,7 @@ Use this when the user wants adversarial review of a diff, plan, issue, file, or
 Use this when `{ action: "list" }` reports proactive skill subagent suggestions and the user's task would benefit from perspectives the parent regularly uses. These suggestions are conservative: a skill is recommended only when it is available and referenced repeatedly by configured agents or saved chains. Treat the list as an opt-in hint for the current task, not a command to always fan out.
 
 Default guardrails:
+
 - Keep the fanout small: usually one or two skill-specialist children, never more than the listed recommendations or configured cap.
 - Prefer `context: "fresh"` and include only the files, diff, plan, URL, or request details each child needs. Use forked context only when private/session history is essential and appropriate to share.
 - Use read-only agents for analysis/review unless implementation was explicitly requested; do not create several writers in the same worktree.
@@ -71,13 +73,21 @@ Example shape:
 
 ```typescript
 subagent({
-  tasks: [
-    { agent: "reviewer", task: "Apply the available 'deslop' skill to review the current diff for concrete cleanup findings only. Do not modify files.", skill: "deslop" },
-    { agent: "reviewer", task: "Apply the available 'accessibility' skill to review the UI changes for concrete issues only. Do not modify files.", skill: "accessibility" }
-  ],
-  context: "fresh",
-  concurrency: 2
-})
+	tasks: [
+		{
+			agent: "reviewer",
+			task: "Apply the available 'deslop' skill to review the current diff for concrete cleanup findings only. Do not modify files.",
+			skill: "deslop",
+		},
+		{
+			agent: "reviewer",
+			task: "Apply the available 'accessibility' skill to review the UI changes for concrete issues only. Do not modify files.",
+			skill: "accessibility",
+		},
+	],
+	context: "fresh",
+	concurrency: 2,
+});
 ```
 
 ### Review-loop technique
@@ -98,15 +108,29 @@ Example shape:
 
 ```typescript
 subagent({
-  chain: [{
-    parallel: [
-      { agent: "context-builder", task: "Build request/scope context for: ...", output: "context-build/request-and-scope.md" },
-      { agent: "context-builder", task: "Build codebase/pattern context for: ...", output: "context-build/codebase-and-patterns.md" },
-      { agent: "context-builder", task: "Build validation/risk context for: ...", output: "context-build/validation-and-risks.md" }
-    ]
-  }],
-  context: "fresh"
-})
+	chain: [
+		{
+			parallel: [
+				{
+					agent: "context-builder",
+					task: "Build request/scope context for: ...",
+					output: "context-build/request-and-scope.md",
+				},
+				{
+					agent: "context-builder",
+					task: "Build codebase/pattern context for: ...",
+					output: "context-build/codebase-and-patterns.md",
+				},
+				{
+					agent: "context-builder",
+					task: "Build validation/risk context for: ...",
+					output: "context-build/validation-and-risks.md",
+				},
+			],
+		},
+	],
+	context: "fresh",
+});
 ```
 
 ### Parallel handoff-plan technique
@@ -117,16 +141,34 @@ Example shape:
 
 ```typescript
 subagent({
-  chain: [
-    { parallel: [
-      { agent: "researcher", task: "Research the external reference and transferable implementation ideas for: ...", output: "handoff/external-reference.md" },
-      { agent: "context-builder", task: "Build local codebase context for: ...", output: "handoff/local-context.md" },
-      { agent: "context-builder", task: "Compare evidence and propose implementation strategy for: ...", output: "handoff/implementation-strategy.md" }
-    ] },
-    { agent: "context-builder", task: "Read {previous} and synthesize the final handoff plan and implementation-ready meta-prompt.", output: "handoff/final-handoff-plan.md" }
-  ],
-  context: "fresh"
-})
+	chain: [
+		{
+			parallel: [
+				{
+					agent: "researcher",
+					task: "Research the external reference and transferable implementation ideas for: ...",
+					output: "handoff/external-reference.md",
+				},
+				{
+					agent: "context-builder",
+					task: "Build local codebase context for: ...",
+					output: "handoff/local-context.md",
+				},
+				{
+					agent: "context-builder",
+					task: "Compare evidence and propose implementation strategy for: ...",
+					output: "handoff/implementation-strategy.md",
+				},
+			],
+		},
+		{
+			agent: "context-builder",
+			task: "Read {previous} and synthesize the final handoff plan and implementation-ready meta-prompt.",
+			output: "handoff/final-handoff-plan.md",
+		},
+	],
+	context: "fresh",
+});
 ```
 
 ### Gather-context-and-clarify technique
@@ -153,51 +195,105 @@ Example shape:
 
 ```typescript
 subagent({
-  async: true,
-  context: "fresh",
-  chain: [
-    { parallel: [
-      { agent: "reviewer", phase: "Planning", label: "Deploy docs", as: "deployPlan", task: "Plan fixes for deploy docs/workflow. Inspect the current diff. Do not modify project/source files; returning findings via the configured output artifact is allowed.", output: "plans/deploy.md", outputMode: "file-only" },
-      { agent: "reviewer", phase: "Planning", label: "Scheduler contract", as: "schedulerPlan", task: "Plan fixes for scheduler contract. Inspect the current diff. Do not modify project/source files; returning findings via the configured output artifact is allowed.", output: "plans/scheduler.md", outputMode: "file-only" },
-      { agent: "reviewer", phase: "Planning", label: "Sandbox/security", as: "sandboxPlan", task: "Plan fixes for sandbox/security. Inspect the current diff. Do not modify project/source files; returning findings via the configured output artifact is allowed.", output: "plans/sandbox.md", outputMode: "file-only" }
-    ], concurrency: 3 },
-    { agent: "worker", phase: "Implementation", label: "Apply accepted fixes", as: "workerResult", task: "Apply only the accepted fixes from these planning summaries. You are the sole writer for the active worktree. Run focused validation and report changed files, commands, failures, and remaining issues.\n\nDeploy plan:\n{outputs.deployPlan}\n\nScheduler plan:\n{outputs.schedulerPlan}\n\nSandbox plan:\n{outputs.sandboxPlan}", output: "worker/fixes.md", outputMode: "file-only", progress: true },
-    { parallel: [
-      { agent: "reviewer", phase: "Validation", label: "Deploy/scheduler validation", task: "Validate the post-worker diff for deploy and scheduler fixes. Start from the worker result: {outputs.workerResult}. Do not modify project/source files; returning findings via the configured output artifact is allowed.", output: "validation/deploy-scheduler.md", outputMode: "file-only" },
-      { agent: "reviewer", phase: "Validation", label: "Sandbox validation", task: "Validate the post-worker diff for sandbox/security fixes. Start from the worker result: {outputs.workerResult}. Do not modify project/source files; returning findings via the configured output artifact is allowed.", output: "validation/sandbox.md", outputMode: "file-only" }
-    ], concurrency: 2 }
-  ]
-})
+	async: true,
+	context: "fresh",
+	chain: [
+		{
+			parallel: [
+				{
+					agent: "reviewer",
+					phase: "Planning",
+					label: "Deploy docs",
+					as: "deployPlan",
+					task: "Plan fixes for deploy docs/workflow. Inspect the current diff. Do not modify project/source files; returning findings via the configured output artifact is allowed.",
+					output: "plans/deploy.md",
+					outputMode: "file-only",
+				},
+				{
+					agent: "reviewer",
+					phase: "Planning",
+					label: "Scheduler contract",
+					as: "schedulerPlan",
+					task: "Plan fixes for scheduler contract. Inspect the current diff. Do not modify project/source files; returning findings via the configured output artifact is allowed.",
+					output: "plans/scheduler.md",
+					outputMode: "file-only",
+				},
+				{
+					agent: "reviewer",
+					phase: "Planning",
+					label: "Sandbox/security",
+					as: "sandboxPlan",
+					task: "Plan fixes for sandbox/security. Inspect the current diff. Do not modify project/source files; returning findings via the configured output artifact is allowed.",
+					output: "plans/sandbox.md",
+					outputMode: "file-only",
+				},
+			],
+			concurrency: 3,
+		},
+		{
+			agent: "worker",
+			phase: "Implementation",
+			label: "Apply accepted fixes",
+			as: "workerResult",
+			task: "Apply only the accepted fixes from these planning summaries. You are the sole writer for the active worktree. Run focused validation and report changed files, commands, failures, and remaining issues.\n\nDeploy plan:\n{outputs.deployPlan}\n\nScheduler plan:\n{outputs.schedulerPlan}\n\nSandbox plan:\n{outputs.sandboxPlan}",
+			output: "worker/fixes.md",
+			outputMode: "file-only",
+			progress: true,
+		},
+		{
+			parallel: [
+				{
+					agent: "reviewer",
+					phase: "Validation",
+					label: "Deploy/scheduler validation",
+					task: "Validate the post-worker diff for deploy and scheduler fixes. Start from the worker result: {outputs.workerResult}. Do not modify project/source files; returning findings via the configured output artifact is allowed.",
+					output: "validation/deploy-scheduler.md",
+					outputMode: "file-only",
+				},
+				{
+					agent: "reviewer",
+					phase: "Validation",
+					label: "Sandbox validation",
+					task: "Validate the post-worker diff for sandbox/security fixes. Start from the worker result: {outputs.workerResult}. Do not modify project/source files; returning findings via the configured output artifact is allowed.",
+					output: "validation/sandbox.md",
+					outputMode: "file-only",
+				},
+			],
+			concurrency: 2,
+		},
+	],
+});
 ```
 
-## Builtin Agents
+## Agents
 
-Builtin agents load at the lowest priority. Project agents override user agents,
-and user/project agents override builtins with the same name.
+Agents load at a fixed precedence: project agents override user agents, and user agents override package agents with the same runtime name.
 
-| Agent | Purpose | Model | Typical output / role |
-|-------|---------|-------|------------------------|
-| `scout` | Fast codebase recon | inherits default | Writes `context.md` handoff material |
-| `planner` | Creates implementation plans | inherits default | Writes `plan.md` |
-| `worker` | Implementation and approved oracle handoffs | inherits default | Single-writer implementation with decision escalation |
-| `reviewer` | Review specialist | inherits default | Default recipes are review-only; tools include edit/write when a fix pass is explicit |
-| `context-builder` | Requirements/codebase handoff builder | inherits default | Writes structured context files |
-| `researcher` | Web research brief generator | inherits default | Writes `research.md` |
-| `delegate` | Lightweight generic delegate | inherits default | No fixed output; generic delegated work |
-| `oracle` | Decision-consistency advisory review | inherits default | Advisory review, supervisor coordination |
-| `advisor` | Claude Code-compatible alias for `oracle` | inherits default | Same advisory role as `oracle` |
+Common packaged roles include:
 
-Builtin `worker` and `delegate` use strict tool allowlists and do not inherit ambient parent extension tools. To give a child an extension tool, name it in `tools` and load its provider via `extensions`, a path-like `tools` entry, or `subagentOnlyExtensions`. Custom agents without an `extensions` field follow `subagents.defaultExtensions` when set.
+| Agent             | Purpose                                     | Model            | Typical output / role                                                                 |
+| ----------------- | ------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------- |
+| `scout`           | Fast codebase recon                         | inherits default | Writes `context.md` handoff material                                                  |
+| `planner`         | Creates implementation plans                | inherits default | Writes `plan.md`                                                                      |
+| `worker`          | Implementation and approved oracle handoffs | inherits default | Single-writer implementation with decision escalation                                 |
+| `reviewer`        | Review specialist                           | inherits default | Default recipes are review-only; tools include edit/write when a fix pass is explicit |
+| `context-builder` | Requirements/codebase handoff builder       | inherits default | Writes structured context files                                                       |
+| `researcher`      | Web research brief generator                | inherits default | Writes `research.md`                                                                  |
+| `delegate`        | Lightweight generic delegate                | inherits default | No fixed output; generic delegated work                                               |
+| `oracle`          | Decision-consistency advisory review        | inherits default | Advisory review, supervisor coordination                                              |
+| `advisor`         | Claude Code-compatible alias for `oracle`   | inherits default | Same advisory role as `oracle`                                                        |
 
-Builtin agents inherit the current Pi default model unless a run, user setting, project setting, or `subagents.defaultModel` overrides `model`. Set `subagents.defaultModel` when subagents should use a different default model than the parent session. Override builtin defaults before copying full agent files when a small tweak is enough.
+`worker` and `delegate` style agents use strict tool allowlists and do not inherit ambient parent extension tools. To give a child an extension tool, name it in `tools` and load its provider via `extensions`, a path-like `tools` entry, or `subagentOnlyExtensions`. Custom agents without an `extensions` field follow `subagents.defaultExtensions` when set.
 
-Set `subagents.defaultThinking` to apply a shared thinking level to builtin, package, user, and project agents whose frontmatter leaves `thinking` unset. Project settings win over user settings; explicit frontmatter (including `thinking: false`), `agentOverrides.<name>.thinking`, and per-run overrides remain more specific. This setting affects child agents only and does not change the parent session's default thinking level.
+Agents inherit the current Pi default model unless a run, user setting, project setting, or `subagents.defaultModel` overrides `model`. Set `subagents.defaultModel` when subagents should use a different default model than the parent session. Prefer `subagents.agentOverrides` for small tweaks over copying full agent files.
+
+Set `subagents.defaultThinking` to apply a shared thinking level to package, user, and project agents whose frontmatter leaves `thinking` unset. Project settings win over user settings; explicit frontmatter (including `thinking: false`), `agentOverrides.<name>.thinking`, and per-run overrides remain more specific. This setting affects child agents only and does not change the parent session's default thinking level.
 
 ```json
 {
-  "subagents": {
-    "defaultThinking": "medium"
-  }
+	"subagents": {
+		"defaultThinking": "medium"
+	}
 }
 ```
 
@@ -213,9 +309,10 @@ Model ids do not have to be exact. Separator variations (`claude-haiku-4.5` vs `
 
 ## Prompting role subagents
 
-Builtin role agents inherit the current Pi default model unless you override them. When launching them, write the task prompt as a compact contract, not a long procedural script. Define the destination and let the role choose the efficient path.
+Role agents inherit the current Pi default model unless you override them. When launching them, write the task prompt as a compact contract, not a long procedural script. Define the destination and let the role choose the efficient path.
 
 A strong subagent prompt usually includes:
+
 - **Goal**: the concrete outcome the child should produce.
 - **Context/evidence**: relevant plan paths, files, diffs, decisions, or user constraints already approved.
 - **Success criteria**: what must be true before the child can finish.
@@ -229,6 +326,7 @@ Avoid carrying over old prompt habits that over-specify every step. Use `must`, 
 For implementation handoffs, name the approved scope and success criteria more clearly than the process. Good prompts say what to change, what not to change, where the evidence lives, how to validate, and when to escalate. They should not ask the child to create another subagent plan or continue the parent conversation.
 
 Settings locations:
+
 - User scope: `~/.pi/agent/settings.json`
 - Project scope: `.pi/settings.json`
 
@@ -236,29 +334,24 @@ Direct settings example:
 
 ```json
 {
-  "subagents": {
-    "agentOverrides": {
-      "reviewer": {
-        "model": "anthropic/claude-sonnet-4",
-        "thinking": "high",
-        "fallbackModels": ["openai/gpt-5-mini"],
-        "acceptanceRole": "read-only"
-      }
-    }
-  }
+	"subagents": {
+		"agentOverrides": {
+			"reviewer": {
+				"model": "anthropic/claude-sonnet-4",
+				"thinking": "high",
+				"fallbackModels": ["openai/gpt-5-mini"],
+				"acceptanceRole": "read-only"
+			}
+		}
+	}
 }
 ```
 
 Useful override fields: `model`, `fallbackModels`, `thinking`,
 `systemPromptMode`, `inheritProjectContext`, `inheritSkills`, `defaultContext`,
-`acceptanceRole`, `disabled`, `skills`, `tools`, `extensions`, and `systemPrompt`.
+`acceptanceRole`, `disabled`, `skills`, `tools`, `extensions`.
 Use `acceptanceRole: false` to clear an override. Create a user or project
 agent with the same name only when you want a substantially different agent.
-
-If a provider rejects model IDs with thinking suffixes, use
-`subagents.disableThinking: true` in user or project settings to clear bundled
-builtin thinking defaults globally. A higher-precedence per-agent `thinking`
-override can opt one builtin back in. Existing custom-agent frontmatter remains authoritative.
 
 Set `subagents.defaultExtensions` to give agents without an `extensions` field a shared child extension allowlist. Omit it to preserve ambient extension discovery, set it to `[]` to disable ambient extensions by default, or use `agentOverrides.<name>.extensions` for one agent. Explicit custom-agent frontmatter still wins.
 

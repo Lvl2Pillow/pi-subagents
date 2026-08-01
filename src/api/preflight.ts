@@ -189,7 +189,7 @@ function normalizeAvailableModels(models: SubagentLaunchContractInput["available
 
 function candidateList(inputAgent: string, selected: AgentConfig | undefined, cwd: string): SubagentLaunchContractAgentCandidate[] {
 	const all = discoverAgentsAll(cwd);
-	return [...all.builtin, ...all.package, ...all.user, ...all.project]
+	return [...all.package, ...all.user, ...all.project]
 		.filter((agent) => Boolean(resolveAgentName(inputAgent, [agent]).agent))
 		.map((agent) => ({
 			name: agent.name,
