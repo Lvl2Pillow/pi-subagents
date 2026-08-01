@@ -311,6 +311,7 @@ async function runSingleAttempt(
 		...(options.structuredOutput ? { structuredOutputSchema: options.structuredOutput.schema } : {}),
 	});
 	const result: SingleResult = withRunContext({
+		index: options.index ?? 0,
 		agent: agent.name,
 		task: shared.originalTask ?? task,
 		...(options.agentContract ? { agentContract: options.agentContract } : {}),
@@ -1289,6 +1290,7 @@ export async function runSync(
 	const agent = agents.find((a) => a.name === agentName);
 	if (!agent) {
 		return withRunContext({
+			index: options.index ?? 0,
 			agent: agentName,
 			task,
 			exitCode: 1,
@@ -1300,6 +1302,7 @@ export async function runSync(
 	const outputModeValidationError = validateFileOnlyOutputMode(options.outputMode, options.outputPath, `Single run (${agentName})`);
 	if (outputModeValidationError) {
 		return withRunContext({
+			index: options.index ?? 0,
 			agent: agentName,
 			task,
 			exitCode: 1,
@@ -1336,6 +1339,7 @@ export async function runSync(
 	);
 	if (skillNames.some((skill) => skill.trim() === "pi-subagents") && missingSkills.includes("pi-subagents")) {
 		return withRunContext({
+			index: options.index ?? 0,
 			agent: agentName,
 			task,
 			exitCode: 1,
@@ -1572,6 +1576,7 @@ export async function runSync(
 	}
 
 	const result = withRunContext(lastResult ?? {
+		index: options.index ?? 0,
 		agent: agentName,
 		task,
 		exitCode: 1,

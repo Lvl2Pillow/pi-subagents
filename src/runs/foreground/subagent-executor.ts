@@ -2583,6 +2583,7 @@ async function runForegroundParallelTasks(input: ForegroundParallelRunInput): Pr
 		const budgetState = usageBudgetState(input.usageBudget, sumResultsCost(completedResults));
 		if (budgetState?.exhausted) {
 			return {
+				index,
 				agent: task.agent,
 				task: input.taskTexts[index] ?? "(skipped)",
 				exitCode: 1,

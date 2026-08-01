@@ -875,6 +875,13 @@ export interface UsageBudgetState {
 }
 
 export interface SingleResult {
+	/**
+	 * Stable child identity within the foreground run. Pair with Details.runId for
+	 * cross-run correlation. This is assigned in launch order, remains stable across
+	 * partial progress snapshots and the final result, and is independent of the
+	 * result row's array position.
+	 */
+	index: number;
 	agent: string;
 	task: string;
 	/** Resolved launch context for this child. */

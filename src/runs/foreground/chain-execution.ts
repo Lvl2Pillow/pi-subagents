@@ -301,6 +301,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			const budgetState = usageBudgetState(input.usageBudget, sumResultsCost(input.results.concat(completedResults)));
 			if (budgetState?.exhausted) {
 				return {
+					index: childIndex,
 					agent: task.agent,
 					task: input.parallelTemplates[taskIndex] ?? "(skipped)",
 					exitCode: 1,
@@ -312,6 +313,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			}
 			if (aborted && failFast) {
 				return {
+					index: childIndex,
 					agent: task.agent,
 					task: "(skipped)",
 					exitCode: -1,
