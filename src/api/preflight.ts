@@ -12,7 +12,7 @@ import { resolveTurnBudgetConfig } from "../runs/shared/turn-budget.ts";
 import { getArtifactPaths, getArtifactsDir } from "../shared/artifacts.ts";
 import { resolveEffectiveThinking } from "../shared/model-info.ts";
 import { SUBAGENT_LIFECYCLE_ARTIFACT_VERSION, type ArtifactDirPreference, type ArtifactPaths, type JsonSchemaObject, type OutputMode } from "../shared/types.ts";
-import type { ResolvedSubagentCapabilityCeiling, SubagentCapabilityAudit } from "../runs/shared/capability-ceiling.ts";
+import { capabilityCeilingAgentRestrictionMessage, intersectSubagentCapabilityCeilings, type ResolvedSubagentCapabilityCeiling, type SubagentCapabilityAudit } from "../runs/shared/capability-ceiling.ts";
 import { appendTurnBudgetSystemPrompt } from "../runs/shared/turn-budget.ts";
 import type { ResolvedTurnBudget } from "../shared/types.ts";
 import type { ResolvedMcpDirectToolSelection } from "../runs/shared/mcp-direct-tool-allowlist.ts";
@@ -31,7 +31,8 @@ export type SubagentLaunchContractReasonCode =
 	| "denied_required_tool"
 	| "invalid_artifact_dir"
 	| "invalid_cwd"
-	| "unsupported_mode";
+	| "unsupported_mode"
+	| "restricted_agent";
 
 export interface SubagentLaunchContractDiagnostic {
 	code: SubagentLaunchContractReasonCode | "host_required" | "snapshot_warning";
@@ -233,6 +234,9 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 		return { ok: false, code: "missing_agent", message: `Unknown agent: ${input.agent}`, diagnostics };
 	}
 	const agent = resolvedAgent.agent;
+	const effectiveCapabilityCeiling = intersectSubagentCapabilityCeilings(input.capabilityCeiling, input.inheritedCapabilityCeiling);
+	const restrictionMessage = capabilityCeilingAgentRestrictionMessage(agent.name, effectiveCapabilityCeiling);
+	if (restrictionMessage) return { ok: false, code: "restricted_agent", message: restrictionMessage, diagnostics };
 	const runId = input.runId ?? "preflight";
 	const skillInput = normalizeSkillInput(input.skill);
 	const outputOverride = normalizeSingleOutputOverride(input.output, agent.output);
@@ -272,8 +276,8 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			cwd: effectiveCwd,
 			requireReadTool: resolvedSkills.resolved.length > 0,
 			structuredOutput: Boolean(input.outputSchema),
-			capabilityCeiling: input.capabilityCeiling,
-			inheritedCapabilityCeiling: input.inheritedCapabilityCeiling,
+			capabilityCeiling: effectiveCapabilityCeiling,
+			agentName: agent.name,
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

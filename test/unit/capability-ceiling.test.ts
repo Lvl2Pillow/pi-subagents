@@ -8,6 +8,7 @@ import {
 	parseSubagentCapabilityCeiling,
 	registerSubagentCapabilityCeiling,
 	resolveSubagentCapabilityCeiling,
+	type SubagentCapabilityCeiling,
 } from "../../src/api/capability-ceiling.ts";
 
 describe("subagent capability ceiling", () => {
@@ -33,7 +34,7 @@ describe("subagent capability ceiling", () => {
 	});
 
 	it("rejects malformed policy and disposed updates", () => {
-		assert.throws(() => registerSubagentCapabilityCeiling({ sessionId: "x", source: "x", ceiling: {} as never }), /allowedTools or denyExtensions/);
+		assert.throws(() => registerSubagentCapabilityCeiling({ sessionId: "x", source: "x", ceiling: {} as SubagentCapabilityCeiling }), /allowedTools, allowedAgents, or denyExtensions/);
 		const handle = registerSubagentCapabilityCeiling({ sessionId: "disposed", source: "test", ceiling: { denyExtensions: true } });
 		handle.dispose();
 		assert.throws(() => handle.update({ allowedTools: ["read"] }), /disposed/);

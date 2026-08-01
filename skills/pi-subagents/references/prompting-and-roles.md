@@ -4,7 +4,7 @@ This file is a detailed reference loaded from `skills/pi-subagents/SKILL.md`.
 
 ## Capability ceilings
 
-Parent extensions may register a session-scoped, out-of-band ceiling through `pi-subagents/capability-ceiling`. Child tools are intersected with every active registration and inherited snapshot; `denyExtensions` removes ambient/provider extension loading while retaining package protocol runtime. Do not add a model-visible ceiling field or rely on role selection for enforcement. Restricted schedules are rejected until their ceiling can be persisted safely.
+Parent extensions may register a session-scoped, out-of-band ceiling through `pi-subagents/capability-ceiling`. Child tools and eligible canonical agent names are intersected with every active registration and inherited snapshot; `denyExtensions` removes ambient/provider extension loading while retaining package protocol runtime. `{ action: "list" }` marks non-allowlisted agents as restricted, and launch rejects them before spawn. Do not add a model-visible ceiling field or rely on unrestricted role selection for enforcement. Restricted schedules are rejected until their ceiling can be persisted safely.
 
 ## When to Use
 
