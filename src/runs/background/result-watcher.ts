@@ -7,6 +7,7 @@ import {
 	type IntercomEventBus,
 	type NestedRunSummary,
 	type ParallelHandoffReference,
+	type SubagentOutputState,
 	type SubagentState,
 } from "../../shared/types.ts";
 import {
@@ -41,6 +42,7 @@ type ResultWatcherDeps = {
 type ResultFileChild = {
 	agent?: string;
 	output?: string;
+	outputState?: SubagentOutputState;
 	error?: string;
 	success?: boolean;
 	state?: string;
@@ -171,9 +173,9 @@ export function createResultWatcher(
 			const hasResultChildren = Array.isArray(data.results) && data.results.length > 0;
 			const resultChildren: ResultFileChild[] = hasResultChildren
 				? data.results!
-				: [{ agent: data.agent ?? undefined, output: data.summary, success: data.success }];
+				: [{ agent: data.agent ?? undefined, output: data.summary, outputState: "unknown", success: data.success }];
 			const normalizedChildren = attachNestedChildrenToResultChildren(runId, resultChildren.map((result = {}, index): NormalizedResultChild => {
-				const baseOutput = result.output ?? data.summary;
+				const baseOutput = hasResultChildren ? result.output : result.output ?? data.summary;
 				const hasRealOutput = typeof baseOutput === "string" && baseOutput.trim().length > 0;
 				const output = hasRealOutput ? baseOutput : "(no output)";
 				const summary = result.success === false && result.error
@@ -199,6 +201,9 @@ export function createResultWatcher(
 						turnBudgetExceeded: result.turnBudgetExceeded,
 						processSignal: result.processSignal,
 					}),
+					outputState: result.outputState === "present" || result.outputState === "absent" || result.outputState === "unknown"
+						? result.outputState
+						: "unknown",
 					summary,
 					index,
 					artifactPath: result.artifactPaths?.outputPath,

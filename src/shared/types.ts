@@ -253,6 +253,7 @@ export interface ControlEvent {
 
 export type SubagentResultStatus =
 	"completed" | "failed" | "paused" | "stopped" | "detached";
+export type SubagentOutputState = "present" | "absent" | "unknown";
 export type SubagentRunMode = "single" | "parallel" | "chain";
 
 export interface ParallelHandoffPatch {
@@ -609,6 +610,40 @@ export type PublicNestedRunSummary = Pick<
 	children?: PublicNestedRunSummary[];
 };
 
+export interface SubagentResultIntercomChild {
+	agent: string;
+	/** Process/lifecycle status. It does not establish semantic task completion. */
+	status: SubagentResultStatus;
+	/** Whether the child produced substantive output before its process ended. */
+	outputState?: SubagentOutputState;
+	summary: string;
+	index?: number;
+	artifactPath?: string;
+	sessionPath?: string;
+	intercomTarget?: string;
+	children?: PublicNestedRunSummary[];
+}
+
+export interface SubagentResultIntercomPayload {
+	to: string;
+	message: string;
+	requestId?: string;
+	runId: string;
+	mode: SubagentRunMode;
+	status: SubagentResultStatus;
+	summary: string;
+	source: "foreground" | "async";
+	children: SubagentResultIntercomChild[];
+	asyncId?: string;
+	asyncDir?: string;
+	chainSteps?: number;
+	agent?: string;
+	index?: number;
+	artifactPath?: string;
+	sessionPath?: string;
+	parallelHandoff?: ParallelHandoffReference;
+}
+
 // ============================================================================
 // Progress Tracking
 // ============================================================================
@@ -917,6 +952,8 @@ export interface SingleResult {
 	artifactPaths?: ArtifactPaths;
 	truncation?: TruncationResult;
 	finalOutput?: string;
+	/** Provenance-aware state for substantive child output, excluding synthetic lifecycle messages. */
+	outputState?: SubagentOutputState;
 	outputMode?: OutputMode;
 	savedOutputPath?: string;
 	outputReference?: SavedOutputReference;
@@ -1398,6 +1435,7 @@ export interface ForegroundResumeChild {
 	exitCode?: number;
 	error?: string;
 	finalOutput?: string;
+	outputState?: SubagentOutputState;
 	outputMode?: OutputMode;
 	savedOutputPath?: string;
 	outputSaveError?: string;

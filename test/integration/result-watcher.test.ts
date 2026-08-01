@@ -413,8 +413,8 @@ describe("result watcher", () => {
 					state: "complete",
 					summary: "Combined summary",
 					results: [
-						{ agent: "a", output: "Result from a", success: true, sessionFile: firstSession, artifactPaths: { outputPath: "/tmp/a-output.md" } },
-						{ agent: "b", output: "Result from b", success: false, sessionFile: missingSession, artifactPaths: { outputPath: "/tmp/b-output.md" } },
+						{ agent: "a", output: "Result from a", outputState: "present", success: true, sessionFile: firstSession, artifactPaths: { outputPath: "/tmp/a-output.md" } },
+						{ agent: "b", output: "Result from b", outputState: "present", success: false, sessionFile: missingSession, artifactPaths: { outputPath: "/tmp/b-output.md" } },
 					],
 					sessionId: "session-1",
 					sessionFile: "/tmp/session.jsonl",
@@ -468,8 +468,8 @@ describe("result watcher", () => {
 					stopped: true,
 					summary: "Stopped by user",
 					results: [
-						{ agent: "a", output: "Result from a", success: true },
-						{ agent: "b", output: "Subagent stopped by user.", success: false, stopped: true, state: "stopped" },
+						{ agent: "a", output: "Result from a", outputState: "present", success: true },
+						{ agent: "b", output: "Subagent stopped by user.", outputState: "absent", success: false, stopped: true, state: "stopped" },
 					],
 					sessionId: "session-1",
 				}, null, 2), "utf-8");
@@ -740,8 +740,8 @@ describe("result watcher", () => {
 					state: "paused",
 					summary: "Paused after interrupt. Waiting for explicit next action.",
 					results: [
-						{ agent: "a", output: "Result from a", success: true },
-						{ agent: "b", output: "Paused after interrupt", success: false },
+						{ agent: "a", output: "Result from a", outputState: "present", success: true },
+						{ agent: "b", output: "Paused after interrupt", outputState: "absent", success: false },
 					],
 					sessionId: "session-1",
 				}), "utf-8");

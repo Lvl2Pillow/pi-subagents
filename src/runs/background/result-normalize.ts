@@ -1,6 +1,7 @@
 import type {
 	NestedRunSummary,
 	PublicNestedRunSummary,
+	SubagentOutputState,
 	SubagentResultStatus,
 } from "../../shared/types.ts";
 import { isUnexplainedProcessSignal } from "../shared/process-signal.ts";
@@ -8,6 +9,7 @@ import { isUnexplainedProcessSignal } from "../shared/process-signal.ts";
 export interface NormalizedResultChild {
 	agent: string;
 	status: SubagentResultStatus;
+	outputState?: SubagentOutputState;
 	summary: string;
 	index?: number;
 	artifactPath?: string;

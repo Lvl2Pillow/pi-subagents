@@ -318,6 +318,7 @@ async function runSingleAttempt(
 		launchContractDigest,
 		launchResolvedExtensions,
 		exitCode: 0,
+		outputState: "absent",
 		messages: [],
 		usage: emptyUsage(),
 		model: modelArg,
@@ -1188,6 +1189,7 @@ async function runSingleAttempt(
 
 	const acceptanceOutput = getFinalOutput(result.messages ?? []);
 	let fullOutput = stripAcceptanceReport(acceptanceOutput);
+	result.outputState = fullOutput.trim() || result.structuredOutput !== undefined ? "present" : "absent";
 	if (result.timedOut) {
 		const timeoutMessage = formatTimeoutMessage(options.timeoutMs ?? 0);
 		fullOutput = fullOutput.trim()
@@ -1247,6 +1249,7 @@ async function runSingleAttempt(
 			result.outputSaveError = resolvedOutput.saveError;
 			if (resolvedOutput.savedPath) {
 				result.outputReference = formatSavedOutputReference(resolvedOutput.savedPath, fullOutput);
+				if (result.outputState === "absent") result.outputState = "unknown";
 			}
 	}
 		artifactOutputByResult.set(result, fullOutput);

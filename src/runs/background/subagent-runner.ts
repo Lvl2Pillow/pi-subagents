@@ -26,6 +26,7 @@ import {
 	type ResolvedTurnBudget,
 	type ResolvedToolBudget,
 	type SubagentRunMode,
+	type SubagentOutputState,
 	type UsageBudgetConfig,
 	type ToolBudgetState,
 	type TurnBudgetState,
@@ -176,6 +177,7 @@ interface StepResult {
 	capabilityAudit?: import("../shared/capability-ceiling.ts").SubagentCapabilityAudit;
 	launchResolvedExtensions?: LaunchResolvedChildExtensionsV1;
 	output: string;
+	outputState?: SubagentOutputState;
 	error?: string;
 	protocolError?: ProtocolOutputLimit;
 	success: boolean;
@@ -440,6 +442,7 @@ interface RunPiStreamingResult {
 	error?: string;
 	protocolError?: ProtocolOutputLimit;
 	finalOutput: string;
+	outputState: SubagentOutputState;
 	interrupted?: boolean;
 	timedOut?: boolean;
 	stopped?: boolean;
@@ -859,6 +862,7 @@ function runPiStreaming(
 				error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : interrupted || forcedDrainAfterFinalSuccess ? undefined : finalError ?? signalError,
 				protocolError,
 				finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage ?? "Subagent stopped by user." : timeoutMessage ?? "Subagent timed out.") : finalOutput,
+				outputState: finalOutput.trim() ? "present" : "absent",
 				interrupted,
 				timedOut,
 				stopped,
@@ -892,7 +896,7 @@ function runPiStreaming(
 			const stderr = stderrTail.text();
 			const finalOutput = getFinalOutput(messages) || rawStdoutTail.text().trim();
 			const spawnErrorMessage = spawnError instanceof Error ? spawnError.message : String(spawnError);
-			resolve({ stderr, exitCode: 1, messages, usage, toolCount, durationMs: Date.now() - startedAt, model, error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : error ?? assistantError ?? spawnErrorMessage, protocolError, finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage ?? "Subagent stopped by user." : timeoutMessage ?? "Subagent timed out.") : finalOutput, timedOut, stopped, turnBudget, turnBudgetExceeded, wrapUpRequested: turnBudget?.outcome === "wrap-up-requested" || turnBudget?.outcome === "termination-deferred" || turnBudgetExceeded || undefined, observedMutationAttempt, watchdog: childWatchdogState, processInstanceId });
+			resolve({ stderr, exitCode: 1, messages, usage, toolCount, durationMs: Date.now() - startedAt, model, error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : error ?? assistantError ?? spawnErrorMessage, protocolError, finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage ?? "Subagent stopped by user." : timeoutMessage ?? "Subagent timed out.") : finalOutput, outputState: finalOutput.trim() ? "present" : "absent", timedOut, stopped, turnBudget, turnBudgetExceeded, wrapUpRequested: turnBudget?.outcome === "wrap-up-requested" || turnBudget?.outcome === "termination-deferred" || turnBudgetExceeded || undefined, observedMutationAttempt, watchdog: childWatchdogState, processInstanceId });
 		});
 	});
 }
@@ -1050,6 +1054,7 @@ async function runSingleStep(
 	launchContractDigest?: string;
 	launchResolvedExtensions?: LaunchResolvedChildExtensionsV1;
 	output: string;
+	outputState?: SubagentOutputState;
 	exitCode: number | null;
 	error?: string;
 	protocolError?: ProtocolOutputLimit;
@@ -1516,6 +1521,13 @@ async function runSingleStep(
 	const childWrittenOutput = step.outputPath
 		? extractChildWrittenOutput(finalResult?.messages, step.outputPath, step.cwd ?? ctx.cwd)
 		: undefined;
+	const outputState: SubagentOutputState = finalResult?.outputState === "present"
+		|| (finalResult as (RunPiStreamingResult & { structuredOutput?: unknown }) | undefined)?.structuredOutput !== undefined
+		|| Boolean(childWrittenOutput?.trim())
+		? "present"
+		: resolvedOutput.savedPath
+			? "unknown"
+			: finalResult?.outputState ?? "unknown";
 	const finalizedOutput = finalizeSingleOutput({
 		fullOutput: outputForSummary,
 		outputPath: step.outputPath,
@@ -1601,6 +1613,7 @@ async function runSingleStep(
 		...(step.agentContract ? { agentContract: step.agentContract } : {}),
 		launchContractDigest: actualLaunchContractDigest,
 		output: outputForSummary,
+		outputState,
 		exitCode: effectiveFinalExitCode,
 		error: effectiveFinalError,
 		protocolError: finalResult?.protocolError,
@@ -3371,6 +3384,7 @@ async function runSubagent(
 					launchContractDigest: pr.launchContractDigest,
 					launchResolvedExtensions: pr.launchResolvedExtensions,
 					output: pr.output,
+					outputState: pr.outputState,
 					error: pr.error,
 					protocolError: pr.protocolError,
 					success: pr.stopped !== true && pr.interrupted !== true && pr.exitCode === 0,
@@ -3775,6 +3789,7 @@ async function runSubagent(
 						launchContractDigest: pr.launchContractDigest,
 						launchResolvedExtensions: pr.launchResolvedExtensions,
 						output: pr.output,
+						outputState: pr.outputState,
 						error: pr.error,
 						protocolError: pr.protocolError,
 						success: pr.stopped !== true && pr.interrupted !== true && pr.exitCode === 0,
@@ -3957,6 +3972,7 @@ async function runSubagent(
 				launchContractDigest: singleResult.launchContractDigest,
 				launchResolvedExtensions: singleResult.launchResolvedExtensions,
 				output: stopped || childStopped ? stopMessage : timedOut ? (timeoutMessage ?? "Subagent timed out.") : singleResult.output,
+				outputState: singleResult.outputState,
 				error: stopped || childStopped ? stopMessage : timedOut ? (timeoutMessage ?? "Subagent timed out.") : singleResult.error,
 				protocolError: singleResult.protocolError,
 				success: !stopped && !childStopped && !timedOut && singleResult.interrupted !== true && singleResult.exitCode === 0,
@@ -4280,6 +4296,7 @@ async function runSubagent(
 				agent: r.agent,
 				context: r.context,
 				output: r.output,
+				outputState: r.outputState,
 				error: r.error,
 				protocolError: r.protocolError,
 				success: r.success,
