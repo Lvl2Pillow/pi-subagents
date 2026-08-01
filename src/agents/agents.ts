@@ -51,6 +51,7 @@ export function defaultInheritSkills(): boolean {
 }
 
 export interface AgentOverrideBase {
+	description?: string;
 	model?: string;
 	fallbackModels?: string[];
 	thinking?: string | false;
@@ -71,6 +72,7 @@ export interface AgentOverrideBase {
 }
 
 interface AgentOverrideConfig {
+	description?: string;
 	model?: string | false;
 	fallbackModels?: string[] | false;
 	thinking?: string | false;
@@ -649,6 +651,7 @@ function arraysEqual(
 
 function cloneOverrideBase(agent: AgentConfig): AgentOverrideBase {
 	return {
+		description: agent.description,
 		model: agent.model,
 		fallbackModels: agent.fallbackModels
 			? [...agent.fallbackModels]
@@ -683,6 +686,7 @@ function cloneOverrideValue(
 	override: AgentOverrideConfig,
 ): AgentOverrideConfig {
 	return {
+		...(override.description !== undefined ? { description: override.description } : {}),
 		...(override.model !== undefined ? { model: override.model } : {}),
 		...(override.fallbackModels !== undefined
 			? {
@@ -908,6 +912,14 @@ function parseOverrideEntry(
 
 	const input = value as Record<string, unknown>;
 	const override: AgentOverrideConfig = {};
+
+	if ("description" in input) {
+		if (typeof input.description === "string" && input.description.trim()) {
+			override.description = input.description.trim();
+		} else {
+			throw new Error(`Builtin override '${name}' in '${filePath}' has invalid 'description'; expected a non-empty string.`);
+		}
+	}
 
 	if ("model" in input) {
 		if (typeof input.model === "string" || input.model === false)
@@ -1286,6 +1298,10 @@ function applyAgentOverride(
 		anyFilled = true;
 	};
 
+	if (override.description !== undefined) {
+		mutable().description = override.description;
+		anyFilled = true;
+	}
 	if (override.model !== undefined) {
 		fill(
 			"model",
@@ -1441,10 +1457,11 @@ export function buildOverrideConfig(
 		| "subagentOnlyExtensions"
 		| "completionGuard"
 		| "toolBudget"
-	>,
+	> & Partial<Pick<AgentConfig, "description">>,
 ): AgentOverrideConfig | undefined {
 	const override: AgentOverrideConfig = {};
 
+	if (draft.description !== undefined && draft.description !== base.description) override.description = draft.description;
 	if (draft.model !== base.model) override.model = draft.model ?? false;
 	if (!arraysEqual(draft.fallbackModels, base.fallbackModels))
 		override.fallbackModels = draft.fallbackModels

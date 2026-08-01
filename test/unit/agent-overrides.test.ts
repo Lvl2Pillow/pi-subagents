@@ -209,6 +209,27 @@ describe("agent overrides", () => {
 		);
 	});
 
+	it("overrides custom agent descriptions from settings", () => {
+		writeJson(path.join(tempHome, ".pi", "agent", "settings.json"), {
+			subagents: {
+				agentOverrides: {
+					implementer: { description: "Priced implementer" },
+				},
+			},
+		});
+		writeProjectAgent(
+			tempProject,
+			"implementer",
+			`---\nname: implementer\ndescription: Original implementer\n---\n\nImplement it.\n`,
+		);
+
+		const agents = discoverAgents(tempProject, "both").agents;
+		assert.equal(
+			agents.find((agent) => agent.name === "implementer")?.description,
+			"Priced implementer",
+		);
+	});
+
 	it("surfaces malformed subagent default model settings", () => {
 		const settingsPath = path.join(tempHome, ".pi", "agent", "settings.json");
 		writeJson(settingsPath, {
@@ -617,6 +638,22 @@ describe("agent overrides", () => {
 		);
 	});
 
+	it("surfaces malformed description override values", () => {
+		const settingsPath = path.join(tempHome, ".pi", "agent", "settings.json");
+		for (const description of ["", 42]) {
+			writeJson(settingsPath, {
+				subagents: { agentOverrides: { reviewer: { description } } },
+			});
+			assert.throws(
+				() => discoverAgents(tempProject, "both"),
+				(error: unknown) => error instanceof Error
+					&& error.message.includes(settingsPath)
+					&& error.message.includes("reviewer")
+					&& error.message.includes("description"),
+			);
+		}
+	});
+
 	it("surfaces malformed completion guard override values", () => {
 		const settingsPath = path.join(tempHome, ".pi", "agent", "settings.json");
 		writeJson(settingsPath, {
@@ -642,6 +679,7 @@ describe("agent overrides", () => {
 	it("builds false sentinels when an override clears fields", () => {
 		const override = buildOverrideConfig(
 			{
+				description: "Base description",
 				model: "openai-codex/gpt-5.4-mini",
 				fallbackModels: ["openai/gpt-5-mini"],
 				thinking: "high",
@@ -657,6 +695,7 @@ describe("agent overrides", () => {
 				completionGuard: false,
 			},
 			{
+				description: "Override description",
 				model: undefined,
 				fallbackModels: undefined,
 				thinking: undefined,
@@ -674,6 +713,7 @@ describe("agent overrides", () => {
 		);
 
 		assert.deepEqual(override, {
+			description: "Override description",
 			model: false,
 			fallbackModels: false,
 			thinking: false,
@@ -686,5 +726,9 @@ describe("agent overrides", () => {
 			subagentOnlyExtensions: false,
 			completionGuard: true,
 		});
+		assert.ok(override);
+		fs.mkdirSync(path.join(tempProject, ".pi"), { recursive: true });
+		saveBuiltinAgentOverride(tempProject, "reviewer", "project", override);
+		assert.equal(discoverAgents(tempProject, "both").agents.find((agent) => agent.name === "reviewer")?.description, "Override description");
 	});
 });
