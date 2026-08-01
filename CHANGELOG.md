@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Added `/subagents-detach` for detaching the active foreground single-subagent run without terminating the child. Thanks to @magoz for #708/#711.
 - Added agent frontmatter aliases and built-in worker aliases for `developer`, `coder`, `implementer`, and `develop`, while keeping canonical names in execution state. Thanks to @selimerunkut for #695.
 - Added explicit chain approval checkpoints with `{ checkpoint, message? }`, `approve-checkpoint`/`reject-checkpoint` controls, persisted checkpoint status, and terminal `rejected` outcomes. Thanks to @saleemlala for #694.
 - Added optional root `usageBudget` limits for reported token and cost totals, with soft status reporting and hard gating for later child launches without stopping already-running children. Thanks to @saleemlala for #693.
@@ -13,7 +14,8 @@
 - Reduced repeated runtime filesystem work by caching stable Pi config-directory resolution, incrementally sanitizing run history, and limiting nested control-result polling to files created for the active request.
 
 ### Fixed
-- Retained foreground controls until scheduling owners and active children settle, keeping queued foreground work steerable after early result handling. Thanks to @magoz for #708/#709.
+- Restored model and thinking-effort badges in the persistent running-subagents status widget.
+- Retained foreground controls until scheduling owners and active children settle, keeping queued foreground work steerable after early result handling. Thanks to @magoz for #708/#709/#710.
 - Render resolved model and thinking effort for active and recent foreground children in Fleet inspector summaries and details. Thanks to @saleemlala for #706.
 - Resynchronized async job control-event scans that resume inside an oversized JSONL record, avoiding malformed-tail parse noise while preserving later control events. Thanks to @vicary for #700.
 - Report signal-terminated child processes with a canonical signal error instead of stderr-tail noise and classify those results separately from ordinary task failures. Thanks to @cking000bigdemon for #688.

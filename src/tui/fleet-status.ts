@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type EditorComponent, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { formatModelThinking } from "../shared/formatters.ts";
 import type { AsyncJobStep, FleetViewPlacement, SubagentState } from "../shared/types.ts";
 
 export const FLEET_STATUS_WIDGET_KEY = "subagent-fleet-status";
@@ -14,6 +15,7 @@ type FleetStatusTui = {
 type FleetStatusEntry = {
 	key: string;
 	agent: string;
+	modelThinking?: string;
 	description?: string;
 	startedAt: number;
 	tokens: number;
@@ -65,9 +67,11 @@ export function collectFleetStatusEntries(state: SubagentState): FleetStatusEntr
 	for (const control of state.foregroundControls.values()) {
 		if (control.activeChildren) {
 			for (const child of [...control.activeChildren.values()].sort((left, right) => left.index - right.index)) {
+				const modelThinking = formatModelThinking(child.model, child.thinking) || undefined;
 				entries.push({
 					key: `foreground-active:${control.runId}:${child.index}`,
 					agent: child.agent,
+					...(modelThinking ? { modelThinking } : {}),
 					description: child.description,
 					startedAt: child.startedAt,
 					tokens: child.tokens ?? 0,
@@ -75,9 +79,11 @@ export function collectFleetStatusEntries(state: SubagentState): FleetStatusEntr
 			}
 			continue;
 		}
+		const modelThinking = formatModelThinking(control.model, control.thinking) || undefined;
 		entries.push({
 			key: `foreground-active:${control.runId}:${control.currentIndex ?? 0}`,
 			agent: control.currentAgent ?? control.mode,
+			...(modelThinking ? { modelThinking } : {}),
 			description: control.description,
 			startedAt: control.startedAt,
 			tokens: control.tokens ?? 0,
@@ -108,9 +114,11 @@ export function collectFleetStatusEntries(state: SubagentState): FleetStatusEntr
 			if (!isActiveState(step.status)) continue;
 			const index = step.index ?? offset;
 			if (step.status === "pending" && job.mode === "chain" && !job.activeParallelGroup && index !== (job.currentStep ?? 0)) continue;
+			const modelThinking = formatModelThinking(step.model, step.thinking) || undefined;
 			entries.push({
 				key: `async:${job.asyncId}:${index}`,
 				agent: step.label ? `${step.label} (${step.agent})` : step.agent,
+				...(modelThinking ? { modelThinking } : {}),
 				description: job.description,
 				startedAt: step.startedAt ?? startedAt,
 				tokens: step.tokens?.total ?? (steps.length === 1 ? job.totalTokens?.total ?? 0 : 0),
@@ -316,7 +324,8 @@ export class SubagentFleetStatus {
 
 	private renderEntry(rosterIndex: number, selectedIndex: number, entry: FleetStatusEntry, width: number, theme: Theme): string {
 		const description = entry.description?.replace(/\s+/g, " ").trim();
-		const left = `  ${this.bullet(rosterIndex, selectedIndex, theme)} ${theme.fg("muted", entry.agent)}${description ? `  ${description}` : ""}`;
+		const agent = entry.modelThinking ? `${entry.agent} (${entry.modelThinking})` : entry.agent;
+		const left = `  ${this.bullet(rosterIndex, selectedIndex, theme)} ${theme.fg("muted", agent)}${description ? `  ${description}` : ""}`;
 		const elapsed = Date.now() - entry.startedAt;
 		const right = theme.fg("dim", `${formatFleetElapsed(elapsed)} · ${formatFleetTokens(entry.tokens)}`);
 		return rightAlign(left, right, width);
@@ -362,6 +371,7 @@ export class SubagentFleetStatus {
 			entries: this.entries.map((entry) => [
 				entry.key,
 				entry.agent,
+				entry.modelThinking,
 				entry.description,
 				Math.round((now - entry.startedAt) / 1000),
 				entry.tokens,

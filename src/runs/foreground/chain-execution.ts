@@ -8,7 +8,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "../../agents/agents.ts";
 import { ChainClarifyComponent, type ChainClarifyResult, type BehaviorOverride } from "./chain-clarify.ts";
-import { toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
+import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import {
 	resolveChainTemplates,
 	createChainDir,
@@ -354,10 +354,13 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			taskStr = injectSingleOutputInstruction(taskStr, outputPath, taskAgentConfig);
 			const interruptController = new AbortController();
 			if (input.foregroundControl) {
+				const thinking = resolveEffectiveThinking(effectiveModel, input.thinkingOverrideForTask?.(task.agent, childIndex, effectiveModel));
 				beginForegroundChild(input.foregroundControl, {
 					index: childIndex,
 					agent: task.agent,
 					description: cleanTask.trim(),
+					...(effectiveModel ? { model: effectiveModel } : {}),
+					...(thinking ? { thinking } : {}),
 					interrupt: () => {
 						if (interruptController.signal.aborted) return false;
 						interruptController.abort();
@@ -1283,10 +1286,13 @@ ${step.message}` : ""}` }],
 			const childIndex = globalTaskIndex;
 			const interruptController = new AbortController();
 			if (foregroundControl) {
+				const thinking = resolveEffectiveThinking(effectiveModel, params.thinkingOverrideForTask?.(seqStep.agent, childIndex, effectiveModel));
 				beginForegroundChild(foregroundControl, {
 					index: childIndex,
 					agent: seqStep.agent,
 					description: cleanTask.trim(),
+					...(effectiveModel ? { model: effectiveModel } : {}),
+					...(thinking ? { thinking } : {}),
 					interrupt: () => {
 						if (interruptController.signal.aborted) return false;
 						interruptController.abort();

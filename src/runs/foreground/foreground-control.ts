@@ -4,6 +4,8 @@ interface BeginForegroundChildInput {
 	index: number;
 	agent: string;
 	description?: string;
+	model?: string;
+	thinking?: string;
 	interrupt: () => boolean;
 }
 
@@ -83,6 +85,8 @@ export function beginForegroundChild(control: ForegroundRunControl, input: Begin
 		...(input.description ? { description: input.description } : {}),
 		startedAt: now,
 		updatedAt: now,
+		...(input.model ? { model: input.model } : {}),
+		...(input.thinking ? { thinking: input.thinking } : {}),
 	};
 	child.interrupt = () => {
 		if (!input.interrupt()) return false;

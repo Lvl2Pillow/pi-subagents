@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { resolveAgentName, type AgentConfig, type AgentScope } from "../../agents/agents.ts";
 import { getArtifactsDir, getProjectChainRunsDir } from "../../shared/artifacts.ts";
 import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
-import { toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
+import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import { executeChain } from "./chain-execution.ts";
 import {
 	beginForegroundChild,
@@ -2610,10 +2610,14 @@ async function runForegroundParallelTasks(input: ForegroundParallelRunInput): Pr
 		);
 		const interruptController = new AbortController();
 		if (input.foregroundControl) {
+			const model = input.modelOverrides[index];
+			const thinking = resolveEffectiveThinking(model, input.thinkingOverrideForTask(task.agent, index, model));
 			beginForegroundChild(input.foregroundControl, {
 				index,
 				agent: task.agent,
 				description: input.taskDescriptions[index],
+				...(model ? { model } : {}),
+				...(thinking ? { thinking } : {}),
 				interrupt: () => {
 					if (interruptController.signal.aborted) return false;
 					interruptController.abort();
@@ -3261,10 +3265,13 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 	const interruptController = new AbortController();
 	const foregroundControl = deps.state.foregroundControls.get(runId);
 	if (foregroundControl) {
+		const thinking = resolveEffectiveThinking(modelOverride, thinkingOverrideForTask(params.agent!, 0, modelOverride));
 		beginForegroundChild(foregroundControl, {
 			index: 0,
 			agent: params.agent!,
 			description: foregroundControl.description,
+			...(modelOverride ? { model: modelOverride } : {}),
+			...(thinking ? { thinking } : {}),
 			interrupt: () => {
 				if (interruptController.signal.aborted) return false;
 				interruptController.abort();
