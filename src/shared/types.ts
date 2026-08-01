@@ -958,6 +958,8 @@ export interface SingleResult {
 	savedOutputPath?: string;
 	outputReference?: SavedOutputReference;
 	outputSaveError?: string;
+	/** Best-effort metadata persistence failure; execution and receipt publication continue. */
+	metadataSaveError?: string;
 	structuredOutput?: unknown;
 	structuredOutputFailed?: boolean;
 	structuredOutputPath?: string;
@@ -1620,6 +1622,11 @@ export interface RunSyncOptions {
 		r: import("@earendil-works/pi-agent-core").AgentToolResult<Details>,
 	) => void;
 	onControlEvent?: (event: ControlEvent) => void;
+	/** Exposes a non-terminating detach callback while the child is active. */
+	onDetachReady?: (detach: (reason?: string) => boolean) => void;
+	/** Internal foreground receipt proposal; returns true only when the outer waiter accepted it. */
+	onDetachReceipt?: (result: SingleResult) => boolean;
+	/** Authoritative terminal result, emitted only after the full detached run finalizes. */
 	onDetachedExit?: (result: SingleResult) => void;
 	controlConfig?: ResolvedControlConfig;
 	maxOutput?: MaxOutputConfig;

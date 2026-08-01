@@ -479,14 +479,6 @@ function applyControlEventToRememberedForegroundRun(state: SubagentState, event:
 	};
 }
 
-function rememberDetachedForegroundChild(state: SubagentState, input: { runId: string; mode: "single" | "parallel" | "chain"; cwd: string; sessionId: string | null; index: number; result: SingleResult; events: IntercomEventBus }): void {
-	try {
-		updateRememberedForegroundChild(state, input);
-	} catch (error) {
-		console.error(`Failed to update remembered detached foreground child '${input.runId}:${input.index}':`, error);
-	}
-}
-
 function updateRememberedForegroundChild(state: SubagentState, input: { runId: string; mode: "single" | "parallel" | "chain"; cwd: string; sessionId: string | null; index: number; result: SingleResult; events: IntercomEventBus }): void {
 	state.foregroundRuns ??= new Map();
 	const updatedAt = Date.now();
@@ -496,23 +488,23 @@ function updateRememberedForegroundChild(state: SubagentState, input: { runId: s
 		state.foregroundRuns.set(input.runId, run);
 	}
 	run.updatedAt = updatedAt;
+	const terminalStatus = resolveSubagentResultStatus({
+		exitCode: input.result.exitCode,
+		...(input.result.acceptance?.status === "rejected" ? { success: false } : {}),
+		interrupted: input.result.interrupted,
+		detached: false,
+		processSignal: input.result.processSignal,
+		timedOut: input.result.timedOut,
+		stopped: input.result.stopped,
+		turnBudgetExceeded: input.result.turnBudgetExceeded,
+	});
 	const child = run.children[input.index] ?? { agent: input.result.agent, index: input.index, status: "detached" as const };
 	run.children[input.index] = {
 		...child,
 		agent: input.result.agent,
 		index: input.index,
 		...(input.result.context ? { context: input.result.context } : {}),
-		status: input.result.acceptance?.status === "rejected"
-			? "failed"
-			: resolveSubagentResultStatus({
-				exitCode: input.result.exitCode,
-				interrupted: input.result.interrupted,
-				detached: false,
-				processSignal: input.result.processSignal,
-				timedOut: input.result.timedOut,
-				stopped: input.result.stopped,
-				turnBudgetExceeded: input.result.turnBudgetExceeded,
-			}),
+		status: terminalStatus,
 		...foregroundChildActivityFromProgress(input.result.progress),
 		updatedAt,
 		...(input.result.exitCode !== undefined ? { exitCode: input.result.exitCode } : {}),
@@ -537,7 +529,7 @@ function updateRememberedForegroundChild(state: SubagentState, input: { runId: s
 	};
 	trimRememberedForegroundRuns(state);
 	const output = getSingleResultOutput(input.result).trim();
-	const success = input.result.exitCode === 0 && input.result.acceptance?.status !== "rejected";
+	const success = terminalStatus === "completed";
 	const summary = !success && input.result.error
 		? `${input.result.error}${output ? `\n\nOutput:\n${output}` : ""}`
 		: output || input.result.error || "Detached child exited without final output.";
@@ -553,7 +545,12 @@ function updateRememberedForegroundChild(state: SubagentState, input: { runId: s
 		success,
 		summary,
 		exitCode: input.result.exitCode,
-		state: success ? "complete" : "failed",
+		state: terminalStatus === "completed" ? "complete" : terminalStatus,
+		...(input.result.interrupted !== undefined ? { interrupted: input.result.interrupted } : {}),
+		...(input.result.stopped !== undefined ? { stopped: input.result.stopped } : {}),
+		...(input.result.processSignal !== undefined ? { processSignal: input.result.processSignal } : {}),
+		...(input.result.timedOut !== undefined ? { timedOut: input.result.timedOut } : {}),
+		...(input.result.turnBudgetExceeded !== undefined ? { turnBudgetExceeded: input.result.turnBudgetExceeded } : {}),
 		timestamp: updatedAt,
 		cwd: input.cwd,
 		sessionFile: input.result.sessionFile,
@@ -2289,7 +2286,7 @@ async function runChainPath(data: ExecutionContextData, deps: ExecutorDeps): Pro
 		turnBudget: data.turnBudget,
 		onDetachedExit: (index, result) => {
 			try {
-				rememberDetachedForegroundChild(deps.state, { runId, mode: "chain", cwd: effectiveCwd, sessionId: data.parentSessionId, index, result, events: deps.pi.events });
+				updateRememberedForegroundChild(deps.state, { runId, mode: "chain", cwd: effectiveCwd, sessionId: data.parentSessionId, index, result, events: deps.pi.events });
 			} finally {
 				removeForegroundControlIfIdle(deps.state, runId);
 			}
@@ -2657,7 +2654,7 @@ async function runForegroundParallelTasks(input: ForegroundParallelRunInput): Pr
 			onControlEvent: input.onControlEvent,
 			onDetachedExit: (result) => {
 				try {
-					rememberDetachedForegroundChild(input.state, { runId: input.runId, mode: "parallel", cwd: taskCwd, sessionId: input.parentSessionId, index, result, events: input.intercomEvents });
+					updateRememberedForegroundChild(input.state, { runId: input.runId, mode: "parallel", cwd: taskCwd, sessionId: input.parentSessionId, index, result, events: input.intercomEvents });
 				} finally {
 					try {
 						if (input.foregroundControl) finishForegroundChild(input.foregroundControl, index);
@@ -3329,7 +3326,11 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			acceptanceContext: { mode: "single" },
 			onDetachedExit: (result) => {
 				try {
-					rememberDetachedForegroundChild(deps.state, { runId, mode: "single", cwd: effectiveCwd, sessionId: data.parentSessionId, index: 0, result, events: deps.pi.events });
+					try {
+						updateRememberedForegroundChild(deps.state, { runId, mode: "single", cwd: effectiveCwd, sessionId: data.parentSessionId, index: 0, result, events: deps.pi.events });
+					} catch {
+						// Remembered foreground state is best-effort; run history and cleanup must still complete.
+					}
 				} finally {
 					try {
 						if (!artifactConfig.enabled) cleanupStructuredOutputRuntime(structuredRuntime);

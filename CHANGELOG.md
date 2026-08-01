@@ -2,14 +2,7 @@
 
 ## [Unreleased]
 
-### Fixed
-- Collapsed running foreground subagent rows now show the model and thinking level: single-result cards include the effective thinking suffix and parallel/chain rows show the per-child model badge, matching the async widget.
-
 ### Added
-- Added stable foreground result row indexes for correlating child progress and final results. Thanks to @rochecompaan (Patchmill) for #720.
-- Added watchdog current-scope context, optional every-N-tools scope-monitor cadence, and visible main-session blocker auto-follow, inspired by Scopey (github.com/ArchAstro/scopey) by Calvin Grunewald (@CalvinGrunewald).
-- Added optional `runtimeAcknowledgedExtensions` status/result/RPC metadata for cooperating child-runtime extensions that emit `subagent:acknowledge-extension`. Thanks to @saleemlala for #705.
-- Added `/subagents-detach` for detaching the active foreground single-subagent run without terminating the child. Thanks to @magoz for #708/#711.
 - Added agent frontmatter aliases and built-in worker aliases for `developer`, `coder`, `implementer`, and `develop`, while keeping canonical names in execution state. Thanks to @selimerunkut for #695.
 - Added explicit chain approval checkpoints with `{ checkpoint, message? }`, `approve-checkpoint`/`reject-checkpoint` controls, persisted checkpoint status, and terminal `rejected` outcomes. Thanks to @saleemlala for #694.
 - Added optional root `usageBudget` limits for reported token and cost totals, with soft status reporting and hard gating for later child launches without stopping already-running children. Thanks to @saleemlala for #693.
@@ -20,8 +13,6 @@
 - Reduced repeated runtime filesystem work by caching stable Pi config-directory resolution, incrementally sanitizing run history, and limiting nested control-result polling to files created for the active request.
 
 ### Fixed
-- Show per-child async task descriptions in the persistent running-subagents status widget instead of repeating the run-level description for every parallel child.
-- Restored model and thinking-effort badges in the persistent running-subagents status widget.
 - Retained foreground controls until scheduling owners and active children settle, keeping queued foreground work steerable after early result handling. Thanks to @magoz for #708/#709/#710.
 - Render resolved model and thinking effort for active and recent foreground children in Fleet inspector summaries and details. Thanks to @saleemlala for #706.
 - Resynchronized async job control-event scans that resume inside an oversized JSONL record, avoiding malformed-tail parse noise while preserving later control events. Thanks to @vicary for #700.
