@@ -1428,7 +1428,7 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 		const glyph = rPending ? theme.fg("dim", "◦") : resultGlyph(r, output, theme, rRunning, progressRunningSeed(rProg), frame);
 		const pendingLabel = rPending ? ` ${theme.fg("dim", "· pending")}` : "";
 		const stepLabel = entry.rowLabel ?? resultRowLabel(multiLabel, i, stepNumber);
-		const rowProgressModel = rProg && "model" in rProg ? rProg : undefined;
+		const rowProgressModel = rProg && "status" in rProg ? rProg : undefined;
 		const rowModelDisplay = modelThinkingBadge(theme, r.model ?? rowProgressModel?.model, r.thinking ?? rowProgressModel?.thinking);
 		const line = `${glyph} ${stepLabel}: ${themeBold(theme, agentName)}${contextModeBadge(theme, r.context)}${rowModelDisplay}${stepStats ? ` ${theme.fg("dim", "·")} ${stepStats}` : ""}${pendingLabel}`;
 		c.addChild(new Text(truncLine(`  ${line}`, width), 0, 0));
