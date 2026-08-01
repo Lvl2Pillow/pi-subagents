@@ -110,6 +110,7 @@ function request(config: ResolvedWatchdogConfig, warnings: WatchdogWarning[]): W
 		delta: "Assistant changed src/example.ts and said tests passed.",
 		epoch: 1,
 		reviewId: 7,
+		hasScope: false,
 		config,
 		emitWarning(warning) {
 			warnings.push(warning);

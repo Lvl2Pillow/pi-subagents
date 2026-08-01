@@ -167,6 +167,12 @@ The subagent watchdog is not the `reviewer` subagent. `subagents.defaultModel` a
 
 The watchdog reviews repo edits, not ordinary conversation. It runs at the safe `agent_end` boundary only when the current agent or child writer changed the final repo state since the start of that turn. Multiple edits in one turn are coalesced into one review of the final changed state, unchanged/reverted diffs are skipped, and generated `.pi-subagents/` or `tmp/` artifacts do not trigger review. In orchestrated runs, each writing child can review its own edited worktree, and the parent can still review the aggregate repo diff after child changes are applied.
 
+When enabled, the watchdog also keeps a bounded in-memory current-scope artifact from real user prompts and prepends it to review input by default (`subagents.watchdog.scope.enabled`). Newer prompts supersede and mutate older prompts, so the reviewer can flag work that no longer serves the current scope as `scope-drift`. Watchdog auto-follow prompts are not recorded as scope.
+
+You can opt into Scopey-style scope monitoring, inspired by [Scopey](https://github.com/ArchAstro/scopey), by setting `subagents.watchdog.cadence.everyNTools` to run additional non-blocking reviews every N tool results. Cadence warnings are transcript-visible and delivered with Pi's `steer` mode after the current tool boundary; they are never hidden. The same configured watchdog model is used for all checks, so choose a cheap model for frequent monitoring or a strong model for rarer adversarial review.
+
+When the watchdog displays a blocker at `agent_end`, the existing `subagents.watchdog.autoFollow` policy can queue a visible follow-up user message asking the agent to address it. Auto-follow only runs while the watchdog is enabled, respects `maxAttempts`, and stops on repeated identical blockers using `stalemateRepeats`.
+
 When the watchdog is enabled, it also checks changed TypeScript and JavaScript files for fresh language-server diagnostics before the model review. It auto-detects `typescript-language-server` from the project `node_modules/.bin` or `PATH`; it never installs tools or scans the whole workspace. LSP errors surface as watchdog blockers, warnings as concerns, and info/hints stay in status details. Slow or missing servers are reported in `/subagents-watchdog status` without blocking the turn or emitting late mid-turn warnings. Configure the bounds with `subagents.watchdog.lsp.enabled`, `timeoutMs`, `maxFiles`, and `maxDiagnostics`.
 
 Use `/subagents-watchdog recommend-model` to ask pi-subagents for the current strong pairing. The current recommendation policy is Opus 4.8 with thinking high or GPT 5.5 with thinking high. If your main session is using one, the watchdog should use the other when that model is authenticated.
@@ -190,6 +196,8 @@ You can also set the model explicitly:
 
 For settings files, use `subagents.watchdog.main.model` and `subagents.watchdog.main.thinking` for the main watchdog. If `main.model` is omitted, the main watchdog uses the current session model and thinking level. If `main.model` is set without a thinking suffix or `main.thinking`, it runs with thinking off, so prefer `:high` or `"thinking": "high"` for the strong-watchdog pairing.
 
+Default strong-reviewer profile:
+
 ```json
 {
 	"subagents": {
@@ -201,6 +209,29 @@ For settings files, use `subagents.watchdog.main.model` and `subagents.watchdog.
 			}
 		}
 	}
+}
+```
+
+Scopey-style scope monitoring profile:
+
+```json
+{
+  "subagents": {
+    "watchdog": {
+      "enabled": true,
+      "main": {
+        "model": "anthropic/claude-haiku-4-5",
+        "thinking": "medium"
+      },
+      "scope": { "enabled": true },
+      "cadence": { "everyNTools": 10 },
+      "autoFollow": {
+        "blockers": true,
+        "maxAttempts": 3,
+        "stalemateRepeats": 3
+      }
+    }
+  }
 }
 ```
 

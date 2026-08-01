@@ -323,6 +323,7 @@ describe("subagent prompt runtime", () => {
 	});
 
 	it("registers child watchdog lifecycle handlers only when enabled by env", () => {
+		delete process.env[CHILD_WATCHDOG_CONFIG_ENV];
 		const handlersWithout = new Map<string, unknown[]>();
 		registerSubagentPromptRuntime({
 			on(event: string, handler: unknown) {
