@@ -41,6 +41,7 @@ import {
 	type SubagentDelegationV2Started,
 } from "../../src/api/delegation.ts";
 import {
+	CHAIN_RUNS_DIR,
 	SUBAGENT_DETACH_REQUEST_EVENT,
 	SUBAGENT_DETACH_RESPONSE_EVENT,
 	type SubagentState,
@@ -2186,6 +2187,29 @@ describe(
 
 			assert.equal(result.exitCode, 1);
 			assert.ok(result.error?.includes("Unknown agent"));
+	for (const artifactDir of ["session", "temp"] as const) {
+		it(`keeps foreground chain scratch files out of the project for artifactDir=${artifactDir}`, { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+			mockPi.onCall({ output: `${artifactDir} chain result` });
+			const sessionFile = path.join(tempDir, "sessions", "parent-session", "session.jsonl");
+			const ctx = makeMinimalCtx(tempDir);
+			ctx.sessionManager.getSessionFile = () => sessionFile;
+			const executor = makeExecutor([makeAgent("echo")], { artifactDir });
+
+			const result = await executor.execute(
+				`${artifactDir}-chain-artifact-dir`,
+				{ chain: [{ agent: "echo", task: "Run without project-local scratch files in {chain_dir}" }] },
+				new AbortController().signal,
+				undefined,
+				ctx,
+			);
+
+			const taskArg = readCallArgs().at(-1) ?? "";
+			assert.equal(result.isError, undefined);
+			assert.ok(taskArg.includes(`${CHAIN_RUNS_DIR}${path.sep}`), taskArg);
+			assert.equal(fs.existsSync(path.join(tempDir, ".pi-subagents")), false);
+		});
+	}
+
 		});
 
 		it("emits an active-long-running notice after the turn threshold", async () => {
