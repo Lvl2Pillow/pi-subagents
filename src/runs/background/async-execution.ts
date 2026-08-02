@@ -368,18 +368,12 @@ function waitForRunnerStartup(startupPath: string, expectedState: RunnerStartupS
 }
 
 function writeRunnerStartupControl(filePath: string, payload: { action: "ack" | "proceed"; token: string }): void {
-	const tempPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
-	try {
-		fs.writeFileSync(tempPath, JSON.stringify(payload), { encoding: "utf-8", mode: 0o600 });
-		fs.renameSync(tempPath, filePath);
-	} catch (error) {
-		try {
-			fs.rmSync(tempPath, { force: true });
-		} catch {
-			// Preserve the startup-control write error.
-		}
-		throw error;
-	}
+	// Delegate to the shared atomic JSON writer (temp file + rename, retrying
+	// transient Windows EPERM/EBUSY/EACCES locks and cleaning up the temp file
+	// on failure), so the startup handshake gets the same locking resilience as
+	// every other async control/result file. This is exercised by
+	// test/unit/atomic-json.test.ts.
+	writePrivateAtomicJson(filePath, payload);
 }
 
 function runnerIsAlive(pid: number): boolean {
