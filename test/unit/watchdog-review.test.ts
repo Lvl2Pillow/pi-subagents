@@ -90,7 +90,7 @@ function responseStream(message: AssistantMessage) {
 		if (message.stopReason === "error" || message.stopReason === "aborted") {
 			stream.push({ type: "error", reason: message.stopReason, error: message });
 		} else {
-			stream.push({ type: "done", reason: message.stopReason, message });
+			stream.push({ type: "done", reason: message.stopReason as "length" | "stop" | "toolUse", message });
 		}
 	});
 	return stream;
@@ -128,7 +128,7 @@ describe("main watchdog review adapter", () => {
 		const result = await createMainWatchdogReview(ctx, { streamFn })(request(enabledConfig(), warnings));
 
 		assert.deepEqual(warnings, []);
-		assert.equal(result?.stopReason, "stop");
+		assert.equal((result as { stopReason?: string } | undefined)?.stopReason, "stop");
 	});
 
 	it("records watchdog_warn emissions through the runtime seam", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
@@ -178,7 +178,7 @@ describe("main watchdog review adapter", () => {
 		);
 
 		assert.equal(streamStarted, false);
-		assert.equal(result?.stopReason, "aborted");
+		assert.equal((result as { stopReason?: string } | undefined)?.stopReason, "aborted");
 	});
 
 	it("does not start the agent stream when the review request aborts during model setup", async () => {
@@ -188,9 +188,9 @@ describe("main watchdog review adapter", () => {
 		const authStarted = new Promise<void>((resolve) => { releaseAuth = resolve; });
 		let streamStarted = false;
 		const ctx = {
-			...createCtx({ current }),
+			...(createCtx({ current }) as object),
 			modelRegistry: {
-				...createCtx({ current }).modelRegistry,
+				...((createCtx({ current }) as { modelRegistry: object }).modelRegistry),
 				async getApiKeyAndHeaders(entry: Model<any>) {
 					await authStarted;
 					return { ok: true as const, apiKey: `key-${entry.provider}-${entry.id}` };
@@ -211,7 +211,7 @@ describe("main watchdog review adapter", () => {
 		const result = await review;
 
 		assert.equal(streamStarted, false);
-		assert.equal(result?.stopReason, "aborted");
+		assert.equal((result as { stopReason?: string } | undefined)?.stopReason, "aborted");
 	});
 
 	it("aborts the underlying agent stream when the review request signal aborts", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
@@ -240,7 +240,7 @@ describe("main watchdog review adapter", () => {
 		const result = await review;
 
 		assert.equal(streamAborted, true);
-		assert.equal(result?.stopReason, "aborted");
+		assert.equal((result as { stopReason?: string } | undefined)?.stopReason, "aborted");
 	});
 
 	it("does not expose mutating tools to the watchdog agent", { skip: NO_DEFAULT_STREAM_FN_SKIP }, async () => {
@@ -257,7 +257,7 @@ describe("main watchdog review adapter", () => {
 		assert.equal(warnings.length, 0);
 		assert.deepEqual(calls[0]?.context.tools?.map((tool) => tool.name).sort(), ["find", "grep", "ls", "read", "watchdog_warn"]);
 		const toolResult = calls[1]?.context.messages.find((message) => message.role === "toolResult" && message.toolName === "bash");
-		assert.equal(toolResult?.isError, true);
+		assert.equal((toolResult as { isError?: boolean } | undefined)?.isError, true);
 	});
 
 	it("fails loudly for explicit unauthenticated watchdog models", async () => {
@@ -289,7 +289,7 @@ describe("main watchdog review adapter", () => {
 
 		const result = await createMainWatchdogReview(ctx)(request(enabledConfig(), warnings));
 
-		assert.equal(result?.stopReason, "stop");
+		assert.equal((result as { stopReason?: string } | undefined)?.stopReason, "stop");
 		assert.equal(calls.length, 1);
 		assert.equal(calls[0]?.model, current);
 		assert.equal(calls[0]?.options?.apiKey, "key-custom-provider-watchdog");

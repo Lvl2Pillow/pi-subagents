@@ -11,7 +11,9 @@ function keepTopLevelParameterDescriptions<T>(schema: T): T {
 function pruneNestedDescriptions(value: unknown, path: string[]): unknown {
 	if (!value || typeof value !== "object") return value;
 
-	const result = Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value));
+	const result = Array.isArray(value)
+		? ([] as unknown[])
+		: (Object.create(Object.getPrototypeOf(value) as object | null) as unknown as Record<string, unknown>);
 	for (const key of Reflect.ownKeys(value)) {
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (!descriptor) continue;

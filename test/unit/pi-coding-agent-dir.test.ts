@@ -6,6 +6,9 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { discoverAgentsAll } from "../../src/agents/agents.ts";
 import { handleCreate } from "../../src/agents/agent-management.ts";
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+
+const mockModelRegistry = { getAvailable: () => [] } as unknown as ModelRegistry;
 import {
 	clearSkillCache,
 	discoverAvailableSkills,
@@ -207,7 +210,7 @@ Inspect env.
 					scope: "user",
 				},
 			},
-			{ cwd, modelRegistry: { getAvailable: () => [] } },
+			{ cwd, modelRegistry: mockModelRegistry },
 		);
 		assert.equal(created.isError, false, readText(created));
 		assert.equal(

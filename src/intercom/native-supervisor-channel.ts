@@ -180,6 +180,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 			reject(new Error("Supervisor request cancelled."));
 			return;
 		}
+		// eslint-disable-next-line prefer-const -- assigned once after declaration; the cleanup/abort closures read it before the assignment, so const would break
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const cleanup = () => {
 			if (timer) clearTimeout(timer);
@@ -544,10 +545,10 @@ function resolvePendingRequest(pending: Map<string, PendingSupervisorRequest>, p
 			request.id.toLowerCase().startsWith(normalizedTo)
 			|| request.agent.toLowerCase() === normalizedTo,
 		);
-		if (matches.length === 1) return matches[0]!;
+		if (matches.length === 1) return matches[0];
 		if (matches.length > 1) throw new Error(`Multiple pending supervisor requests match '${params.to}'. Use replyTo.`);
 	}
-	if (requests.length === 1) return requests[0]!;
+	if (requests.length === 1) return requests[0];
 	if (requests.length === 0) throw new Error("No pending supervisor requests need a reply.");
 	throw new Error("Multiple pending supervisor requests need replies. Use replyTo.");
 }

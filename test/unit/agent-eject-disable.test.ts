@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { handleManagementAction } from "../../src/agents/agent-management.ts";
 import { clearSkillCache } from "../../src/agents/skills.ts";
 import { discoverAgents, discoverAgentsAll } from "../../src/agents/agents.ts";
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+
+const mockModelRegistry = { getAvailable: () => [] } as unknown as ModelRegistry;
 
 let tempDir = "";
 let oldAgentDir: string | undefined;
@@ -90,7 +93,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		it("ejects to project scope when agentScope is project", () => {
 			fs.mkdirSync(path.join(tempDir, ".pi"), { recursive: true });
 			writePackageAgent("scout");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const ejected = handleManagementAction(
 				"eject",
 				{ agent: "scout", agentScope: "project" },
@@ -107,7 +110,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("copies a package agent that shadows a same-named agent by runtime precedence", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			writePackageAgent("reviewer");
 			assert.equal(
 				discoverAgents(tempDir, "both").agents.find(
@@ -130,7 +133,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("refuses invalid management scopes without writing user files", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const ejected = handleManagementAction(
 				"eject",
 				{ agent: "reviewer", agentScope: "workspace" },
@@ -144,7 +147,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		it("refuses to eject when a custom agent already exists", () => {
 			writePackageAgent("reviewer");
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 
 			const ejected = handleManagementAction(
 				"eject",
@@ -156,7 +159,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("refuses to eject an unknown agent", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const ejected = handleManagementAction(
 				"eject",
 				{ agent: "no-such-agent" },
@@ -173,7 +176,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 	describe("disable", () => {
 		it("merges disabled into an existing override without dropping other fields", () => {
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			writeJson(userSettingsPath(), {
 				subagents: {
 					agentOverrides: { reviewer: { model: "openai/gpt-5.4" } },
@@ -195,7 +198,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 
 		it("hides a disabled agent from agent-facing list output", () => {
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			handleManagementAction("disable", { agent: "reviewer" }, ctx);
 
 			const text = readText(handleManagementAction("list", {}, ctx));
@@ -205,7 +208,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		it("writes a project-scoped override when agentScope is project", () => {
 			fs.mkdirSync(path.join(tempDir, ".pi"), { recursive: true });
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const disabled = handleManagementAction(
 				"disable",
 				{ agent: "reviewer", agentScope: "project" },
@@ -222,7 +225,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("refuses to disable an unknown agent", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const disabled = handleManagementAction(
 				"disable",
 				{ agent: "no-such-agent" },
@@ -233,7 +236,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("also disables a custom agent via a settings override", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			fs.mkdirSync(path.dirname(userAgentPath("helper")), { recursive: true });
 			fs.writeFileSync(
 				userAgentPath("helper"),
@@ -254,7 +257,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("also disables a package agent via a settings override", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			writePackageAgent("packaged-reviewer");
 			assert.equal(
 				discoverAgents(tempDir, "both").agents.find(
@@ -287,7 +290,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 	describe("enable", () => {
 		it("restores a previously disabled agent to runtime discovery", () => {
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			handleManagementAction("disable", { agent: "reviewer" }, ctx);
 			assert.equal(
 				discoverAgents(tempDir, "both").agents.find(
@@ -317,7 +320,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 
 		it("preserves other override fields when removing the disabled flag", () => {
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			writeJson(userSettingsPath(), {
 				subagents: {
 					agentOverrides: {
@@ -345,7 +348,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 
 		it("reports already enabled and makes no changes when nothing is disabled", () => {
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const enabled = handleManagementAction(
 				"enable",
 				{ agent: "reviewer" },
@@ -359,7 +362,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		it("points to the disabling scope when enabling the wrong scope", () => {
 			fs.mkdirSync(path.join(tempDir, ".pi"), { recursive: true });
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			handleManagementAction(
 				"disable",
 				{ agent: "reviewer", agentScope: "project" },
@@ -380,7 +383,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("refuses to enable an unknown agent", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const enabled = handleManagementAction(
 				"enable",
 				{ agent: "no-such-agent" },
@@ -394,7 +397,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 	describe("reset", () => {
 		it("removes a settings override and restores the package default", () => {
 			writePackageAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			handleManagementAction("disable", { agent: "reviewer" }, ctx);
 			assert.equal(
 				discoverAgents(tempDir, "both").agents.find(
@@ -420,7 +423,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		it("removes both a custom file and a settings override in one reset", () => {
 			writePackageAgent("reviewer");
 			writeUserAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			handleManagementAction("disable", { agent: "reviewer" }, ctx);
 
 			const reset = handleManagementAction("reset", { agent: "reviewer" }, ctx);
@@ -437,7 +440,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 
 		it("reports a no-op when there is nothing to reset in the target scope", () => {
 			writePackageAgent("reviewer");
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const reset = handleManagementAction("reset", { agent: "reviewer" }, ctx);
 			assert.equal(reset.isError, false);
 			assert.match(readText(reset), /no user customization to reset/);
@@ -445,7 +448,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("points to delete for a custom agent with no bundled default", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			fs.mkdirSync(path.dirname(userAgentPath("solo-helper")), {
 				recursive: true,
 			});
@@ -467,7 +470,7 @@ describe("agent eject/disable/enable/reset management actions", () => {
 		});
 
 		it("refuses to reset an unknown agent", () => {
-			const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 			const reset = handleManagementAction(
 				"reset",
 				{ agent: "no-such-agent" },

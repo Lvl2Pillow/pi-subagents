@@ -19,7 +19,7 @@ describe("foreground tool-call compaction", () => {
 						content: "x".repeat(50_000),
 					},
 				}],
-			}],
+			} as never],
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
 		});
 

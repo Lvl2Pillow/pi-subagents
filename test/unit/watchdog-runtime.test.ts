@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import { DEFAULT_WATCHDOG_CONFIG } from "../../src/watchdog/settings.ts";
 import { MainWatchdogRuntime, type WatchdogReviewFunction } from "../../src/watchdog/runtime.ts";
 import type { ResolvedWatchdogConfig, WatchdogLspResult, WatchdogSettingsResult, WatchdogWarning } from "../../src/watchdog/types.ts";
@@ -59,6 +59,9 @@ function git(cwd: string, args: string[]): string {
 	return result.stdout.trim();
 }
 
+/** Repos created by this suite, removed in after(). */
+const createdRepos = new Set<string>();
+
 function createRepo(): string {
 	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "watchdog-runtime-"));
 	git(repo, ["init"]);
@@ -68,8 +71,22 @@ function createRepo(): string {
 	fs.writeFileSync(path.join(repo, "src", "file.ts"), "export const value = 1;\n", "utf-8");
 	git(repo, ["add", "-A"]);
 	git(repo, ["commit", "-m", "initial"]);
+	createdRepos.add(repo);
 	return repo;
 }
+
+after(() => {
+	for (const repo of createdRepos) {
+		// Remove the temp repo. Its fsmonitor daemon exits on its own once the
+		// watched directory is gone; do not stop it manually (masks leaks).
+		try {
+			fs.rmSync(repo, { recursive: true, force: true });
+		} catch {
+			// Best effort.
+		}
+	}
+	createdRepos.clear();
+});
 
 describe("main watchdog runtime", () => {
 	it("does not inspect the repository until the watchdog is enabled", () => {

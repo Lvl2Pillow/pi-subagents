@@ -111,7 +111,7 @@ export function parseSubagentNotifyContent(content: string): SubagentNotifyDetai
 	const body = lines.slice(2);
 	let sessionIndex = -1;
 	for (let i = body.length - 1; i >= 1; i--) {
-		if (body[i - 1]?.trim() === "" && /^(Session|Session file|Session share error):\s+/.test(body[i]!)) {
+		if (body[i - 1]?.trim() === "" && /^(Session|Session file|Session share error):\s+/.test(body[i])) {
 			sessionIndex = i;
 			break;
 		}
@@ -122,7 +122,7 @@ export function parseSubagentNotifyContent(content: string): SubagentNotifyDetai
 	const firstMetadataIndex = metadataIndexes.length ? Math.min(...metadataIndexes) : body.length;
 	const resultEnd = firstMetadataIndex > 0 && body[firstMetadataIndex - 1]?.trim() === "" ? firstMetadataIndex - 1 : firstMetadataIndex;
 	const resultPreview = body.slice(0, resultEnd).join("\n").trim() || "(no output)";
-	const handoffPath = handoffIndex >= 0 ? body[handoffIndex]!.slice("Parallel handoff: ".length).trim() : undefined;
+	const handoffPath = handoffIndex >= 0 ? body[handoffIndex].slice("Parallel handoff: ".length).trim() : undefined;
 	let sessionLabel: string | undefined;
 	let sessionValue: string | undefined;
 	if (sessionLine) {
@@ -131,7 +131,7 @@ export function parseSubagentNotifyContent(content: string): SubagentNotifyDetai
 		sessionValue = sessionLine.slice(separator + 1).trim();
 	}
 	return {
-		agent: match[3]!,
+		agent: match[3],
 		status: match[2] as SubagentNotifyDetails["status"],
 		...(match[1] === "Detached foreground task" ? { source: "foreground" as const } : {}),
 		...(match[4] ? { taskInfo: match[4] } : {}),
@@ -167,7 +167,7 @@ interface PendingCompletion {
 function sendCompletion(pi: Pick<ExtensionAPI, "sendMessage">, items: PendingCompletion[]): boolean {
 	if (items.length === 0) return true;
 	const details = items.map((item) => item.details);
-	const content = details.length === 1 ? formatSingleCompletion(details[0]!) : formatGroupedCompletion(details);
+	const content = details.length === 1 ? formatSingleCompletion(details[0]) : formatGroupedCompletion(details);
 	try {
 		pi.sendMessage(
 			{

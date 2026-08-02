@@ -709,7 +709,7 @@ export function normalizeSkillInput(
 	const trimmed = input.trim();
 	if (trimmed.startsWith("[")) {
 		try {
-			const parsed = JSON.parse(trimmed);
+			const parsed = JSON.parse(trimmed) as unknown;
 			if (Array.isArray(parsed)) {
 				return normalizeSkillInput(parsed);
 			}

@@ -63,7 +63,7 @@ export function buildChainSummary(
 	failedStep?: { index: number; error: string },
 ): string {
 	const stepNames = steps
-		.map((step) => (isParallelStep(step) ? `parallel[${step.parallel.length}]` : isDynamicParallelStep(step) ? `expand:${step.parallel.agent}` : step.agent))
+		.map((step) => (isParallelStep(step) ? `parallel[${step.parallel.length}]` : isDynamicParallelStep(step) ? `expand:${step.parallel.agent}` : (step as { agent?: string }).agent))
 		.join(" → ");
 
 	const totalDuration = results.reduce((sum, r) => sum + (r.progress?.durationMs || 0), 0);

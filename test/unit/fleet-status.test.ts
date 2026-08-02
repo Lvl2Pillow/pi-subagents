@@ -37,6 +37,7 @@ const theme = {
 	bg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
 };
+type FleetViewTheme = typeof theme;
 
 describe("below-editor subagent FleetView", () => {
 	it("formats elapsed time and token counts like the Claude Code fleet", () => {
@@ -68,7 +69,7 @@ describe("below-editor subagent FleetView", () => {
 			});
 		}
 
-		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -90,7 +91,7 @@ describe("below-editor subagent FleetView", () => {
 		try {
 			fleet.setContext(ctx);
 			assert.ok(widgetFactory);
-			const component = widgetFactory!({ requestRender() {} }, theme);
+			const component = widgetFactory({ requestRender() {} }, theme);
 			const lines = component.render(80);
 			assert.ok(lines.some((line) => line.includes("⏺ main")));
 			assert.ok(lines.some((line) => line.includes("worker-0") && line.includes("Inspect module 0")));
@@ -248,7 +249,7 @@ describe("below-editor subagent FleetView", () => {
 			updatedAt: 20,
 			currentAgent: "worker",
 		});
-		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[]; invalidate(): void }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[]; invalidate(): void }) | undefined;
 		let removals = 0;
 		const ctx = {
 			hasUI: true,
@@ -418,7 +419,7 @@ describe("below-editor subagent FleetView", () => {
 			],
 		});
 		const fleet = new SubagentFleetStatus(state, () => {}, { refreshMs: 60_000 });
-		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -453,7 +454,7 @@ describe("below-editor subagent FleetView", () => {
 		});
 		let editorText = "draft";
 		let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
-		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
 		const opened: string[] = [];
 		const ctx = {
 			hasUI: true,
@@ -472,16 +473,16 @@ describe("below-editor subagent FleetView", () => {
 			assert.ok(inputHandler);
 			assert.ok(widgetFactory);
 			const tui = { requestRender() {}, focusedComponent: Object.create(Editor.prototype) as Editor };
-			const component = widgetFactory!(tui, theme);
+			const component = widgetFactory(tui, theme);
 
-			assert.equal(inputHandler!("\x1b[B"), undefined, "non-empty editor should retain Down");
+			assert.equal(inputHandler("\x1b[B"), undefined, "non-empty editor should retain Down");
 			editorText = "";
 			tui.focusedComponent = {
 				render() { return []; },
 				invalidate() {},
 				handleInput() {},
 			} as unknown as Editor;
-			assert.equal(inputHandler!("\x1b[B"), undefined, "non-editor focus should retain Down");
+			assert.equal(inputHandler("\x1b[B"), undefined, "non-editor focus should retain Down");
 
 			const crossModuleCustomEditor = {
 				render() { return []; },
@@ -492,23 +493,23 @@ describe("below-editor subagent FleetView", () => {
 			} satisfies EditorComponent;
 			assert.equal(crossModuleCustomEditor instanceof Editor, false, "regression setup must cross the instanceof boundary");
 			tui.focusedComponent = crossModuleCustomEditor as unknown as Editor;
-			assert.equal(inputHandler!("j"), undefined, "inactive FleetView should retain printable navigation keys");
-			assert.equal(inputHandler!("k"), undefined, "inactive FleetView should retain printable navigation keys");
-			assert.deepEqual(inputHandler!("\x1b[B"), { consume: true }, "custom editors should activate FleetView across jiti boundaries");
-			assert.deepEqual(inputHandler!("j"), { consume: true }, "active FleetView should navigate down with j");
+			assert.equal(inputHandler("j"), undefined, "inactive FleetView should retain printable navigation keys");
+			assert.equal(inputHandler("k"), undefined, "inactive FleetView should retain printable navigation keys");
+			assert.deepEqual(inputHandler("\x1b[B"), { consume: true }, "custom editors should activate FleetView across jiti boundaries");
+			assert.deepEqual(inputHandler("j"), { consume: true }, "active FleetView should navigate down with j");
 			assert.ok(component.render(100).some((line) => line.includes("⏺ worker")));
-			assert.deepEqual(inputHandler!("k"), { consume: true }, "active FleetView should navigate up with k");
+			assert.deepEqual(inputHandler("k"), { consume: true }, "active FleetView should navigate up with k");
 			assert.ok(component.render(100).some((line) => line.includes("⏺ main")));
 
 			tui.focusedComponent = Object.create(Editor.prototype) as Editor;
-			assert.deepEqual(inputHandler!("\x1b[B"), { consume: true });
+			assert.deepEqual(inputHandler("\x1b[B"), { consume: true });
 			assert.ok(component.render(100).some((line) => line.includes("⏺ worker")));
-			assert.deepEqual(inputHandler!("\r"), { consume: true });
+			assert.deepEqual(inputHandler("\r"), { consume: true });
 			await Promise.resolve();
 			assert.deepEqual(opened, ["foreground-active:run-worker:0"]);
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			widgetFactory!(tui, theme);
-			assert.deepEqual(inputHandler!("\x1b"), { consume: true });
+			widgetFactory(tui, theme);
+			assert.deepEqual(inputHandler("\x1b"), { consume: true });
 			assert.ok(component.render(100).some((line) => line.includes("⏺ main")));
 		} finally {
 			fleet.dispose();

@@ -23,7 +23,7 @@ function boundedPayload(value: unknown, maxBytes = MAX_TOOL_PAYLOAD_BYTES): stri
 	if (payload.length <= maxBytes) return text;
 	const markerBytes = Buffer.byteLength(TOOL_PAYLOAD_TRUNCATION_MARKER, "utf-8");
 	let end = Math.max(0, maxBytes - markerBytes);
-	while (end > 0 && (payload[end]! & 0xc0) === 0x80) end--;
+	while (end > 0 && (payload[end] & 0xc0) === 0x80) end--;
 	return `${payload.subarray(0, end).toString("utf-8")}${TOOL_PAYLOAD_TRUNCATION_MARKER}`;
 }
 

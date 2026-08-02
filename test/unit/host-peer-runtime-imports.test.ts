@@ -27,7 +27,7 @@ function extractStaticImportSpecifiers(source: string): string[] {
 	const lines = source.split("\n");
 	let i = 0;
 	while (i < lines.length) {
-		const line = lines[i]!.trim();
+		const line = lines[i].trim();
 		if (!/^(?:import|export)\b/.test(line)) {
 			i++;
 			continue;
@@ -37,18 +37,18 @@ function extractStaticImportSpecifiers(source: string): string[] {
 		let statement = line;
 		while (!/from\s+["'][^"']+["']/.test(statement) && !statement.includes(";") && i + 1 < lines.length) {
 			i++;
-			statement += ` ${lines[i]!.trim()}`;
+			statement += ` ${lines[i].trim()}`;
 		}
 		i++;
 
 		if (/^import\s+type\b/.test(statement) || /^export\s+type\b/.test(statement)) continue;
 		const fromMatch = statement.match(/from\s+["']([^"']+)["']/);
 		if (fromMatch) {
-			specifiers.push(fromMatch[1]!);
+			specifiers.push(fromMatch[1]);
 			continue;
 		}
 		const sideEffectMatch = statement.match(/^import\s+["']([^"']+)["']/);
-		if (sideEffectMatch) specifiers.push(sideEffectMatch[1]!);
+		if (sideEffectMatch) specifiers.push(sideEffectMatch[1]);
 	}
 	return specifiers;
 }

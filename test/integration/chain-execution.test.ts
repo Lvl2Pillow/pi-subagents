@@ -101,7 +101,9 @@ interface ChainResultItem {
 	error?: string;
 	attemptedModels?: string[];
 	skills?: string[];
-	acceptance?: { status?: string; verifyRuns?: Array<{ status?: string }>; childReport?: unknown; runtimeChecks?: Array<{ status?: string; id?: string }> };
+	acceptance?: { status?: string; verifyRuns?: Array<{ status?: string }>; childReport?: unknown; runtimeChecks?: Array<{ status?: string; id?: string }>; evidenceStatus?: string; effectiveAcceptance?: { level?: string } };
+	savedOutputPath?: string;
+	model?: string;
 }
 
 interface ChainExecutionResult {
@@ -228,7 +230,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		], agents));
 
 		assert.equal(result.isError, undefined);
-		assert.match(result.content[0]!.text, /Chain paused at checkpoint 'review'/);
+		assert.match(result.content[0].text, /Chain paused at checkpoint 'review'/);
 		assert.equal(result.details.results.length, 1);
 		assert.equal(result.details.checkpoint?.name, "review");
 		assert.equal(result.details.checkpoint?.status, "pending");
@@ -1407,14 +1409,14 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 		assert.equal(result.details.parallelHandoff?.version, 1);
 		assert.equal(result.details.parallelHandoff?.childCount, 1);
 		assert.equal(result.details.parallelHandoff?.cleanupState, "complete");
-		const handoff = JSON.parse(fs.readFileSync(result.details.parallelHandoff!.path, "utf-8")) as {
+		const handoff = JSON.parse(fs.readFileSync(result.details.parallelHandoff.path, "utf-8")) as {
 			groups: Array<{ stepIndex: number; children: Array<{ agent: string; patch: { path: string } }>; cleanup: { state: string } }>;
 		};
-		assert.equal(handoff.groups[0]!.stepIndex, 0);
-		assert.equal(handoff.groups[0]!.children[0]!.agent, "reviewer-a");
-		assert.equal(handoff.groups[0]!.cleanup.state, "complete");
-		assert.equal(fs.existsSync(handoff.groups[0]!.children[0]!.patch.path), true);
-		assert.match(handoff.groups[0]!.children[0]!.patch.path, /worktree-diffs\/foreground-chain-handoff\/step-0\//);
+		assert.equal(handoff.groups[0].stepIndex, 0);
+		assert.equal(handoff.groups[0].children[0].agent, "reviewer-a");
+		assert.equal(handoff.groups[0].cleanup.state, "complete");
+		assert.equal(fs.existsSync(handoff.groups[0].children[0].patch.path), true);
+		assert.match(handoff.groups[0].children[0].patch.path, /worktree-diffs\/foreground-chain-handoff\/step-0\//);
 	});
 
 	it("aggregates parallel outputs for next sequential step", async () => {

@@ -46,7 +46,8 @@
     "test:unit": "node --experimental-strip-types --test test/unit/*.test.ts",
     "test:integration": "node --experimental-strip-types --import ./test/support/register-loader.mjs --test test/integration/*.test.ts",
     "test:e2e": "node --experimental-strip-types --import ./test/support/register-loader.mjs --test test/e2e/*.test.ts",
-    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "check:unused": "! tsc --noEmit 2>&1 | grep -E 'TS6133|TS6196|TS7027|TS7028'"
   },
   "pi": {
     "extensions": [
@@ -88,6 +89,7 @@
     "@earendil-works/pi-agent-core": "0.81.0",
     "@earendil-works/pi-ai": "0.81.0",
     "@earendil-works/pi-coding-agent": "0.81.0",
-    "@earendil-works/pi-tui": "0.81.0"
+    "@earendil-works/pi-tui": "0.81.0",
+    "typescript": "5.9.3"
   }
 }

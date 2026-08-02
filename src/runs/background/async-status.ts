@@ -384,7 +384,7 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 		const reconciliation = options.reconcile === false
 			? undefined
 			: reconcileAsyncRun(asyncDir, { resultsDir: options.resultsDir, kill: options.kill, now: options.now });
-		const status = (reconciliation?.status ?? readStatus(asyncDir)) as (AsyncStatus & { cwd?: string }) | null;
+		const status = (reconciliation?.status ?? readStatus(asyncDir));
 		if (!status) continue;
 		// Filter before the nested-route lookup: the lookup builds an index over
 		// the nested-events directory, so deferring it for filtered-out runs keeps

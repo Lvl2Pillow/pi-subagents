@@ -9,6 +9,11 @@ import {
 	handleManagementAction,
 	handleUpdate,
 } from "../../src/agents/agent-management.ts";
+
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { ExtensionConfig } from "../../src/shared/types.ts";
+
+const mockModelRegistry = { getAvailable: () => [] } as unknown as ModelRegistry;
 import { clearSkillCache } from "../../src/agents/skills.ts";
 
 let tempDir = "";
@@ -44,7 +49,7 @@ describe("agent management config parsing", () => {
 	it("surfaces JSON parse errors for create config strings", () => {
 		const result = handleCreate(
 			{ config: '{"name":' },
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 
 		assert.equal(result.isError, true);
@@ -61,7 +66,7 @@ describe("agent management config parsing", () => {
 
 		const result = handleList(
 			{ agentScope: "project" },
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 
 		assert.equal(result.isError, false);
@@ -112,7 +117,7 @@ describe("agent management config parsing", () => {
 			}),
 			"utf-8",
 		);
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 
 		const effective = readText(
 			handleManagementAction("get", { agent: "worker" }, ctx),
@@ -199,7 +204,7 @@ describe("agent management config parsing", () => {
 	it("surfaces JSON parse errors for update config strings", () => {
 		const result = handleUpdate(
 			{ agent: "reviewer", config: '{"description":' },
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 
 		assert.equal(result.isError, true);
@@ -207,7 +212,7 @@ describe("agent management config parsing", () => {
 	});
 
 	it("creates, gets, updates, and deletes a packaged agent by runtime name", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const created = handleCreate(
 			{
 				config: {
@@ -274,7 +279,7 @@ describe("agent management config parsing", () => {
 	});
 
 	it("creates, reports, and clears agent-local skill paths", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const skillFile = path.join(
 			tempDir,
 			".pi",
@@ -329,7 +334,7 @@ describe("agent management config parsing", () => {
 	});
 
 	it("rejects package values that cannot be normalized", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const created = handleCreate(
 			{
 				config: {
@@ -347,7 +352,7 @@ describe("agent management config parsing", () => {
 	});
 
 	it("creates and updates packaged chains while preserving packaged step names", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		fs.mkdirSync(path.join(tempDir, ".pi", "agents"), { recursive: true });
 		fs.writeFileSync(
 			path.join(tempDir, ".pi", "agents", "code-analysis.scout.md"),
@@ -418,7 +423,7 @@ Inspect
 	});
 
 	it("creates and updates agents with single-agent launch defaults", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const result = handleCreate(
 			{
 				config: {
@@ -502,7 +507,7 @@ Inspect
 					timeoutMs: 0,
 				},
 			},
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 
 		assert.equal(result.isError, true);
@@ -520,7 +525,7 @@ Inspect
 					acceptance: "none",
 				},
 			},
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 		assert.equal(invalidAcceptance.isError, true);
 		assert.match(
@@ -530,7 +535,7 @@ Inspect
 	});
 
 	it("creates and updates agents with tool budgets", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const result = handleCreate(
 			{
 				config: {
@@ -580,7 +585,7 @@ Inspect
 	});
 
 	it("rejects invalid tool budget management config", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const agentResult = handleCreate(
 			{
 				config: {
@@ -617,7 +622,7 @@ Inspect
 	});
 
 	it("creates, updates, reports, clears, and validates acceptance roles", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const created = handleCreate(
 			{
 				config: {
@@ -690,7 +695,7 @@ Inspect
 	});
 
 	it("creates agents with completion guard disabled", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const result = handleCreate(
 			{
 				config: {
@@ -724,7 +729,7 @@ Inspect
 					completionGuard: "false",
 				},
 			},
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 
 		assert.equal(result.isError, true);
@@ -732,7 +737,7 @@ Inspect
 	});
 
 	it("creates agents with subagent-only extensions", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const result = handleCreate(
 			{
 				config: {
@@ -772,7 +777,7 @@ Inspect
 				getAvailable: () => [
 					{ provider: "anthropic", id: "claude-sonnet-4-6" },
 				],
-			},
+			} as unknown as ModelRegistry,
 		};
 		const settingsPath = path.join(tempDir, ".pi", "settings.json");
 		const agentPath = path.join(tempDir, ".pi", "agents", "implementer.md");
@@ -844,7 +849,7 @@ Drive the failing test first.
 	});
 
 	it("preserves explicit default-like frontmatter that blocks settings overrides during updates", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const settingsPath = path.join(tempDir, ".pi", "settings.json");
 		const agentPath = path.join(tempDir, ".pi", "agents", "implementer.md");
 		fs.mkdirSync(path.dirname(agentPath), { recursive: true });
@@ -924,7 +929,7 @@ Drive the failing test first.
 	});
 
 	it("updates JSON chain descriptions without rewriting them as markdown", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const chainPath = path.join(
 			tempDir,
 			".pi",
@@ -983,7 +988,7 @@ Drive the failing test first.
 	});
 
 	it("renames and repackages JSON chains while preserving JSON format and extension", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		const chainPath = path.join(
 			tempDir,
 			".pi",
@@ -1030,7 +1035,7 @@ Drive the failing test first.
 	});
 
 	it("gets dynamic JSON chain details and lists invalid chain diagnostics", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		fs.mkdirSync(path.join(tempDir, ".pi", "chains"), { recursive: true });
 		fs.writeFileSync(
 			path.join(tempDir, ".pi", "chains", "dynamic-review.chain.json"),
@@ -1101,11 +1106,11 @@ Drive the failing test first.
 					{ provider: "openai", id: "gpt-5-mini" },
 					{ provider: "anthropic", id: "claude-sonnet-4" },
 				],
-			},
+			} as unknown as ModelRegistry,
 			model: { provider: "openai", id: "gpt-5-mini" },
 		};
 
-		const result = handleManagementAction("models", {}, ctx);
+		const result = handleManagementAction("models", {}, ctx as Parameters<typeof handleManagementAction>[2]);
 		const text = readText(result);
 		assert.equal(result.isError, false);
 		assert.match(text, /^Agent model mappings/m);
@@ -1149,11 +1154,11 @@ Drive the failing test first.
 					{ provider: "openai", id: "gpt-5-mini" },
 					{ provider: "anthropic", id: "claude-sonnet-4" },
 				],
-			},
+			} as unknown as ModelRegistry,
 			model: { provider: "openai", id: "gpt-5-mini" },
 		};
 
-		const result = handleManagementAction("models", { agent: "reviewer" }, ctx);
+		const result = handleManagementAction("models", { agent: "reviewer" }, ctx as Parameters<typeof handleManagementAction>[2]);
 		const text = readText(result);
 		assert.equal(result.isError, false);
 		assert.match(text, /^Agent model mapping/m);
@@ -1174,7 +1179,7 @@ Drive the failing test first.
 			{ agent: "not-a-builtin" },
 			{
 				cwd: tempDir,
-				modelRegistry: { getAvailable: () => [] },
+				modelRegistry: mockModelRegistry,
 			},
 		);
 
@@ -1191,7 +1196,7 @@ Drive the failing test first.
 					scope: "project",
 				},
 			},
-			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
+			{ cwd: tempDir, modelRegistry: mockModelRegistry },
 		);
 
 		assert.equal(result.isError, false);
@@ -1203,7 +1208,7 @@ Drive the failing test first.
 	});
 
 	it("lists proactive skill subagent suggestions from repeated configured skill use", () => {
-		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
 		fs.mkdirSync(path.join(tempDir, ".pi", "agents"), { recursive: true });
 		fs.mkdirSync(path.join(tempDir, ".pi", "skills", "deslop"), {
 			recursive: true,
@@ -1248,8 +1253,8 @@ Inspect cleanup.
 	it("can disable proactive skill subagent suggestions in config", () => {
 		const ctx = {
 			cwd: tempDir,
-			modelRegistry: { getAvailable: () => [] },
-			config: { proactiveSkillSubagents: false },
+			modelRegistry: mockModelRegistry,
+			config: { proactiveSkillSubagents: false } as unknown as ExtensionConfig,
 		};
 		fs.mkdirSync(path.join(tempDir, ".pi", "agents"), { recursive: true });
 		fs.mkdirSync(path.join(tempDir, ".pi", "skills", "deslop"), {

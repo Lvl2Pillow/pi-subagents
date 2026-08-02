@@ -85,7 +85,7 @@ function collectStepSkills(step: ChainStepConfig, out: Set<string>): void {
 		return;
 	}
 	if (typeof parallel === "object") {
-		collectStepSkills(parallel as ChainStepConfig, out);
+		collectStepSkills(parallel, out);
 	}
 }
 

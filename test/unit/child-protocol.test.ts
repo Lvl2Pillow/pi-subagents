@@ -56,7 +56,7 @@ describe("bounded child protocol reader", () => {
 		assert.equal(failure?.observedBytes, 21);
 		assert.match(failure?.diagnosticPrefix ?? "", /^prefix-/);
 		assert.match(failure?.diagnosticTail ?? "", /tail$/);
-		assert.match(formatProtocolOutputLimit(failure!), /protocol_output_limit.*exceeded 8 bytes/);
+		assert.match(formatProtocolOutputLimit(failure), /protocol_output_limit.*exceeded 8 bytes/);
 	});
 });
 

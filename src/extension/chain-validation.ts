@@ -128,7 +128,7 @@ function checkNoExtraKeys(
  */
 export function validateChainInput(args: unknown): void {
 	if (!isPlainObject(args)) return;
-	const chain = (args as Record<string, unknown>).chain;
+	const chain = (args).chain;
 	if (!Array.isArray(chain)) return;
 
 	chain.forEach((step, index) => {
@@ -142,7 +142,7 @@ export function validateChainInput(args: unknown): void {
 			expectObject(step.expand, expandPath, EXPAND_KEYS, EXPAND_EXAMPLE);
 			checkNoExtraKeys(step.expand, expandPath, DynamicExpandSchema, EXPAND_KEYS, EXPAND_EXAMPLE);
 
-			const from = (step.expand as Record<string, unknown>).from;
+			const from = (step.expand).from;
 			if (from !== undefined) {
 				const fromPath = `${expandPath}.from`;
 				expectObject(from, fromPath, EXPAND_FROM_KEYS, EXPAND_FROM_EXAMPLE);

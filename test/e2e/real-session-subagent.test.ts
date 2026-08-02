@@ -193,6 +193,9 @@ Report active tools.`;
 			run = await runRealSubagentSession({
 				prompt: "Delegate to a worker and report its exact result.",
 				childText: CHILD_MARKER,
+				projectFiles: {
+					".pi/agents/worker.md": `---\nname: worker\ndescription: Relays the faux child marker\n---\nReturn the exact child result.`,
+				},
 				respond: routeParentThroughSubagent({
 					childMarker: CHILD_MARKER,
 					subagentArgs: {
@@ -206,7 +209,7 @@ Report active tools.`;
 
 			const toolResults = subagentToolResults(run.parentSession);
 			assert.equal(toolResults.length, 1);
-			assert.match(toolResults[0]!, new RegExp(CHILD_MARKER));
+			assert.match(toolResults[0], new RegExp(CHILD_MARKER));
 			assert.match(run.responseText, new RegExp(CHILD_MARKER));
 			assert.doesNotMatch(run.responseText, /CHILD_MISSING/);
 			assert.ok(run.modelCalls >= 2, `expected parent tool-call and final turns, got ${run.modelCalls}`);

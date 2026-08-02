@@ -41,7 +41,7 @@ function makeState(sessionId: string | null): SubagentState {
 		watcher: null,
 		watcherRestartTimer: null,
 		resultFileCoalescer: { schedule: () => false, clear: () => {} },
-	} as SubagentState;
+	};
 }
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -415,7 +415,7 @@ describe("subagent_wait tool", () => {
 			}));
 
 			setTimeout(() => {
-				const child = state.foregroundRuns!.get("foreground-repeated")!.children[0]!;
+				const child = state.foregroundRuns!.get("foreground-repeated")!.children[0];
 				child.activityState = "needs_attention";
 				events.emit("subagent:detach-request", { runId: "foreground-repeated", childIndex: 0 });
 			}, 15);
@@ -466,11 +466,11 @@ describe("subagent_wait tool", () => {
 
 			assert.equal(result.isError, undefined);
 			assert.equal(updates.length, 1);
-			assert.match(updates[0]!, /Waiting for detached foreground run "foreground-live"/);
-			assert.match(updates[0]!, /worker · working after supervisor handoff/);
-			assert.match(updates[0]!, /current: edit: \{ path: src\/render\.ts \}/);
-			assert.match(updates[0]!, /assistant: I found the relevant renderer path\./);
-			assert.doesNotMatch(updates[0]!, /large delegated task/);
+			assert.match(updates[0], /Waiting for detached foreground run "foreground-live"/);
+			assert.match(updates[0], /worker · working after supervisor handoff/);
+			assert.match(updates[0], /current: edit: \{ path: src\/render\.ts \}/);
+			assert.match(updates[0], /assistant: I found the relevant renderer path\./);
+			assert.doesNotMatch(updates[0], /large delegated task/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

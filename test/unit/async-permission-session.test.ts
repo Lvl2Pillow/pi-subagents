@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import type { AgentConfig } from "../../src/agents/agents.ts";
+import type { RunnerSubagentStep } from "../../src/runs/shared/parallel-utils.ts";
 import { buildAsyncRunnerSteps } from "../../src/runs/background/async-execution.ts";
 
 function makeAgent(name: string): AgentConfig {
@@ -34,7 +35,7 @@ describe("async permission forwarding session identity", () => {
 		});
 
 		assert.ok(!("error" in built));
-		const step = built.steps[0];
+		const step = built.steps[0] as RunnerSubagentStep | undefined;
 		assert.ok(step && !("parallel" in step));
 		assert.equal(step.parentSessionId, "session-abc123");
 	});
@@ -63,11 +64,11 @@ describe("async permission forwarding session identity", () => {
 		});
 
 		assert.ok(!("error" in built));
-		const dynamic = built.steps[1];
+		const dynamic = built.steps[1] as RunnerSubagentStep | undefined;
 		assert.ok(dynamic && "expand" in dynamic && "collect" in dynamic);
 		assert.deepEqual(dynamic.sessionFiles, ["/tmp/dynamic-0.jsonl", "/tmp/dynamic-1.jsonl"]);
 		assert.deepEqual(dynamic.thinkingOverrides, ["off", "off"]);
-		const staticWorker = built.steps[2];
+		const staticWorker = built.steps[2] as RunnerSubagentStep | undefined;
 		assert.ok(staticWorker && !("parallel" in staticWorker));
 		assert.equal(staticWorker.sessionFile, "/tmp/static-worker.jsonl");
 		assert.equal(staticWorker.model, "anthropic/claude-sonnet-4-5:off");
@@ -89,7 +90,7 @@ describe("async permission forwarding session identity", () => {
 		});
 
 		assert.ok(!("error" in built));
-		const step = built.steps[0];
+		const step = built.steps[0] as RunnerSubagentStep | undefined;
 		assert.ok(step && !("parallel" in step));
 		assert.equal(step.model, "openai/gpt-5-mini:off");
 		assert.deepEqual(step.modelCandidates, ["openai/gpt-5-mini:off", "anthropic/claude-sonnet-4:off"]);

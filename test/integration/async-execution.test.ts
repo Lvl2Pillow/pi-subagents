@@ -72,10 +72,10 @@ interface AsyncResultPayload {
 	totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
 	usageBudget?: UsageBudgetState;
 	checkpoint?: { name?: string; status?: string };
-	results: Array<{ agent?: string; launchContractDigest?: string; launchResolvedExtensions?: LaunchResolvedExtensions; output?: string; success?: boolean; error?: string; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
+	results: Array<{ agent?: string; launchContractDigest?: string; launchResolvedExtensions?: LaunchResolvedExtensions; output?: string; success?: boolean; error?: string; skipped?: boolean; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }>; evidenceStatus?: string; reviewResult?: { status?: string } }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
 
 	outputs?: Record<string, { text?: string; structured?: unknown }>;
-	workflowGraph?: { nodes?: Array<{ kind?: string; label?: string; phase?: string; status?: string; acceptanceStatus?: string; error?: string; outputName?: string; structured?: boolean; children?: Array<{ label?: string; outputName?: string; itemKey?: string; status?: string; acceptanceStatus?: string; error?: string }> }> };
+	workflowGraph?: { nodes?: Array<{ kind?: string; label?: string; phase?: string; status?: string; acceptanceStatus?: string; error?: string; outputName?: string; structured?: boolean; flatIndex?: number; children?: Array<{ label?: string; outputName?: string; itemKey?: string; status?: string; acceptanceStatus?: string; error?: string }> }> };
 	parallelHandoff?: { version?: number; path?: string; groupCount?: number; childCount?: number; changedPatches?: number; cleanupState?: string };
 	capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] };
 	capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean };
@@ -113,6 +113,9 @@ interface AsyncStatusPayload {
 		outputName?: string;
 		structured?: boolean;
 		skills?: string[];
+		agent?: string;
+		sessionFile?: string;
+		currentToolStartedAt?: number;
 		activityState?: string;
 		currentTool?: string;
 		status?: string;
@@ -128,7 +131,7 @@ interface AsyncStatusPayload {
 		launchResolvedExtensions?: LaunchResolvedExtensions;
 		execution?: { status?: string; success?: boolean; exitCode?: number };
 		effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } };
-		acceptance?: { status?: string };
+		acceptance?: { status?: string; evidenceStatus?: string };
 		turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number };
 		turnBudgetExceeded?: boolean;
 		wrapUpRequested?: boolean;
@@ -404,6 +407,11 @@ function readMockPiArgsMatching(mockPi: MockPi, text: string): string[] {
 	assert.fail(`expected recorded call containing ${text}`);
 }
 
+const textOf = (content: readonly { type?: string; text?: string }[]): string => {
+	const first = content[0];
+	return first?.type === "text" ? (first.text ?? "") : "";
+};
+
 describe("async execution utilities", { skip: !available ? "pi packages not available" : undefined }, () => {
 	let tempDir: string;
 	let mockPi: MockPi;
@@ -481,7 +489,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const agentPath = path.join(tempDir, ".pi", "agents", `${agentName}.md`);
 		fs.mkdirSync(path.dirname(agentPath), { recursive: true });
 		fs.writeFileSync(agentPath, `---\nname: ${agentName}\ndescription: Contract comparison worker\n---\n`, "utf-8");
-		const discovered = discoverAgents(tempDir).agents.find((agent) => agent.name === agentName);
+		const discovered = discoverAgents(tempDir, "both").agents.find((agent) => agent.name === agentName);
 		assert.ok(discovered, "expected temporary agent definition to be discovered");
 		const preflight = await resolveSubagentLaunchContract({ agent: agentName, cwd: tempDir, task, turnBudget, runId: "contract-preflight" });
 		assert.equal(preflight.ok, true);
@@ -1361,10 +1369,10 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			agentConfig: makeAgent("worker"),
 			...commonParams,
 		});
-		assert.match(singleResult.content[0]?.text ?? "", /Async: worker \[/);
-		assert.match(singleResult.content[0]?.text ?? "", /Do not run sleep timers or polling loops/);
-		assert.match(singleResult.content[0]?.text ?? "", /call subagent_wait\(\)/i);
-		assert.match(singleResult.content[0]?.text ?? "", /non-interactive run: Pi auto-drains current-session background work at agent_end/);
+		assert.match(textOf(singleResult.content), /Async: worker \[/);
+		assert.match(textOf(singleResult.content), /Do not run sleep timers or polling loops/);
+		assert.match(textOf(singleResult.content), /call subagent_wait\(\)/i);
+		assert.match(textOf(singleResult.content), /non-interactive run: Pi auto-drains current-session background work at agent_end/);
 		assert.equal(startedEvent(singleId).task, wrappedTask.slice(0, 50));
 		assert.equal(startedEvent(singleId).goal, rawGoal.slice(0, 120));
 		await waitForAsyncResultFile(singleId, 30_000);
@@ -1378,10 +1386,10 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			...commonParams,
 			ctx: { ...commonParams.ctx, interactive: true },
 		});
-		assert.match(interactiveResult.content[0]?.text ?? "", /interactive session/);
-		assert.match(interactiveResult.content[0]?.text ?? "", /return control to the user/);
-		assert.match(interactiveResult.content[0]?.text ?? "", /Do NOT call subagent_wait\(\) merely to wait/);
-		assert.doesNotMatch(interactiveResult.content[0]?.text ?? "", /auto-drain/);
+		assert.match(textOf(interactiveResult.content), /interactive session/);
+		assert.match(textOf(interactiveResult.content), /return control to the user/);
+		assert.match(textOf(interactiveResult.content), /Do NOT call subagent_wait\(\) merely to wait/);
+		assert.doesNotMatch(textOf(interactiveResult.content), /auto-drain/);
 		await waitForAsyncResultFile(interactiveId, 30_000);
 
 		mockPi.onCall({ output: "parallel one done" });
@@ -1393,9 +1401,9 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			agents: [makeAgent("worker"), makeAgent("reviewer")],
 			...commonParams,
 		});
-		assert.match(parallelResult.content[0]?.text ?? "", /Async parallel:/);
-		assert.match(parallelResult.content[0]?.text ?? "", /Do not run sleep timers or polling loops/);
-		assert.match(parallelResult.content[0]?.text ?? "", /call subagent_wait\(\)/i);
+		assert.match(textOf(parallelResult.content), /Async parallel:/);
+		assert.match(textOf(parallelResult.content), /Do not run sleep timers or polling loops/);
+		assert.match(textOf(parallelResult.content), /call subagent_wait\(\)/i);
 		assert.equal(startedEvent(parallelId).goal, "Do one");
 		const parallelResultPath = await waitForAsyncResultFile(parallelId, 10_000);
 		const parallelPayload = JSON.parse(fs.readFileSync(parallelResultPath, "utf-8")) as { agent?: string; mode?: string };
@@ -1412,8 +1420,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			agents: [makeAgent("worker")],
 			...commonParams,
 		});
-		assert.match(chainResult.content[0]?.text ?? "", /Async chain:/);
-		assert.match(chainResult.content[0]?.text ?? "", /Do not run sleep timers or polling loops/);
+		assert.match(textOf(chainResult.content), /Async chain:/);
+		assert.match(textOf(chainResult.content), /Do not run sleep timers or polling loops/);
 		const chainEvent = startedEvent(chainId);
 		assert.equal(chainEvent.task, chainChildTask.slice(0, 50));
 		assert.equal(chainEvent.goal, chainGoal.slice(0, 120));
@@ -1601,8 +1609,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				path.join(outputDir, "parallel-0", "0-worker", "context.md"),
 				path.join(outputDir, "parallel-0", "1-worker", "context.md"),
 			];
-			assert.equal(fs.readFileSync(authoritativePaths[0]!, "utf-8"), "first async report");
-			assert.equal(fs.readFileSync(authoritativePaths[1]!, "utf-8"), "second async report");
+			assert.equal(fs.readFileSync(authoritativePaths[0], "utf-8"), "first async report");
+			assert.equal(fs.readFileSync(authoritativePaths[1], "utf-8"), "second async report");
 			const artifactPaths = payload.results.map((result) => result.artifactPaths?.outputPath);
 			assert.ok(artifactPaths[0] && artifactPaths[1]);
 			assert.notEqual(artifactPaths[0], artifactPaths[1]);
@@ -1640,7 +1648,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		);
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Parallel tasks 1 \(worker\) and 2 \(worker\).*same\.md/);
+		assert.match(textOf(result.content), /Parallel tasks 1 \(worker\) and 2 \(worker\).*same\.md/);
 		assert.equal(mockPi.callCount(), 0);
 	});
 
@@ -1694,8 +1702,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			path.join(outputDir, "parallel-0", "0-worker", "context.md"),
 			path.join(outputDir, "parallel-0", "1-worker", "context.md"),
 		];
-		assert.equal(fs.readFileSync(authoritativePaths[0]!, "utf-8"), "chain first report");
-		assert.equal(fs.readFileSync(authoritativePaths[1]!, "utf-8"), "chain second report");
+		assert.equal(fs.readFileSync(authoritativePaths[0], "utf-8"), "chain first report");
+		assert.equal(fs.readFileSync(authoritativePaths[1], "utf-8"), "chain second report");
 		const artifactPaths = payload.results.map((result) => result.artifactPaths?.outputPath);
 		assert.ok(artifactPaths[0] && artifactPaths[1]);
 		assert.notEqual(artifactPaths[0], artifactPaths[1]);
@@ -1809,7 +1817,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Invalid chain output reference '\{outputs\.bad-name\}'/);
+		assert.match(textOf(result.content), /Invalid chain output reference '\{outputs\.bad-name\}'/);
 		assert.equal(mockPi.callCount(), 0);
 	});
 
@@ -2015,15 +2023,15 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			path.join(outputDir, "dynamic-1", "0-reviewer", "context.md"),
 			path.join(outputDir, "dynamic-1", "1-reviewer", "context.md"),
 		];
-		assert.equal(fs.readFileSync(dynamicOutputPaths[0]!, "utf-8"), "review-a");
-		assert.equal(fs.readFileSync(dynamicOutputPaths[1]!, "utf-8"), "review-b");
+		assert.equal(fs.readFileSync(dynamicOutputPaths[0], "utf-8"), "review-a");
+		assert.equal(fs.readFileSync(dynamicOutputPaths[1], "utf-8"), "review-b");
 		const reviewerArtifacts = payload.results.slice(1, 3).map((result) => result.artifactPaths?.outputPath);
 		assert.ok(reviewerArtifacts[0] && reviewerArtifacts[1]);
 		assert.notEqual(reviewerArtifacts[0], reviewerArtifacts[1]);
 		assert.equal(fs.readFileSync(reviewerArtifacts[0], "utf-8"), "review-a");
 		assert.equal(fs.readFileSync(reviewerArtifacts[1], "utf-8"), "review-b");
-		assert.match(readMockPiArgs(mockPi, 1).at(-1) ?? "", new RegExp(dynamicOutputPaths[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-		assert.match(readMockPiArgs(mockPi, 2).at(-1) ?? "", new RegExp(dynamicOutputPaths[1]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.match(readMockPiArgs(mockPi, 1).at(-1) ?? "", new RegExp(dynamicOutputPaths[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.match(readMockPiArgs(mockPi, 2).at(-1) ?? "", new RegExp(dynamicOutputPaths[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 		assert.equal(status.steps?.length, 4);
 		assert.deepEqual(status.parallelGroups, [{ start: 1, count: 2, stepIndex: 1 }]);
 		assert.equal(payload.workflowGraph?.nodes?.[1]?.kind, "dynamic-parallel-group");
@@ -2260,7 +2268,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const elapsedMs = Date.now() - startedAt;
 		const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
 		const status = JSON.parse(fs.readFileSync(path.join(ASYNC_DIR, id, "status.json"), "utf-8")) as AsyncStatusPayload;
-		const dynamicNode = payload.workflowGraph?.nodes?.[1] as { status?: string; error?: string; acceptanceStatus?: string } | undefined;
+		const dynamicNode = payload.workflowGraph?.nodes?.[1];
 		assert.equal(payload.state, "failed");
 		assert.equal(payload.timedOut, true);
 		assert.equal(payload.results.at(-1)?.timedOut, true);
@@ -2372,22 +2380,22 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.ok(taskArg.includes(`Write your findings to exactly this path: ${path.join(repoDir, ".pi-subagents", "artifacts", "outputs", asyncId, "report.md")}`));
 			const resultPath = await waitForAsyncResultFile(asyncId, 90_000);
 			const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
-			const status = JSON.parse(fs.readFileSync(path.join(result.details!.asyncDir!, "status.json"), "utf-8")) as AsyncStatusPayload;
+			const status = JSON.parse(fs.readFileSync(path.join((result.details as { asyncDir?: string }).asyncDir!, "status.json"), "utf-8")) as AsyncStatusPayload;
 			assert.equal(payload.parallelHandoff?.version, 1);
-			assert.equal(payload.parallelHandoff?.path, path.join(result.details!.asyncDir!, "handoff.json"));
+			assert.equal(payload.parallelHandoff?.path, path.join((result.details as { asyncDir?: string }).asyncDir!, "handoff.json"));
 			assert.deepEqual(status.parallelHandoff, payload.parallelHandoff);
 			assert.equal(payload.parallelHandoff?.childCount, 1);
 			assert.equal(payload.parallelHandoff?.cleanupState, "complete");
 			assert.equal(fs.existsSync(worktreeCwd), false, "temporary worktree should be removed before handoff publication");
-			const handoff = JSON.parse(fs.readFileSync(payload.parallelHandoff!.path!, "utf-8")) as {
+			const handoff = JSON.parse(fs.readFileSync(payload.parallelHandoff.path, "utf-8")) as {
 				version: number;
 				groups: Array<{ children: Array<{ agent: string; status: string; patch: { path: string } }>; cleanup: { state: string } }>;
 			};
 			assert.equal(handoff.version, 1);
-			assert.equal(handoff.groups[0]!.children[0]!.agent, "worker");
-			assert.equal(handoff.groups[0]!.children[0]!.status, "completed");
-			assert.equal(handoff.groups[0]!.cleanup.state, "complete");
-			assert.equal(fs.existsSync(handoff.groups[0]!.children[0]!.patch.path), true, "patch artifact should outlive cleanup");
+			assert.equal(handoff.groups[0].children[0].agent, "worker");
+			assert.equal(handoff.groups[0].children[0].status, "completed");
+			assert.equal(handoff.groups[0].cleanup.state, "complete");
+			assert.equal(fs.existsSync(handoff.groups[0].children[0].patch.path), true, "patch artifact should outlive cleanup");
 		} finally {
 			removeTempDir(repoDir);
 		}
@@ -3696,7 +3704,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Skills not found: pi-subagents/);
+		assert.match(textOf(result.content), /Skills not found: pi-subagents/);
 	});
 
 	it("background chains report unavailable pi-subagents skill requests", () => {
@@ -3720,7 +3728,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Skills not found: pi-subagents/);
+		assert.match(textOf(result.content), /Skills not found: pi-subagents/);
 	});
 
 	it("background chains resolve relative step cwd values against the shared cwd", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
@@ -3851,8 +3859,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Failed to start async run/);
-		assert.match(result.content[0]?.text ?? "", /async-cfg-/);
+		assert.match(textOf(result.content), /Failed to start async run/);
+		assert.match(textOf(result.content), /async-cfg-/);
 	});
 
 	it("returns a tool error when an async run uses a missing cwd", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, () => {
@@ -3879,8 +3887,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(singleResult.isError, true);
-		assert.match(singleResult.content[0]?.text ?? "", /Failed to start async run/);
-		assert.match(singleResult.content[0]?.text ?? "", /cwd does not exist/);
+		assert.match(textOf(singleResult.content), /Failed to start async run/);
+		assert.match(textOf(singleResult.content), /cwd does not exist/);
 
 		const chainId = `async-missing-cwd-chain-${Date.now().toString(36)}`;
 		const chainResult = executeAsyncChain(chainId, {
@@ -3902,8 +3910,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(chainResult.isError, true);
-		assert.match(chainResult.content[0]?.text ?? "", /Failed to start async chain/);
-		assert.match(chainResult.content[0]?.text ?? "", /cwd does not exist/);
+		assert.match(textOf(chainResult.content), /Failed to start async chain/);
+		assert.match(textOf(chainResult.content), /cwd does not exist/);
 	});
 
 	it("returns a tool error when the async runner process cannot spawn", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, () => {
@@ -3933,8 +3941,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			});
 
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]?.text ?? "", /Failed to start async run/);
-			assert.match(result.content[0]?.text ?? "", /async runner did not produce a pid/);
+			assert.match(textOf(result.content), /Failed to start async run/);
+			assert.match(textOf(result.content), /async runner did not produce a pid/);
 		} finally {
 			process.execPath = originalExecPath;
 			if (originalPath === undefined) {
@@ -3969,8 +3977,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(result.isError, true);
-		assert.match(result.content[0]?.text ?? "", /Failed to start async chain/);
-		assert.match(result.content[0]?.text ?? "", /async-cfg-/);
+		assert.match(textOf(result.content), /Failed to start async chain/);
+		assert.match(textOf(result.content), /async-cfg-/);
 	});
 
 	it("background ignores child watchdog status when child watchdogs are not configured", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
@@ -4368,11 +4376,11 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.ok(statusDuringAttention, "expected status.json to expose the blocking supervisor request");
 
 		const waitResult = await waitForSubagents({ id, timeoutMs: 3_500 }, undefined, {
-			state: { currentSessionId: "session-1", foregroundRuns: new Map(), asyncJobs: new Map(), cleanupTimers: new Map(), resultFileCoalescer: new Map() },
+			state: { currentSessionId: "session-1", baseCwd: "", foregroundRuns: new Map(), asyncJobs: new Map(), foregroundControls: new Map(), lastForegroundControlId: null, cleanupTimers: new Map(), lastUiContext: null, poller: null, completionSeen: new Map(), watcher: null, watcherRestartTimer: null, resultFileCoalescer: { schedule: () => true, clear: () => {} } },
 			pollIntervalMs: 100,
 			events: createEventBus(),
 		});
-		const waitText = waitResult.content[0]?.text ?? "";
+		const waitText = textOf(waitResult.content);
 		assert.equal(waitResult.isError, undefined);
 		assert.match(waitText, /attention required/i);
 		assert.match(waitText, new RegExp(id));

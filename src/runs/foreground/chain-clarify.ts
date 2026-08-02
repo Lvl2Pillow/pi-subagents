@@ -86,7 +86,7 @@ function wrapText(text: string, width: number): { lines: string[]; starts: numbe
 
 function getCursorDisplayPos(cursor: number, starts: number[]): { line: number; col: number } {
 	for (let i = starts.length - 1; i >= 0; i--) {
-		if (cursor >= starts[i]!) return { line: i, col: cursor - starts[i]! };
+		if (cursor >= starts[i]) return { line: i, col: cursor - starts[i] };
 	}
 	return { line: 0, col: 0 };
 }
@@ -104,15 +104,15 @@ function isWordChar(ch: string): boolean {
 
 function wordBackward(buffer: string, cursor: number): number {
 	let pos = cursor;
-	while (pos > 0 && !isWordChar(buffer[pos - 1]!)) pos--;
-	while (pos > 0 && isWordChar(buffer[pos - 1]!)) pos--;
+	while (pos > 0 && !isWordChar(buffer[pos - 1])) pos--;
+	while (pos > 0 && isWordChar(buffer[pos - 1])) pos--;
 	return pos;
 }
 
 function wordForward(buffer: string, cursor: number): number {
 	let pos = cursor;
-	while (pos < buffer.length && isWordChar(buffer[pos]!)) pos++;
-	while (pos < buffer.length && !isWordChar(buffer[pos]!)) pos++;
+	while (pos < buffer.length && isWordChar(buffer[pos])) pos++;
+	while (pos < buffer.length && !isWordChar(buffer[pos])) pos++;
 	return pos;
 }
 
@@ -141,14 +141,14 @@ function handleEditorInput(state: TextEditorState, data: string, textWidth: numb
 	if (matchesKey(data, "right")) return state.cursor < state.buffer.length ? { ...state, cursor: state.cursor + 1 } : state;
 	if (matchesKey(data, "up") && cursorPos.line > 0) {
 		const targetLine = cursorPos.line - 1;
-		return { ...state, cursor: starts[targetLine]! + Math.min(cursorPos.col, wrapped[targetLine]?.length ?? 0) };
+		return { ...state, cursor: starts[targetLine] + Math.min(cursorPos.col, wrapped[targetLine]?.length ?? 0) };
 	}
 	if (matchesKey(data, "down") && cursorPos.line < wrapped.length - 1) {
 		const targetLine = cursorPos.line + 1;
-		return { ...state, cursor: starts[targetLine]! + Math.min(cursorPos.col, wrapped[targetLine]?.length ?? 0) };
+		return { ...state, cursor: starts[targetLine] + Math.min(cursorPos.col, wrapped[targetLine]?.length ?? 0) };
 	}
-	if (matchesKey(data, "home")) return { ...state, cursor: starts[cursorPos.line]! };
-	if (matchesKey(data, "end")) return { ...state, cursor: starts[cursorPos.line]! + (wrapped[cursorPos.line]?.length ?? 0) };
+	if (matchesKey(data, "home")) return { ...state, cursor: starts[cursorPos.line] };
+	if (matchesKey(data, "end")) return { ...state, cursor: starts[cursorPos.line] + (wrapped[cursorPos.line]?.length ?? 0) };
 	if (matchesKey(data, "ctrl+home")) return { ...state, cursor: 0 };
 	if (matchesKey(data, "ctrl+end")) return { ...state, cursor: state.buffer.length };
 	if (matchesKey(data, "alt+backspace")) {
@@ -377,7 +377,7 @@ export class ChainClarifyComponent implements Component {
 
 	/** Get effective behavior for a step (with user overrides applied) */
 	private getEffectiveBehavior(stepIndex: number): ResolvedStepBehavior {
-		const base = this.resolvedBehaviors[stepIndex]!;
+		const base = this.resolvedBehaviors[stepIndex];
 		const override = this.behaviorOverrides.get(stepIndex);
 		if (!override) return base;
 
@@ -775,7 +775,7 @@ export class ChainClarifyComponent implements Component {
 
 	private handleEditInput(data: string): void {
 		const textWidth = this.width - 4; // Must match render: innerW - 2 = (width - 2) - 2
-		if (matchesKey(data, "shift+up") || matchesKey(data, "pageup")) {
+		if (matchesKey(data, "shift+up") || matchesKey(data, "pageup" as Parameters<typeof matchesKey>[1])) {
 			const { lines: wrapped, starts } = wrapText(this.editState.buffer, textWidth);
 			const cursorPos = getCursorDisplayPos(this.editState.cursor, starts);
 			const targetLine = Math.max(0, cursorPos.line - this.EDIT_VIEWPORT_HEIGHT);
@@ -785,7 +785,7 @@ export class ChainClarifyComponent implements Component {
 			return;
 		}
 
-		if (matchesKey(data, "shift+down") || matchesKey(data, "pagedown")) {
+		if (matchesKey(data, "shift+down") || matchesKey(data, "pagedown" as Parameters<typeof matchesKey>[1])) {
 			const { lines: wrapped, starts } = wrapText(this.editState.buffer, textWidth);
 			const cursorPos = getCursorDisplayPos(this.editState.cursor, starts);
 			const targetLine = Math.min(wrapped.length - 1, cursorPos.line + this.EDIT_VIEWPORT_HEIGHT);
@@ -945,7 +945,7 @@ export class ChainClarifyComponent implements Component {
 			}
 
 			for (let i = startIdx; i < endIdx; i++) {
-				const model = this.filteredModels[i]!;
+				const model = this.filteredModels[i];
 				const isSelected = i === this.modelSelectedIndex;
 				const isCurrent = model.fullId === currentModelBase || model.id === currentModelBase;
 				const prefix = isSelected ? th.fg("accent", "→ ") : "  ";
@@ -1012,7 +1012,7 @@ export class ChainClarifyComponent implements Component {
 			lines.push(this.row(` ${th.fg("dim", "No supported thinking levels")}`));
 		} else {
 			for (let i = 0; i < levels.length; i++) {
-				const level = levels[i]!;
+				const level = levels[i];
 				const isSelected = i === this.thinkingSelectedIndex;
 				const prefix = isSelected ? th.fg("accent", "→ ") : "  ";
 				const levelText = isSelected ? th.fg("accent", level) : level;
@@ -1073,7 +1073,7 @@ export class ChainClarifyComponent implements Component {
 			}
 
 			for (let i = startIdx; i < endIdx; i++) {
-				const skill = this.filteredSkills[i]!;
+				const skill = this.filteredSkills[i];
 				const isCursor = i === this.skillCursorIndex;
 				const isSelected = this.skillSelectedNames.has(skill.name);
 
@@ -1143,7 +1143,7 @@ export class ChainClarifyComponent implements Component {
 		lines.push(this.renderHeader(headerText));
 		lines.push(this.row(""));
 
-		const config = this.agentConfigs[0]!;
+		const config = this.agentConfigs[0];
 		const behavior = this.getEffectiveBehavior(0);
 
 		const stepLabel = config.name;
@@ -1192,7 +1192,7 @@ export class ChainClarifyComponent implements Component {
 		lines.push(this.row(""));
 
 		for (let i = 0; i < this.agentConfigs.length; i++) {
-			const config = this.agentConfigs[i]!;
+			const config = this.agentConfigs[i];
 			const isSelected = i === this.selectedStep;
 
 			const color = isSelected ? "accent" : "dim";
@@ -1259,7 +1259,7 @@ export class ChainClarifyComponent implements Component {
 		lines.push(this.row(""));
 
 		for (let i = 0; i < this.agentConfigs.length; i++) {
-			const config = this.agentConfigs[i]!;
+			const config = this.agentConfigs[i];
 			const isSelected = i === this.selectedStep;
 			const behavior = this.getEffectiveBehavior(i);
 

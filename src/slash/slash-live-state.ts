@@ -60,7 +60,7 @@ function createPlaceholderResult(
 		messages: EMPTY_MESSAGES,
 		usage: cloneUsage(),
 		progress: {
-			...(index !== undefined ? { index } : {}),
+			index: index ?? 0,
 			agent,
 			status,
 			task,
@@ -164,6 +164,7 @@ function buildSingleInitialResult(params: SubagentParamsLike): AgentToolResult<D
 			...(params.context ? { context: params.context } : {}),
 			results: [createPlaceholderResult(agent, task, "running")],
 			progress: [{
+				index: 0,
 				agent,
 				status: "running",
 				task,

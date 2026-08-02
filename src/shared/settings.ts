@@ -237,7 +237,7 @@ export function resolveChainTemplates(
 			return step.parallel.task ?? "{previous}";
 		}
 		// Sequential step: existing logic
-		const seq = step as SequentialStep;
+		const seq = step;
 		if (seq.task) return seq.task;
 		// Default: first step uses {task}, others use {previous}
 		return i === 0 ? "{task}" : "{previous}";

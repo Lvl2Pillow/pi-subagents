@@ -106,7 +106,7 @@ function readAppendRequest(filePath: string): ChainAppendRequest | undefined {
 	if (!raw.id || typeof raw.id !== "string") return undefined;
 	if (!Number.isFinite(raw.createdAt)) return undefined;
 	if (!Array.isArray(raw.steps) || raw.steps.length === 0) return undefined;
-	return { id: raw.id, createdAt: raw.createdAt, steps: raw.steps as RunnerStep[] };
+	return { id: raw.id, createdAt: raw.createdAt, steps: raw.steps };
 }
 
 export function readPendingChainAppendRequests(asyncDir: string): ChainAppendRequest[] {

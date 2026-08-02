@@ -34,7 +34,7 @@ function makeState(sessionId = "session-a"): SubagentState {
 		watcher: null,
 		watcherRestartTimer: null,
 		resultFileCoalescer: { schedule: () => false, clear: () => {} },
-	} as SubagentState;
+	};
 }
 
 function writeStatus(root: string, id: string, state: string, sessionId = "session-a"): void {

@@ -176,7 +176,7 @@ function formatRememberedForegroundTranscript(run: ForegroundResumeRun, options:
 	if (index === undefined && run.children.length === 1) index = 0;
 	if (index === undefined) return `Transcript view requires index for foreground run '${run.runId}' with ${run.children.length} children.`;
 	if (index < 0 || index >= run.children.length) throw new Error(`Transcript index ${index} is out of range for ${run.children.length} foreground children.`);
-	const child = run.children[index]!;
+	const child = run.children[index];
 	const lineLimit = Math.max(1, Math.min(options.lines ?? 80, 1000));
 	const outputLines = rememberedForegroundChildOutput(child).split(/\r?\n/).filter((line) => line.trim()).slice(-lineLimit);
 	const lines = [
@@ -252,7 +252,7 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 		try {
 			const runs = listAsyncRuns(asyncDirRoot, { states: ["queued", "running"], sessionId: currentSessionId, resultsDir, kill: deps.kill, now: deps.now });
 			if (params.view === "transcript") {
-				if (runs.length === 1) return inspectSubagentStatus({ ...params, id: runs[0]!.id }, deps);
+				if (runs.length === 1) return inspectSubagentStatus({ ...params, id: runs[0].id }, deps);
 				return {
 					content: [{ type: "text", text: runs.length === 0 ? "No active async run transcript is available." : `Transcript view requires an id when ${runs.length} active async runs exist. Use subagent({ action: "status", view: "fleet" }) to choose one.` }],
 					isError: true,
@@ -390,7 +390,7 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 			const lines = [
 				`Run: ${status.runId}`,
 				`State: ${status.state}`,
-				processTerminal ? `Process terminal: ${processTerminal.state}${processTerminal.reason ? ` (${processTerminal.reason})` : ""}` : undefined,
+				processTerminal ? `Process terminal: ${processTerminal.state}${("reason" in processTerminal && processTerminal.reason) ? ` (${processTerminal.reason})` : ""}` : undefined,
 				status.capabilityCeiling ? `Capability ceiling: ${status.capabilityCeiling.allowedTools === undefined ? "names unrestricted" : status.capabilityCeiling.allowedTools.length === 0 ? "none" : status.capabilityCeiling.allowedTools.join(", ")}\nExtensions denied: ${status.capabilityCeiling.denyExtensions ? "yes" : "no"} (sources: ${status.capabilityCeiling.sources.join(", ")})` : undefined,
 				status.capabilityAudit ? `Capability audit: ${status.capabilityAudit.removedTools.length} tools removed, ${status.capabilityAudit.removedExtensionCount} extension entries removed` : undefined,
 				status.error ? `Error: ${status.error}` : undefined,

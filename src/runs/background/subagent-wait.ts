@@ -496,7 +496,7 @@ export async function waitForSubagents(
 			? `No active run matched "${params.id}". Nothing to wait for.`
 			: "No active async runs or registered provider work in this session. Nothing to wait for.");
 	}
-	const waitParams = params.id ? { ...params, id: active[0]!.id } : params;
+	const waitParams = params.id ? { ...params, id: active[0].id } : params;
 	const initialAsyncIds = new Set(active.map((run) => run.id));
 	const initialProviderIds = new Set(providerActive.map(backgroundWorkIdentity));
 	const initialProviderNames = new Set(providerActive.map((item) => item.provider));

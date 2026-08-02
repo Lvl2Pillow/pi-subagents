@@ -209,7 +209,7 @@ export function watchdogWarningFromLspDiagnostics(result: WatchdogLspResult): Wa
 	if (!actionable.length) return undefined;
 	const errors = actionable.filter((diagnostic) => diagnostic.severity === "error");
 	const severity = errors.length ? "blocker" : "concern";
-	const primary = errors[0] ?? actionable[0]!;
+	const primary = errors[0] ?? actionable[0];
 	const count = errors.length || actionable.length;
 	const kind = errors.length ? "error" : "warning";
 	const evidence = actionable.slice(0, 5).map(formatDiagnostic).join("\n");
@@ -278,6 +278,14 @@ class JsonRpcLspClient {
 			this.rejectPending(new Error(`language server exited${code === null ? "" : ` with code ${code}`}${signal ? ` signal ${signal}` : ""}`));
 			this.resolveExitWaiters();
 		});
+		// Pipe errors (e.g. EPIPE when the server exits/closes stdin mid-request) must not
+		// surface as uncaught exceptions; reject with the original error instead.
+		child.stdin.on("error", (error) => {
+			this.rejectPending(error);
+			this.resolveExitWaiters();
+		});
+		child.stdout.on("error", () => {});
+		child.stderr.on("error", () => {});
 	}
 
 	request(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
@@ -315,6 +323,8 @@ class JsonRpcLspClient {
 	private send(payload: JsonRpcMessage): void {
 		if (this.exited) throw new Error("language server already exited");
 		const body = JSON.stringify(payload);
+		// stdin.write can throw synchronously when the stream is destroyed; let the
+		// original error propagate so callers see the real failure.
 		this.child.stdin.write(`Content-Length: ${Buffer.byteLength(body, "utf-8")}\r\n\r\n${body}`);
 	}
 

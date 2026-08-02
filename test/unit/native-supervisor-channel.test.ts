@@ -283,7 +283,7 @@ describe("native supervisor channel", () => {
 
 		try {
 			channel.start();
-			const child = state.foregroundRuns.get(runId)!.children[0]!;
+			const child = state.foregroundRuns.get(runId)!.children[0];
 			assert.equal(child.activityState, "needs_attention");
 			assert.equal(child.currentTool, "contact_supervisor");
 
@@ -448,7 +448,7 @@ describe("native supervisor channel", () => {
 			fs.rmSync(requestFile(runId, requestId), { force: true });
 			const pendingResult = await registeredTools.get(NATIVE_SUPERVISOR_TOOL_NAME)!.execute("pending", { action: "pending" });
 
-			assert.match(pendingResult.content[0]!.text, /No pending supervisor requests/);
+			assert.match(pendingResult.content[0].text, /No pending supervisor requests/);
 			assert.deepEqual(pendingResult.details?.pending, []);
 			assert.equal(channel.pending.has(requestId), false);
 			await assert.rejects(
@@ -481,7 +481,7 @@ describe("native supervisor channel", () => {
 		controller.abort();
 
 		await assert.rejects(
-			() => registeredTools.get("contact_supervisor")!.execute("contact", { reason: "need_decision", message: "Need a decision" }, controller.signal),
+			async () => registeredTools.get("contact_supervisor")!.execute("contact", { reason: "need_decision", message: "Need a decision" }, controller.signal),
 			/Supervisor request cancelled/,
 		);
 

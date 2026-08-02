@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
+import { randomUUID } from "node:crypto";
 import registerFanoutChildSubagentExtension from "../../src/extension/fanout-child.ts";
 import { createSubagentExecutor } from "../../src/runs/foreground/subagent-executor.ts";
 import { createNestedRoute, findNestedControlResult, projectNestedEvents, readNestedControlRequests, readNestedControlResults, snapshotNestedEventFiles, writeNestedControlRequest, writeNestedControlResult, writeNestedEvent } from "../../src/runs/shared/nested-events.ts";
@@ -19,6 +20,14 @@ import {
 import { ASYNC_DIR, type SubagentState } from "../../src/shared/types.ts";
 
 const routeRoots: string[] = [];
+
+// The route dir lives in the shared NESTED_EVENTS_DIR; a unique root id keeps
+// other processes' global scans (projectNestedEvents writes registry.json into
+// every route they scan) from ever resolving to this process's routes.
+const NESTED_CONTROL_SEED = randomUUID().slice(0, 8);
+function uniqueRoot(prefix: string): string {
+	return `${prefix}-${NESTED_CONTROL_SEED}`;
+}
 const savedEnv = {
 	[SUBAGENT_CHILD_ENV]: process.env[SUBAGENT_CHILD_ENV],
 	[SUBAGENT_FANOUT_CHILD_ENV]: process.env[SUBAGENT_FANOUT_CHILD_ENV],
@@ -61,7 +70,7 @@ function createExecutor(state = createState(), agents: Array<Record<string, unkn
 	return createSubagentExecutor({
 		pi: { events, getSessionName() { return "parent"; } } as any,
 		state,
-		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} } as any,
+		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} },
 		asyncByDefault: false,
 		tempArtifactsDir: os.tmpdir(),
 		getSubagentSessionRoot: (parentSessionFile) => parentSessionFile ? path.join(path.dirname(parentSessionFile), path.basename(parentSessionFile, ".jsonl")) : os.tmpdir(),
@@ -81,7 +90,7 @@ function ctx(root: string, sessionFile: string | null = null) {
 }
 
 function createNestedRun(id = "nested-live", state: "running" | "complete" | "failed" | "paused" = "running", extras: Record<string, unknown> = {}) {
-	const route = createNestedRoute("root-control");
+	const route = createNestedRoute(uniqueRoot("root-control"));
 	routeRoots.push(path.dirname(route.eventSink));
 	writeNestedEvent(route, {
 		type: state === "running" ? "subagent.nested.updated" : "subagent.nested.completed",
@@ -323,7 +332,7 @@ describe("nested control routing", () => {
 	it("rejects stopped nested runs before attempting revival", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-nested-stopped-resume-"));
 		try {
-			const route = createNestedRun("nested-stopped-resume", "stopped", { sessionFile: path.join(root, "missing-session.jsonl") });
+			const route = createNestedRun("nested-stopped-resume", "stopped" as Parameters<typeof createNestedRun>[1], { sessionFile: path.join(root, "missing-session.jsonl") });
 
 			const result = await createExecutor(stateWithNestedRoute(route), [{ name: "worker", description: "Worker", prompt: "Do work" }])
 				.execute("resume", { action: "resume", id: "nested-stopped-resume", message: "continue" }, new AbortController().signal, undefined, ctx(root));

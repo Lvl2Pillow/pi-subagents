@@ -181,7 +181,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const previousRuntimeCleanup = globalStore[runtimeCleanupStoreKey];
 	if (typeof previousRuntimeCleanup === "function") {
 		try {
-			previousRuntimeCleanup();
+			(previousRuntimeCleanup as () => void)();
 		} catch {
 			// Best effort cleanup for stale timers from an older reload.
 		}
@@ -267,6 +267,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const { ensurePoller, refreshWidget, handleStarted, handleComplete, resetJobs, restoreActiveJobs } = createAsyncJobTracker(pi, state, ASYNC_DIR, {
 		widgetEnabled: asyncWidgetEnabled,
 	});
+	// eslint-disable-next-line prefer-const -- assigned once after declaration; the launch closure reads it before the assignment, so const would break
 	let executorExecute: ((id: string, params: SubagentParamsLike, signal: AbortSignal, onUpdate: ((r: AgentToolResult<Details>) => void) | undefined, ctx: ExtensionContext) => Promise<AgentToolResult<Details>>) | undefined;
 	const scheduledRunManager = createScheduledRunManager({
 		config,
@@ -315,7 +316,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 	pi.registerMessageRenderer<SubagentNotifyDetails>("subagent-notify", (message, options, theme) => {
 		const content = typeof message.content === "string" ? message.content : "";
-		const details = (message.details as SubagentNotifyDetails | undefined) ?? parseSubagentNotifyContent(content);
+		const details = (message.details) ?? parseSubagentNotifyContent(content);
 		if (!details) return new Text(content, 0, 0);
 		const icon = details.status === "completed"
 			? theme.fg("success", "✓")
@@ -345,13 +346,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerMessageRenderer<SubagentSteeringMessageDetails>(SUBAGENT_STEERING_MESSAGE_TYPE, (message, _options, theme) => {
-		const details = message.details as SubagentSteeringMessageDetails | undefined;
+		const details = message.details;
 		if (!details) return undefined;
 		return new Text(theme.fg(details.state === "recovered" ? "warning" : "error", formatSteeringNotice(details)), 0, 0);
 	});
 
 	pi.registerMessageRenderer<SubagentControlMessageDetails>(SUBAGENT_CONTROL_MESSAGE_TYPE, (message, _options, theme) => {
-		const details = message.details as SubagentControlMessageDetails | undefined;
+		const details = message.details;
 		if (!details?.event) return undefined;
 		const content = typeof message.content === "string" ? message.content : undefined;
 		return new SubagentControlNoticeComponent({ ...details, noticeText: formatSubagentControlNotice(details, content) }, theme);
@@ -410,7 +411,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		},
 
 		execute(id, params, signal, onUpdate, ctx) {
-			return executeSubagentCollapsed(id, params, signal, onUpdate, ctx);
+			return executeSubagentCollapsed(id, params as SubagentParamsLike, signal, onUpdate, ctx);
 		},
 
 		renderCall(args, theme) {
@@ -422,7 +423,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				);
 			}
 			const isParallel = (args.tasks?.length ?? 0) > 0;
-			const parallelCount = effectiveParallelTaskCount(args.tasks as Array<{ count?: unknown }> | undefined);
+			const parallelCount = effectiveParallelTaskCount(args.tasks);
 			const asyncLabel = args.async === true && args.clarify !== true ? theme.fg("warning", " [async]") : "";
 			if (args.chain?.length)
 				return new Text(
@@ -468,7 +469,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		for (const unsubscribe of previousEventUnsubscribes) {
 			if (typeof unsubscribe !== "function") continue;
 			try {
-				unsubscribe();
+				(unsubscribe as () => void)();
 			} catch {
 				// Best effort cleanup for stale handlers from an older reload.
 			}

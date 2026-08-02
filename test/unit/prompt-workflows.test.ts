@@ -126,9 +126,9 @@ Fix from {previous}: $@
 
 		assert.equal(runs.length, 1);
 		assert.equal(runs[0]?.chain?.length, 2);
-		assert.equal(runs[0]?.chain?.[0]?.agent, "scout");
-		assert.equal(runs[0]?.chain?.[0]?.task, "Analyze bug report");
-		assert.equal(runs[0]?.chain?.[1]?.agent, "worker");
-		assert.equal(runs[0]?.chain?.[1]?.task, "Fix from {previous}: bug report");
+		assert.equal((runs[0]?.chain?.[0] as { agent?: string } | undefined)?.agent, "scout");
+		assert.equal((runs[0]?.chain?.[0] as { task?: string } | undefined)?.task, "Analyze bug report");
+		assert.equal((runs[0]?.chain?.[1] as { agent?: string } | undefined)?.agent, "worker");
+		assert.equal((runs[0]?.chain?.[1] as { task?: string } | undefined)?.task, "Fix from {previous}: bug report");
 	});
 });

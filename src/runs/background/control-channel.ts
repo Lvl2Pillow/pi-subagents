@@ -323,7 +323,8 @@ export function requestAsyncSteer(
 
 export function enqueueStepSteer(asyncDir: string, index: number, request: SteerRequest): string {
 	assertChildIndex(index);
-	const { targetIndexes: _targetIndexes, ...singleTargetRequest } = request;
+	const { ...singleTargetRequest } = request;
+	delete singleTargetRequest.targetIndexes;
 	return writeSteerRequestToDir(stepSteerInboxDir(asyncDir, index), { ...singleTargetRequest, targetIndex: index, type: "steer" });
 }
 

@@ -16,7 +16,7 @@ export async function steerAsyncRun(input: {
 	message: string;
 	index?: number;
 	kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean;
-	location: { asyncDir: string | null };
+	location: { asyncDir: string | null; resolvedId?: string };
 	signal?: AbortSignal;
 	ackTimeoutMs?: number;
 	recoveryTimeoutMs?: number;

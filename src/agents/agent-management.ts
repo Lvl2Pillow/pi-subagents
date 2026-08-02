@@ -294,7 +294,7 @@ function chainStepWarnings(
 		discoverAvailableSkills(ctx.cwd).map((s) => s.name),
 	);
 	for (let i = 0; i < steps.length; i++) {
-		const s = steps[i]!;
+		const s = steps[i];
 		if (s.model) {
 			const found = ctx.modelRegistry
 				.getAvailable()
@@ -473,7 +473,7 @@ function parseStepList(raw: unknown): {
 		return { error: "config.steps must include at least one step." };
 	const steps: ChainStepConfig[] = [];
 	for (let i = 0; i < raw.length; i++) {
-		const item = raw[i];
+		const item = raw[i] as unknown;
 		if (!item || typeof item !== "object" || Array.isArray(item))
 			return { error: `config.steps[${i}] must be an object.` };
 		const s = item as Record<string, unknown>;
@@ -854,7 +854,7 @@ function resolveTarget<
 			true,
 		);
 	}
-	if (mutable.length === 1) return mutable[0]!;
+	if (mutable.length === 1) return mutable[0];
 	const scope = asDisambiguationScope(scopeHint);
 	if (!scope) {
 		const paths = mutable.map((m) => `${m.source}: ${m.filePath}`).join("\n");
@@ -874,7 +874,7 @@ function resolveTarget<
 			`Multiple ${kind}s named '${name}' found in scope '${scope}': ${scoped.map((m) => m.filePath).join(", ")}`,
 			true,
 		);
-	return scoped[0]!;
+	return scoped[0];
 }
 
 function renamePath(
@@ -1056,7 +1056,7 @@ function formatChainDetail(chain: ChainConfig): string {
 	}
 	lines.push("", "Steps:");
 	for (let i = 0; i < chain.steps.length; i++) {
-		lines.push(...formatChainStepDetail(chain.steps[i]!, i));
+		lines.push(...formatChainStepDetail(chain.steps[i], i));
 	}
 	return lines.join("\n");
 }
@@ -1296,7 +1296,7 @@ export function handleCreate(
 	const scopeRaw = cfg.scope ?? "user";
 	if (scopeRaw !== "user" && scopeRaw !== "project")
 		return result("config.scope must be 'user' or 'project'.", true);
-	const scope = scopeRaw as ManagementScope;
+	const scope = scopeRaw;
 	const isChain = hasKey(cfg, "steps");
 	const d = discoverAgentsAll(ctx.cwd);
 	const projectConfigDir = getProjectConfigDir(ctx.cwd);
@@ -1458,7 +1458,7 @@ export function handleUpdate(
 				"agent",
 				target.filePath,
 				updated.name,
-				target.source,
+				target.source as "user" | "project",
 				ctx.cwd,
 			);
 			if (renamed.error) return result(renamed.error, true);
@@ -1546,7 +1546,7 @@ export function handleUpdate(
 			"chain",
 			target.filePath,
 			updated.name,
-			target.source,
+			target.source as "user" | "project",
 			ctx.cwd,
 		);
 		if (renamed.error) return result(renamed.error, true);

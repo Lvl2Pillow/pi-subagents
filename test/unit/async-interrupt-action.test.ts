@@ -67,7 +67,7 @@ function executorWithKill(state: SubagentState, kill: (pid: number, signal?: Nod
 	return createSubagentExecutor({
 		pi: { events: { emit() {}, on() { return () => {}; } }, getSessionName() { return "parent"; } } as any,
 		state,
-		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} } as any,
+		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} },
 		asyncByDefault: false,
 		tempArtifactsDir: os.tmpdir(),
 		getSubagentSessionRoot: (parentSessionFile) => parentSessionFile ? path.join(path.dirname(parentSessionFile), path.basename(parentSessionFile, ".jsonl")) : os.tmpdir(),
@@ -93,7 +93,7 @@ function text(result: Awaited<ReturnType<ReturnType<typeof executorWithKill>["ex
 describe("async interrupt action", () => {
 	it("queues steering for a running async child", async () => {
 		const state = createState();
-		const runId = `steer-disk-${Date.now().toString(36)}`;
+		const runId = `steer-disk-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false });
 		try {
 			const controller = new AbortController();
@@ -115,7 +115,7 @@ describe("async interrupt action", () => {
 
 	it("queues steering for a running async child by directory", async () => {
 		const state = createState();
-		const runId = `steer-dir-${Date.now().toString(36)}`;
+		const runId = `steer-dir-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false });
 		try {
 			const controller = new AbortController();
@@ -135,7 +135,7 @@ describe("async interrupt action", () => {
 
 	it("queues steering for a pending indexed async child", async () => {
 		const state = createState();
-		const runId = `steer-pending-${Date.now().toString(36)}`;
+		const runId = `steer-pending-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeJson(path.join(asyncDir, "status.json"), {
 			runId,
@@ -167,7 +167,7 @@ describe("async interrupt action", () => {
 
 	it("rejects steering async runs outside the active session", async () => {
 		const state = createState();
-		const runId = `steer-other-session-${Date.now().toString(36)}`;
+		const runId = `steer-other-session-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false, sessionId: "other-session" });
 		try {
 			const result = await executorWithKill(state, () => true)
@@ -182,7 +182,7 @@ describe("async interrupt action", () => {
 
 	it("interrupts a running async run resolved from disk after in-memory tracking is gone", async () => {
 		const state = createState();
-		const runId = `interrupt-disk-${Date.now().toString(36)}`;
+		const runId = `interrupt-disk-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false });
 		try {
 			const kills: Array<{ pid: number; signal?: NodeJS.Signals | 0 }> = [];
@@ -202,7 +202,7 @@ describe("async interrupt action", () => {
 
 	it("reports success and writes the portable request when the signal is unavailable", async () => {
 		const state = createState();
-		const runId = `interrupt-enosys-${Date.now().toString(36)}`;
+		const runId = `interrupt-enosys-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId);
 		try {
 			const result = await executorWithKill(state, (_pid, signal) => {
@@ -223,7 +223,7 @@ describe("async interrupt action", () => {
 	it("stops a running async run resolved from disk", async () => {
 		const state = createState();
 		state.currentSessionId = "session";
-		const runId = `stop-disk-${Date.now().toString(36)}`;
+		const runId = `stop-disk-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false, sessionId: "session" });
 		try {
 			const kills: Array<{ pid: number; signal?: NodeJS.Signals | 0 }> = [];
@@ -244,7 +244,7 @@ describe("async interrupt action", () => {
 	it("does not stop a different async run when the requested id is missing", async () => {
 		const state = createState();
 		state.currentSessionId = "session";
-		const runId = `stop-existing-${Date.now().toString(36)}`;
+		const runId = `stop-existing-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { sessionId: "session" });
 		try {
 			const result = await executorWithKill(state, () => true)
@@ -261,7 +261,7 @@ describe("async interrupt action", () => {
 	it("stops a queued async run by writing the portable request", async () => {
 		const state = createState();
 		state.currentSessionId = "session";
-		const runId = `stop-queued-${Date.now().toString(36)}`;
+		const runId = `stop-queued-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false, sessionId: "session", state: "queued" });
 		try {
 			const result = await executorWithKill(state, () => {
@@ -279,7 +279,7 @@ describe("async interrupt action", () => {
 	it("rejects stop for async runs outside the active session", async () => {
 		const state = createState();
 		state.currentSessionId = "session";
-		const runId = `stop-other-session-${Date.now().toString(36)}`;
+		const runId = `stop-other-session-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId, { track: false, sessionId: "other-session" });
 		try {
 			const result = await executorWithKill(state, () => true)
@@ -295,7 +295,7 @@ describe("async interrupt action", () => {
 
 	it("does not report success for stale running status with a dead pid", async () => {
 		const state = createState();
-		const runId = `interrupt-esrch-${Date.now().toString(36)}`;
+		const runId = `interrupt-esrch-${process.pid}`;
 		const asyncDir = createRunningAsync(state, runId);
 		try {
 			const result = await executorWithKill(state, () => {

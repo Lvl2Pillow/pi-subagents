@@ -153,7 +153,7 @@ export function buildWatchdogStatus(snapshot: ReturnType<MainWatchdogRuntime["ge
 function parseTestCommand(input: string): { severity: "concern" | "blocker"; text: string } | undefined {
 	const match = input.match(/^test\s+(concern|blocker)\s+([\s\S]+)$/);
 	if (!match) return undefined;
-	return { severity: match[1] as "concern" | "blocker", text: match[2]!.trim() };
+	return { severity: match[1] as "concern" | "blocker", text: match[2].trim() };
 }
 
 function formatThinking(value: ThinkingLevel | false | undefined): string {
@@ -172,14 +172,14 @@ function resolveModelCommandValue(ctx: ExtensionCommandContext, raw: string): { 
 	if (!value) throw new Error("Expected a model, 'recommended', or 'inherit'.");
 	if (value === "inherit") return { model: null, thinking: null, description: "current session model and thinking" };
 	if (value === "recommended") {
-		const recommendation = recommendStrongWatchdogModel(ctx as ExtensionContext);
+		const recommendation = recommendStrongWatchdogModel(ctx);
 		return {
 			model: recommendation.model,
 			thinking: recommendation.thinking,
 			description: `${recommendation.model}:${recommendation.thinking} (${recommendation.label})`,
 		};
 	}
-	const resolved = resolveWatchdogModelInput(ctx as ExtensionContext, value);
+	const resolved = resolveWatchdogModelInput(ctx, value);
 	return {
 		model: resolved.model,
 		thinking: resolved.thinking,
@@ -188,10 +188,10 @@ function resolveModelCommandValue(ctx: ExtensionCommandContext, raw: string): { 
 }
 
 function buildRecommendationText(ctx: ExtensionCommandContext): string {
-	const recommendation = recommendStrongWatchdogModel(ctx as ExtensionContext);
+	const recommendation = recommendStrongWatchdogModel(ctx);
 	return [
 		"Subagent watchdog recommended model",
-		`Current session: ${currentSessionModelLine(ctx as ExtensionContext)}`,
+		`Current session: ${currentSessionModelLine(ctx)}`,
 		`Recommended: ${recommendation.model}:${recommendation.thinking}`,
 		`Reason: ${recommendation.reason}`,
 		"",
@@ -210,15 +210,15 @@ function buildCheckText(runtime: MainWatchdogRuntime, ctx: ExtensionCommandConte
 	}
 	const lines = ["Subagent watchdog config check", "", "Config: ok"];
 	if (snapshot.config.main.model) {
-		const resolved = resolveWatchdogModelInput(ctx as ExtensionContext, snapshot.config.main.model);
+		const resolved = resolveWatchdogModelInput(ctx, snapshot.config.main.model);
 		lines.push(`Main model: ${resolved.model} auth ok`);
 	} else {
-		lines.push(`Main model: ${currentSessionModelLine(ctx as ExtensionContext)}`);
+		lines.push(`Main model: ${currentSessionModelLine(ctx)}`);
 	}
-	lines.push(`Main thinking: ${mainThinkingLine(snapshot, ctx as ExtensionContext)}`);
+	lines.push(`Main thinking: ${mainThinkingLine(snapshot, ctx)}`);
 	lines.push(lspLine(snapshot));
 	try {
-		const recommendation = recommendStrongWatchdogModel(ctx as ExtensionContext);
+		const recommendation = recommendStrongWatchdogModel(ctx);
 		lines.push(`Recommended strong watchdog: ${recommendation.model}:${recommendation.thinking}`);
 	} catch (error) {
 		lines.push(`Recommended strong watchdog: unavailable (${messageFromError(error)})`);
@@ -387,7 +387,7 @@ export function registerMainWatchdog(pi: ExtensionAPI, options: RegisterMainWatc
 	});
 
 	pi.registerMessageRenderer<WatchdogWarningDetails>(SUBAGENT_WATCHDOG_WARNING_TYPE, (message, renderOptions, theme) => {
-		const details = message.details as WatchdogWarningDetails | undefined;
+		const details = message.details;
 		if (!details?.summary || !details.evidence || !details.recommendedAction) {
 			const content = typeof message.content === "string"
 				? message.content

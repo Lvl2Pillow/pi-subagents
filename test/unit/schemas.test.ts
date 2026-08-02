@@ -17,6 +17,9 @@ interface SubagentParamsSchema {
 						minimum?: number;
 						description?: string;
 					};
+					output?: JsonSchemaNode;
+					reads?: JsonSchemaNode;
+					progress?: JsonSchemaNode;
 				};
 			};
 		};
@@ -45,6 +48,14 @@ interface SubagentParamsSchema {
 			};
 			description?: string;
 		};
+		toolBudget?: {
+			properties?: {
+				soft?: { minimum?: number };
+				hard?: { minimum?: number };
+			};
+		};
+		additional?: JsonSchemaNode;
+		acceptance?: JsonSchemaNode;
 		id?: {
 			type?: string;
 			description?: string;
@@ -132,7 +143,8 @@ let schemas: Record<string, JsonSchemaNode> = {};
 let SubagentParams: SubagentParamsSchema | undefined;
 let schemasAvailable = true;
 try {
-	schemas = await import("../../src/extension/schemas.ts") as Record<string, JsonSchemaNode>;
+	schemas = await import("../../src/extension/schemas.ts") as unknown as Record<string, JsonSchemaNode>;
+	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- the typebox schema type is narrower under the extension tsconfig (strict:false); eslint's strict program resolves it as already assignable
 	SubagentParams = schemas.SubagentParams as SubagentParamsSchema;
 } catch (error) {
 	if (missingPackageName(error) !== "typebox") throw error;
@@ -165,11 +177,11 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		const taskCountSchema = taskSchema?.count;
 		assert.ok(taskCountSchema, "tasks[].count schema should exist");
 		assert.equal(taskCountSchema.minimum, 1);
-		const outputSchema = taskSchema?.output as JsonSchemaNode | undefined;
+		const outputSchema = taskSchema?.output;
 		assert.equal(outputSchema?.type, undefined);
 		assert.equal(hasAnyOfType(outputSchema, "string"), true);
 		assert.equal(hasAnyOfType(outputSchema, "boolean"), true);
-		const readsSchema = taskSchema?.reads as JsonSchemaNode | undefined;
+		const readsSchema = taskSchema?.reads;
 		assert.equal(readsSchema?.type, undefined);
 		assert.equal(hasAnyOfArrayWithStringItems(readsSchema), true);
 		assert.equal(hasAnyOfType(readsSchema, "boolean"), true);
@@ -198,7 +210,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		const timeoutSchema = SubagentParams?.properties?.timeoutMs;
 		const maxRuntimeSchema = SubagentParams?.properties?.maxRuntimeMs;
 		const turnBudgetSchema = SubagentParams?.properties?.turnBudget;
-		const toolBudgetSchema = SubagentParams?.properties?.toolBudget;
+		const toolBudgetSchema = (SubagentParams?.properties)?.toolBudget;
 		assert.ok(timeoutSchema, "timeoutMs schema should exist");
 		assert.ok(maxRuntimeSchema, "maxRuntimeMs schema should exist");
 		assert.equal(timeoutSchema.minimum, 1);
@@ -222,8 +234,8 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(usageBudgetSchema.properties?.costUsd?.properties?.hard?.exclusiveMinimum, 0);
 		assert.match(String(usageBudgetSchema.description ?? ""), /root-only/);
 		assert.match(String(usageBudgetSchema.description ?? ""), /running children are not stopped/i);
-		assert.equal(getPropertySchema(SubagentParams?.properties?.tasks?.items as JsonSchemaNode | undefined, ["usageBudget"]), undefined);
-		assert.equal(getPropertySchema(SubagentParams?.properties?.chain?.items as JsonSchemaNode | undefined, ["usageBudget"]), undefined);
+		assert.equal(getPropertySchema(SubagentParams?.properties?.tasks?.items, ["usageBudget"]), undefined);
+		assert.equal(getPropertySchema(SubagentParams?.properties?.chain?.items, ["usageBudget"]), undefined);
 	});
 
 	it("includes subagent control fields", () => {
@@ -267,7 +279,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(linesSchema.maximum, 500);
 		assert.match(String(linesSchema.description ?? ""), /transcript/i);
 
-		const additionalSchema = SubagentParams?.properties?.additional;
+		const additionalSchema = (SubagentParams?.properties)?.additional;
 		assert.ok(additionalSchema, "additional schema should exist");
 		assert.equal(additionalSchema.minimum, 1);
 		assert.match(String(additionalSchema.description ?? ""), /grant-spawn-budget/);
@@ -450,7 +462,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(anyOfBranches(configSchema).some((branch) => branch.type === "object" && branch.additionalProperties === true), true);
 		assert.equal(hasAnyOfType(configSchema, "string"), true);
 
-		const acceptanceSchema = SubagentParams?.properties?.acceptance;
+		const acceptanceSchema = (SubagentParams?.properties)?.acceptance;
 		assert.ok(acceptanceSchema, "acceptance schema should exist");
 		assert.equal(acceptanceSchema.type, undefined);
 		assert.equal(hasAnyOfType(acceptanceSchema, "string"), true);

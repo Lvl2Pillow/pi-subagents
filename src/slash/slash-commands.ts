@@ -198,7 +198,7 @@ const makeAgentCompletions =
 			depth = 0,
 			segStart = 0;
 		for (let i = 0; i < prefix.length; i++) {
-			const ch = prefix[i]!;
+			const ch = prefix[i];
 			if (inSingle) {
 				if (ch === "'") inSingle = false;
 				continue;
@@ -463,7 +463,7 @@ class SubagentsStopSelector implements Component {
 			index < Math.min(this.targets.length, start + maxRows);
 			index++
 		) {
-			const target = this.targets[index]!;
+			const target = this.targets[index];
 			const selected = index === this.selected;
 			const marker = selected ? "›" : " ";
 			const actionLabel = target.actionLabel;
@@ -490,7 +490,7 @@ class SubagentsStopSelector implements Component {
 			);
 		lines.push("");
 		if (this.confirming) {
-			const target = this.targets[this.selected]!;
+			const target = this.targets[this.selected];
 			lines.push(
 				this.theme.fg(
 					"warning",
@@ -514,6 +514,8 @@ class SubagentsStopSelector implements Component {
 		}
 		return lines;
 	}
+
+	invalidate(): void {}
 }
 
 function emptyUsage(): Usage {
@@ -729,27 +731,28 @@ const mapSavedChainSteps = (
 				},
 			};
 		}
+		const sequential = step as Extract<ChainStep, { agent: string }> & { skills?: string[] | false };
 		const outputSchema = loadSavedOutputSchema(
 			chain,
-			step.agent,
-			(step as { outputSchema?: unknown }).outputSchema,
+			sequential.agent,
+			(sequential as { outputSchema?: unknown }).outputSchema,
 		);
 		return {
-			agent: step.agent,
-			task: step.task || undefined,
-			...(step.phase ? { phase: step.phase } : {}),
-			...(step.label ? { label: step.label } : {}),
-			...(step.as ? { as: step.as } : {}),
+			agent: sequential.agent,
+			task: sequential.task || undefined,
+			...(sequential.phase ? { phase: sequential.phase } : {}),
+			...(sequential.label ? { label: sequential.label } : {}),
+			...(sequential.as ? { as: sequential.as } : {}),
 			...(outputSchema ? { outputSchema } : {}),
-			...((step as { acceptance?: unknown }).acceptance !== undefined
-				? { acceptance: (step as { acceptance?: unknown }).acceptance }
+			...((sequential as { acceptance?: unknown }).acceptance !== undefined
+				? { acceptance: (sequential as { acceptance?: unknown }).acceptance }
 				: {}),
-			output: step.output,
-			outputMode: step.outputMode,
-			reads: step.reads,
-			progress: step.progress,
-			skill: step.skill ?? step.skills,
-			model: step.model,
+			output: sequential.output,
+			outputMode: sequential.outputMode,
+			reads: sequential.reads,
+			progress: sequential.progress,
+			skill: sequential.skills,
+			model: sequential.model,
 		};
 	});
 };
@@ -1024,7 +1027,7 @@ function findUnmatchedCloseParen(input: string): boolean {
 		inSingle = false,
 		inDouble = false;
 	for (let i = 0; i < input.length; i++) {
-		const ch = input[i]!;
+		const ch = input[i];
 		if (inSingle) {
 			if (ch === "'") inSingle = false;
 			continue;
@@ -1058,7 +1061,7 @@ function splitOnArrow(input: string): string[] {
 		inDouble = false,
 		start = 0;
 	for (let i = 0; i < input.length; i++) {
-		const ch = input[i]!;
+		const ch = input[i];
 		if (inSingle) {
 			if (ch === "'") inSingle = false;
 			continue;
@@ -1100,7 +1103,7 @@ function splitGroupTasks(inner: string): string[] {
 		inDouble = false,
 		start = 0;
 	for (let i = 0; i < inner.length; i++) {
-		const ch = inner[i]!;
+		const ch = inner[i];
 		if (inSingle) {
 			if (ch === "'") inSingle = false;
 			continue;
@@ -1184,7 +1187,7 @@ const splitGroupBody = (
 		inDouble = false,
 		closeIdx = -1;
 	for (let i = 0; i < trimmed.length; i++) {
-		const ch = trimmed[i]!;
+		const ch = trimmed[i];
 		if (inSingle) {
 			if (ch === "'") inSingle = false;
 			continue;
@@ -1384,7 +1387,7 @@ function validateInlineAcceptanceInput(value: string, agent: string): void {
 		value,
 		`acceptance for step '${agent}'`,
 	);
-	if (errors.length > 0) throw new SlashParseError(errors[0]!);
+	if (errors.length > 0) throw new SlashParseError(errors[0]);
 	if (!INLINE_ACCEPTANCE_LEVELS.has(value)) {
 		throw new SlashParseError(
 			`Inline acceptance for step '${agent}' supports auto, attested, or checked. Use the subagent tool API or a saved .chain.json file for none, verified, or review requirements; reviewed is an achieved status, not an input level.`,
@@ -1468,14 +1471,14 @@ export function buildChainExpressionSteps(
 	if (!hasGroupSyntax(input)) {
 		const parsed = parseAgentArgs(state, input, "chain", ctx);
 		if (!parsed) return null;
-		const baseCwd = state.baseCwd!; // parseAgentArgs already verified baseCwd is set
+		const baseCwd = state.baseCwd; // parseAgentArgs already verified baseCwd is set
 		try {
 			const chain: ChainStep[] = parsed.steps.map((step, i) =>
 				mapParsedTaskToStepObject(step, parsed.task || undefined, i === 0, {
 					baseCwd,
 					inGroup: false,
 				}),
-			);
+			) as unknown as ChainStep[];
 			return { chain, task: parsed.task };
 		} catch (error) {
 			notify(error instanceof Error ? error.message : String(error));
@@ -1513,7 +1516,7 @@ export function buildChainExpressionSteps(
 			return null;
 		}
 	}
-	const firstStep = expression.steps[0]!;
+	const firstStep = expression.steps[0];
 	const firstHasTask =
 		firstStep.kind === "group"
 			? firstStep.tasks.some((t) => Boolean(t.task))
@@ -1554,7 +1557,7 @@ export function buildChainExpressionSteps(
 				baseCwd,
 				inGroup: false,
 			});
-		});
+		}) as unknown as ChainStep[];
 	} catch (error) {
 		notify(error instanceof Error ? error.message : String(error));
 		return null;
@@ -1843,7 +1846,7 @@ export function registerSlashCommands(
 				ctx.ui.notify("Subagent session cwd is not initialized yet", "error");
 				return;
 			}
-			const agent = parts[0]!;
+			const agent = parts[0];
 			if (!discoveredAgentNames(state.baseCwd).includes(agent)) {
 				ctx.ui.notify(`Unknown agent: ${agent}`, "error");
 				return;

@@ -75,7 +75,7 @@ function readRequiredChildTools(): string[] | undefined {
 	if (!Array.isArray(required) || required.some((name) => typeof name !== "string" || !name)) {
 		throw new Error(`Invalid ${REQUIRED_CHILD_TOOLS_ENV} payload.`);
 	}
-	return required;
+	return required as string[];
 }
 
 function readMcpDirectChildTools(): string[] | undefined {
@@ -84,7 +84,7 @@ function readMcpDirectChildTools(): string[] | undefined {
 	try {
 		const tools = JSON.parse(encoded) as unknown;
 		if (!Array.isArray(tools) || tools.some((name) => typeof name !== "string" || !name)) return undefined;
-		return tools;
+		return tools as string[];
 	} catch {
 		return undefined;
 	}
@@ -247,7 +247,7 @@ export function registerSteeringInbox(
 	let disposed = false;
 	let flushing = false;
 	let started = false;
-	let canSteer = typeof sendUserMessage === "function";
+	const canSteer = typeof sendUserMessage === "function";
 	let watcher: fs.FSWatcher | undefined;
 	let interval: NodeJS.Timeout | undefined;
 	const acknowledge = (request: SteerRequest, state: "delivered" | "failed", message: string): void => {
@@ -270,7 +270,7 @@ export function registerSteeringInbox(
 		try {
 			const requests = consumeSteerRequestsFromDir(steerInbox);
 			for (let index = 0; index < requests.length; index++) {
-				const request = requests[index]!;
+				const request = requests[index];
 				if (!canSteer || typeof sendUserMessage !== "function") {
 					acknowledge(request, "failed", "Child Pi session does not support sendUserMessage steering.");
 					continue;
@@ -330,7 +330,7 @@ export function registerSteeringInbox(
 		return undefined;
 	};
 
-	const onRuntimeEvent = pi.on as unknown as (event: string, handler: (event: unknown) => unknown) => void;
+	const onRuntimeEvent = pi.on as unknown as (event: string, handler: (event: unknown, ctx: unknown) => unknown) => void;
 	// Register input before the watcher so an accepted extension input cannot race request dispatch.
 	onRuntimeEvent("input", onInput);
 	onRuntimeEvent("session_start", () => start());
@@ -370,7 +370,7 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 		nativeSupervisorClientRegistered = true;
 		registerNativeSupervisorClient(pi);
 	};
-	const onRuntimeEvent = pi.on as unknown as (event: string, handler: (event: unknown) => unknown) => void;
+	const onRuntimeEvent = pi.on as unknown as (event: string, handler: (event: unknown, ctx: unknown) => unknown) => void;
 	onRuntimeEvent("session_start", (_event: unknown, ctx: unknown) => {
 		const sessionManager = (ctx as { sessionManager?: Parameters<typeof resolveCurrentSessionId>[0] } | undefined)?.sessionManager;
 		waitState.currentSessionId = sessionManager ? resolveCurrentSessionId(sessionManager) : null;
@@ -399,7 +399,7 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 			name: "structured_output",
 			label: "Structured Output",
 			description: "Submit the required final structured output for this subagent step. This terminates the step.",
-			parameters: parameters as never,
+			parameters: parameters,
 			async execute(_id: string, params: { value: unknown }) {
 				const validation = await validateStructuredOutputValue(schema, params.value);
 				if (validation.status === "invalid") {

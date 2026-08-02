@@ -432,7 +432,7 @@ export function formatAsyncRunTranscript(status: AsyncStatus, asyncDir: string, 
 	const sessionFile = selected.index !== undefined ? selected.step?.sessionFile : status.sessionFile;
 	const eventsPath = path.join(asyncDir, "events.jsonl");
 
-	const context = contextModeLabel(status.context ?? summarizeContextModes((status.steps ?? []).map((step) => step.context)));
+	const context = contextModeLabel(summarizeContextModes((status.steps ?? []).map((step) => step.context)));
 	const lines = [
 		`Run: ${status.runId}`,
 		`State: ${status.state}`,

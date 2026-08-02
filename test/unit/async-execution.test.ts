@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 import { buildAsyncRunnerSteps, formatAsyncStartedMessage, resolveAsyncRunnerLogPaths } from "../../src/runs/background/async-execution.ts";
 import type { AgentConfig } from "../../src/agents/agents.ts";
+import type { RunnerSubagentStep } from "../../src/runs/shared/parallel-utils.ts";
 
 const agent = (name: string, toolBudget?: AgentConfig["toolBudget"]): AgentConfig => ({
 	name,
@@ -22,6 +23,7 @@ const ctx = {
 	currentModel: undefined,
 	currentModelProvider: undefined,
 	modelScope: undefined,
+	pi: {} as never,
 };
 
 describe("async runner execution", () => {
@@ -65,9 +67,9 @@ describe("async runner execution", () => {
 		});
 
 		assert.ok("steps" in result, "expected successful step build");
-		assert.deepEqual(result.steps[0]?.toolBudget, { hard: 3, block: ["find"] });
-		assert.equal(result.steps[0]?.waitToolEnabled, false);
-		assert.deepEqual(result.steps[1]?.toolBudget, { hard: 2, block: ["grep"] });
+		assert.deepEqual((result.steps[0] as RunnerSubagentStep | undefined)?.toolBudget, { hard: 3, block: ["find"] });
+		assert.equal((result.steps[0] as RunnerSubagentStep | undefined)?.waitToolEnabled, false);
+		assert.deepEqual((result.steps[1] as RunnerSubagentStep | undefined)?.toolBudget, { hard: 2, block: ["grep"] });
 	});
 
 	it("uses agent tool budget before config default when no run override exists", () => {
@@ -81,7 +83,7 @@ describe("async runner execution", () => {
 		});
 
 		assert.ok("steps" in result, "expected successful step build");
-		assert.deepEqual(result.steps[0]?.toolBudget, { hard: 4, block: ["read"] });
+		assert.deepEqual((result.steps[0] as RunnerSubagentStep | undefined)?.toolBudget, { hard: 4, block: ["read"] });
 	});
 
 	it("uses config default when no step, run, or agent budget exists", () => {
@@ -95,6 +97,6 @@ describe("async runner execution", () => {
 		});
 
 		assert.ok("steps" in result, "expected successful step build");
-		assert.deepEqual(result.steps[0]?.toolBudget, { hard: 5, block: ["ls"] });
+		assert.deepEqual((result.steps[0] as RunnerSubagentStep | undefined)?.toolBudget, { hard: 5, block: ["ls"] });
 	});
 });

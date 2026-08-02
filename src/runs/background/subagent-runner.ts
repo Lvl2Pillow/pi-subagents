@@ -165,6 +165,7 @@ interface SubagentRunConfig {
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
 	launchContractDigest?: string;
 	launchResolvedExtensions?: LaunchResolvedChildExtensionsV1;
+	mode?: SubagentRunMode;
 	runnerProcessInstanceId?: string;
 }
 
@@ -184,6 +185,7 @@ interface StepResult {
 	timedOut?: boolean;
 	stopped?: boolean;
 	processSignal?: string | null;
+	usage?: Usage;
 	turnBudget?: TurnBudgetState;
 	turnBudgetExceeded?: boolean;
 	wrapUpRequested?: boolean;
@@ -283,7 +285,7 @@ function appendDiagnosticJsonl(filePath: string, line: string, droppedEventType?
 	state.diagnosticsTruncated = true;
 }
 
-function shouldPersistChildEvent(event: Record<string, unknown>): boolean {
+function shouldPersistChildEvent(event: { type?: string }): boolean {
 	return event.type !== "message_update";
 }
 
@@ -425,6 +427,11 @@ interface RunPiStreamingResult {
 	processInstanceId: string;
 	processCloseObservedAt?: number;
 	processSignal?: string | null;
+	structuredOutput?: unknown;
+	structuredOutputPath?: string;
+	structuredOutputSchemaPath?: string;
+	effects?: import("../../shared/types.ts").EffectsProjection;
+	agentContract?: import("../../shared/types.ts").AgentContract;
 }
 
 function runPiStreaming(
@@ -504,7 +511,7 @@ function runPiStreaming(
 			}
 		};
 
-		const appendChildEvent = (event: Record<string, unknown>) => {
+		const appendChildEvent = (event: ChildEvent) => {
 			if (!childEventContext) return;
 			if (!shouldPersistChildEvent(event)) return;
 			appendDiagnosticJsonl(childEventContext.eventsPath, JSON.stringify({
@@ -518,7 +525,7 @@ function runPiStreaming(
 		};
 
 		const appendChildLine = (type: "subagent.child.stdout" | "subagent.child.stderr", line: string) => {
-			appendChildEvent({ type, line });
+			appendChildEvent({ type, line } as ChildEvent);
 			if (type === "subagent.child.stdout") transcriptWriter?.writeStdoutLine(line);
 			else transcriptWriter?.writeStderrLine(line);
 		};
@@ -874,9 +881,8 @@ async function exportSessionHtml(sessionFile: string, outputDir: string, piPacka
 	const pkgRoot = piPackageRoot ?? resolvePiPackageRootFallback();
 	const exportModulePath = path.join(pkgRoot, "dist", "core", "export-html", "index.js");
 	const moduleUrl = pathToFileURL(exportModulePath).href;
-	const mod = await import(moduleUrl);
-	const exportFromFile = (mod as { exportFromFile?: (inputPath: string, options?: { outputPath?: string }) => string })
-		.exportFromFile;
+	const mod = (await import(moduleUrl)) as { exportFromFile?: (inputPath: string, options?: { outputPath?: string }) => string };
+	const exportFromFile = mod.exportFromFile;
 	if (typeof exportFromFile !== "function") {
 		throw new Error("exportFromFile not available");
 	}
@@ -1020,9 +1026,13 @@ async function runSingleStep(
 	output: string;
 	exitCode: number | null;
 	error?: string;
+	protocolError?: ProtocolOutputLimit;
+	skipped?: boolean;
+	processSignal?: string | null;
 	model?: string;
 	attemptedModels?: string[];
 	modelAttempts?: ModelAttempt[];
+	totalCost?: CostSummary;
 	artifactPaths?: ArtifactPaths;
 	transcriptPath?: string;
 	transcriptError?: string;
@@ -1043,6 +1053,9 @@ async function runSingleStep(
 	structuredOutputPath?: string;
 	structuredOutputSchemaPath?: string;
 	acceptance?: import("../../shared/types.ts").AcceptanceLedger;
+	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+	capabilityAudit?: import("../shared/capability-ceiling.ts").SubagentCapabilityAudit;
+	watchdog?: import("../../shared/types.ts").ChildWatchdogProgress;
 	writerAttemptCount?: number;
 }> {
 	if (step.importAsyncRoot) {
@@ -1399,7 +1412,7 @@ async function runSingleStep(
 			toolBudgetBlocked = Boolean(blockedMessage);
 			toolBudget = toolBudgetState(step.toolBudget, toolMessages.length, blockedMessage ? (blockedMessage as { toolName?: string }).toolName : undefined);
 		}
-		finalResult = { ...run, exitCode: effectiveExitCode, model: candidate ?? run.model, error, structuredOutput, ...(step.agentContract ? { agentContract: step.agentContract } : {}), ...(fileMutationEffect ? { effects: { fileMutation: fileMutationEffect } } : {}) } as RunPiStreamingResult & { structuredOutput?: unknown; agentContract?: import("../../shared/types.ts").AgentContract; effects?: import("../../shared/types.ts").EffectsProjection };
+		finalResult = { ...run, exitCode: effectiveExitCode, model: candidate ?? run.model, error, structuredOutput, ...(step.agentContract ? { agentContract: step.agentContract } : {}), ...(fileMutationEffect ? { effects: { fileMutation: fileMutationEffect } } : {}) };
 		if (run.turnBudgetExceeded) break modelAttemptsLoop;
 		if (run.stopped || run.timedOut || ctx.timeoutSignal?.aborted || ctx.stopSignal?.aborted || ctx.skipAcceptance?.()) break modelAttemptsLoop;
 		if (attempt.success || completionGuardTriggered) break modelAttemptsLoop;
@@ -1587,8 +1600,8 @@ async function runSingleStep(
 		toolBudget,
 		toolBudgetBlocked: toolBudgetBlocked || undefined,
 		completionGuardTriggered: completionGuardTriggeredFinal,
-		...((finalResult as (RunPiStreamingResult & { effects?: import("../../shared/types.ts").EffectsProjection }) | undefined)?.effects ? { effects: (finalResult as RunPiStreamingResult & { effects?: import("../../shared/types.ts").EffectsProjection }).effects } : {}),
-		structuredOutput: timedOutAfterAcceptance || stoppedAfterAcceptance || turnBudgetExceeded ? undefined : (finalResult as (RunPiStreamingResult & { structuredOutput?: unknown }) | undefined)?.structuredOutput,
+		...((finalResult)?.effects ? { effects: (finalResult as RunPiStreamingResult & { effects?: import("../../shared/types.ts").EffectsProjection }).effects } : {}),
+		structuredOutput: timedOutAfterAcceptance || stoppedAfterAcceptance || turnBudgetExceeded ? undefined : (finalResult)?.structuredOutput,
 		structuredOutputPath: timedOutAfterAcceptance || stoppedAfterAcceptance || turnBudgetExceeded ? undefined : effectiveStructuredOutput?.outputPath,
 		structuredOutputSchemaPath: timedOutAfterAcceptance || stoppedAfterAcceptance || turnBudgetExceeded ? undefined : effectiveStructuredOutput?.schemaPath,
 		acceptance: effectiveAcceptance,
@@ -1605,7 +1618,7 @@ type RunnerStatusStep = NonNullable<AsyncStatus["steps"]>[number] & {
 	exitCode?: number | null;
 };
 
-function appendCapabilityCeilingAppliedEvent(eventsPath: string, runId: string, stepIndex: number, agent: string, result: StepResult): void {
+function appendCapabilityCeilingAppliedEvent(eventsPath: string, runId: string, stepIndex: number, agent: string, result: Pick<StepResult, "capabilityCeiling" | "capabilityAudit">): void {
 	if (!result.capabilityCeiling) return;
 	appendJsonl(eventsPath, JSON.stringify({
 		type: "subagent.capability-ceiling.applied",
@@ -1714,7 +1727,7 @@ function prepareParallelTaskRun(
 	if (!worktreeSetup) return { taskForRun: task, taskCwd: cwd };
 	return {
 		taskForRun: { ...task, cwd: undefined },
-		taskCwd: worktreeSetup.worktrees[taskIndex]!.agentCwd,
+		taskCwd: worktreeSetup.worktrees[taskIndex].agentCwd,
 	};
 }
 
@@ -1817,7 +1830,7 @@ async function runSubagent(
 	const initialStatusSteps: RunnerStatusStep[] = [];
 	let flatStepCount = 0;
 	for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
-		const step = steps[stepIndex]!;
+		const step = steps[stepIndex];
 		if (isCheckpointRunnerStep(step)) {
 			initialStatusSteps.push({
 				agent: `checkpoint:${step.checkpoint}`,
@@ -2603,7 +2616,7 @@ async function runSubagent(
 			}
 			appendRecentStepOutput(step, resultText.split("\n").slice(-10));
 			if (toolSnapshot?.mutates && didMutatingToolFail(resultText)) {
-				const state = mutatingFailureStates[flatIndex]!;
+				const state = mutatingFailureStates[flatIndex];
 				recordMutatingFailure(state, {
 					tool: toolSnapshot.tool,
 					path: toolSnapshot.path,
@@ -2634,7 +2647,7 @@ async function runSubagent(
 					}));
 				}
 			} else if (toolSnapshot?.mutates) {
-				resetMutatingFailureState(mutatingFailureStates[flatIndex]!);
+				resetMutatingFailureState(mutatingFailureStates[flatIndex]);
 			}
 		} else if (event.type === "message_end" && event.message?.role === "assistant") {
 			appendRecentStepOutput(step, stripAcceptanceReport(extractTextFromContent(event.message.content)).split("\n").slice(-10));
@@ -2672,7 +2685,7 @@ async function runSubagent(
 		let changed = false;
 		let runLastActivityAt = statusPayload.lastActivityAt ?? overallStartTime;
 		for (let index = 0; index < statusPayload.steps.length; index++) {
-			const step = statusPayload.steps[index]!;
+			const step = statusPayload.steps[index];
 			if (step.status !== "running") continue;
 			const lastActivityAt = stepOutputActivityAt(index);
 			runLastActivityAt = Math.max(runLastActivityAt, lastActivityAt);
@@ -2918,7 +2931,7 @@ async function runSubagent(
 			break;
 		}
 		const stepIndex = stepCursor++;
-		const step = steps[stepIndex]!;
+		const step = steps[stepIndex];
 
 		if (isCheckpointRunnerStep(step)) {
 			const now = Date.now();
@@ -2982,7 +2995,7 @@ async function runSubagent(
 			const groupStartFlatIndex = flatIndex;
 			let materialized: ReturnType<typeof materializeDynamicParallelStep>;
 			try {
-				materialized = materializeDynamicParallelStep(step as Parameters<typeof materializeDynamicParallelStep>[0], outputs, stepIndex, { maxItems: config.dynamicFanoutMaxItems, allowRunnerFields: true });
+				materialized = materializeDynamicParallelStep(step, outputs, stepIndex, { maxItems: config.dynamicFanoutMaxItems, allowRunnerFields: true });
 				if (materialized.parallel.length > 1 && step.parallel.outputPath && !step.parallel.namespaceOutputPath) {
 					throw new DynamicFanoutError(`Dynamic chain step ${stepIndex + 1} materialized ${materialized.parallel.length} items that resolve output to the same path: ${step.parallel.outputPath}. Remove the explicit output path or use an inherited relative agent output so each item can be isolated.`);
 				}
@@ -3200,7 +3213,7 @@ async function runSubagent(
 					usageBudgetExceeded = true;
 					writeStatusPayload();
 					appendJsonl(eventsPath, JSON.stringify({ type: "subagent.step.failed", ts: skippedAt, runId: id, stepIndex: fi, agent: task.agent, exitCode: 1, durationMs: 0 }));
-					return { agent: task.agent, context: task.context, output: message, error: message, exitCode: 1 as number | null, skipped: true };
+					return { agent: task.agent, context: task.context, output: message, error: message, exitCode: 1, skipped: true };
 				}
 				if (timedOut) return timedOutStepResult(task.agent, task.context);
 				if (stopped) return stoppedStepResult(task.agent, task.context);
@@ -3215,7 +3228,7 @@ async function runSubagent(
 					statusPayload.steps[fi].exitCode = -1;
 					statusPayload.lastUpdate = skippedAt;
 					writeStatusPayload();
-					return { agent: task.agent, context: task.context, output: "(skipped — fail-fast)", exitCode: -1 as number | null, skipped: true };
+					return { agent: task.agent, context: task.context, output: "(skipped — fail-fast)", exitCode: -1, skipped: true };
 				}
 				const taskStartTime = Date.now();
 				statusPayload.currentStep = fi;
@@ -3365,7 +3378,7 @@ async function runSubagent(
 			}
 			pendingParallelUsageCost = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 			refreshUsageBudget();
-			const collection = collectDynamicResults(step as Parameters<typeof collectDynamicResults>[0], materialized.items, parallelResults);
+			const collection = collectDynamicResults(step, materialized.items, parallelResults);
 			const failures = parallelResults.filter((result) => result.exitCode !== 0 && result.exitCode !== -1);
 			const acceptanceFailures = parallelResults
 				.map((result, originalIndex) => ({ result, originalIndex, task: dynamicSteps[originalIndex] }))
@@ -3547,7 +3560,7 @@ async function runSubagent(
 							appendJsonl(eventsPath, JSON.stringify({
 								type: "subagent.step.failed", ts: skippedAt, runId: id, stepIndex: fi, agent: task.agent, exitCode: 1, durationMs: 0,
 							}));
-							return { agent: task.agent, context: task.context, output: message, error: message, exitCode: 1 as number | null, skipped: true };
+							return { agent: task.agent, context: task.context, output: message, error: message, exitCode: 1, skipped: true };
 						}
 						if (timedOut) return timedOutStepResult(task.agent, task.context);
 						if (stopped) return stoppedStepResult(task.agent, task.context);
@@ -3566,7 +3579,7 @@ async function runSubagent(
 							appendJsonl(eventsPath, JSON.stringify({
 								type: "subagent.step.failed", ts: skippedAt, runId: id, stepIndex: fi, agent: task.agent, exitCode: -1, durationMs: 0,
 							}));
-							return { agent: task.agent, context: task.context, output: "(skipped — fail-fast)", exitCode: -1 as number | null, skipped: true };
+							return { agent: task.agent, context: task.context, output: "(skipped — fail-fast)", exitCode: -1, skipped: true };
 						}
 
 						const taskStartTime = Date.now();
@@ -3770,9 +3783,9 @@ async function runSubagent(
 				for (let t = 0; t < group.parallel.length; t++) {
 					const outputName = group.parallel[t]?.outputName;
 					if (outputName) outputs[outputName] = outputEntryFromAsyncResult({
-						agent: parallelResults[t]!.agent,
-						output: parallelResults[t]!.output,
-						structuredOutput: parallelResults[t]!.structuredOutput,
+						agent: parallelResults[t].agent,
+						output: parallelResults[t].output,
+						structuredOutput: parallelResults[t].structuredOutput,
 					}, stepIndex);
 				}
 				statusPayload.outputs = outputs;
@@ -3851,7 +3864,7 @@ async function runSubagent(
 				if (worktreeSetup && !worktreeFinalized) cleanupWorktrees(worktreeSetup);
 			}
 		} else {
-			const seqStep = step as SubagentStep;
+			const seqStep = step;
 			const stepStartTime = Date.now();
 			statusPayload.currentStep = flatIndex;
 			statusPayload.steps[flatIndex].status = "running";
@@ -4083,7 +4096,7 @@ async function runSubagent(
 	const finalTotalCost = totalCost.inputTokens > 0 || totalCost.outputTokens > 0 || totalCost.costUsd > 0 ? totalCost : undefined;
 	const finalFlatAgents = statusPayload.steps.map((step) => step.agent);
 	const agentName = finalFlatAgents.length === 1
-		? finalFlatAgents[0]!
+		? finalFlatAgents[0]
 		: resultMode === "parallel"
 			? `parallel:${finalFlatAgents.join("+")}`
 			: `chain:${finalFlatAgents.join("->")}`;

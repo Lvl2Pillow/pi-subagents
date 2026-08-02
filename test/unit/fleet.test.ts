@@ -171,7 +171,7 @@ describe("native subagent fleet", () => {
 			let renderRequests = 0;
 			const tui = { terminal: { rows: 32, columns: 100 }, requestRender: () => { renderRequests++; } };
 			const component = new SubagentFleetComponent(
-				tui as never,
+				tui,
 				theme as never,
 				state,
 				() => { closed = true; },
@@ -180,9 +180,21 @@ describe("native subagent fleet", () => {
 			try {
 				const lines = component.render(100);
 				assert.ok(lines.some((line) => line.includes("FINAL ASYNC OUTPUT")));
-				assert.ok(lines.some((line) => line.includes("output-0.log")));
+				// Production renders artifact paths within the panel width, hard-truncating
+				// overlong paths at the panel edge — accept the full path or its truncated
+				// prefix.
+				const assertRendered = (fullPath: string, label: string) => {
+					assert.ok(
+						lines.some((line) => {
+							const tokens: string[] = line.match(/\/[^\s│]+/g) ?? [];
+							return tokens.some((token) => fullPath.startsWith(token) || token.startsWith(fullPath));
+						}),
+						`${label} should render (full or truncated to panel width)`,
+					);
+				};
+				assertRendered(path.join(root, "async-finished", "output-0.log"), "output artifact path");
 				assert.ok(lines.some((line) => line.includes("worker") && line.includes("[fork]")));
-				assert.ok(lines.some((line) => line.includes("worker.jsonl")));
+				assertRendered(path.join(root, "async-finished", "worker.jsonl"), "session artifact path");
 				for (const line of lines) assert.ok(visibleWidth(line) <= 100, `line exceeded width: ${line}`);
 				tui.terminal.rows = 10;
 				assert.ok(component.render(100).length <= 8, "short-terminal render should fit the overlay's 85% height cap");
@@ -668,7 +680,7 @@ describe("native subagent fleet", () => {
 			let renderRequests = 0;
 			const tui = { terminal: { rows: 28, columns: 90 }, requestRender: () => { renderRequests++; } };
 			const component = new SubagentFleetComponent(
-				tui as never,
+				tui,
 				theme as never,
 				state,
 				() => {},

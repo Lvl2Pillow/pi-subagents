@@ -134,8 +134,8 @@ describe("createForkContextResolver", () => {
 		try {
 			const sessionDir = path.join(tempDir, "sessions");
 			const parent = SessionManager.create(tempDir, sessionDir);
-			parent.appendMessage({ role: "user", content: "parent prompt" });
-			parent.appendMessage({ role: "assistant", content: "parent response" });
+			parent.appendMessage({ role: "user", content: [{ type: "text", text: "parent prompt" }] } as unknown as Parameters<typeof parent.appendMessage>[0]);
+			parent.appendMessage({ role: "assistant", content: [{ type: "text", text: "parent response" }] } as unknown as Parameters<typeof parent.appendMessage>[0]);
 			const parentSessionFile = parent.getSessionFile();
 			const leafId = parent.getLeafId();
 
@@ -162,7 +162,7 @@ describe("createForkContextResolver", () => {
 		try {
 			const sessionDir = path.join(tempDir, "sessions");
 			const parent = SessionManager.create(tempDir, sessionDir);
-			parent.appendMessage({ role: "user", content: "first turn prompt" });
+			parent.appendMessage({ role: "user", content: "first turn prompt" } as unknown as Parameters<typeof parent.appendMessage>[0]);
 			const parentSessionFile = parent.getSessionFile();
 			const leafId = parent.getLeafId();
 

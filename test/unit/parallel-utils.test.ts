@@ -17,15 +17,25 @@ describe("isParallelGroup", () => {
 	it("returns true for a parallel step group", () => {
 		const step: ParallelStepGroup = {
 			parallel: [
-				{ agent: "a", task: "do stuff" },
-				{ agent: "b", task: "do other stuff" },
+				{
+					agent: "a",
+					task: "do stuff",
+					inheritProjectContext: true,
+					inheritSkills: true,
+				},
+				{
+					agent: "b",
+					task: "do other stuff",
+					inheritProjectContext: true,
+					inheritSkills: true,
+				},
 			],
 		};
 		assert.equal(isParallelGroup(step), true);
 	});
 
 	it("returns false for a sequential step", () => {
-		const step: RunnerSubagentStep = { agent: "a", task: "do stuff" };
+		const step: RunnerSubagentStep = { agent: "a", task: "do stuff", inheritProjectContext: true, inheritSkills: true };
 		assert.equal(isParallelGroup(step), false);
 	});
 
@@ -38,8 +48,18 @@ describe("isParallelGroup", () => {
 describe("flattenSteps", () => {
 	it("returns sequential steps unchanged", () => {
 		const steps: RunnerStep[] = [
-			{ agent: "a", task: "t1" },
-			{ agent: "b", task: "t2" },
+			{
+				agent: "a",
+				task: "t1",
+				inheritProjectContext: true,
+				inheritSkills: true,
+			},
+			{
+				agent: "b",
+				task: "t2",
+				inheritProjectContext: true,
+				inheritSkills: true,
+			},
 		];
 		const flat = flattenSteps(steps);
 		assert.equal(flat.length, 2);
@@ -49,14 +69,34 @@ describe("flattenSteps", () => {
 
 	it("expands parallel groups into individual steps", () => {
 		const steps: RunnerStep[] = [
-			{ agent: "scout", task: "find info" },
+			{
+				agent: "scout",
+				task: "find info",
+				inheritProjectContext: true,
+				inheritSkills: true,
+			},
 			{
 				parallel: [
-					{ agent: "reviewer-a", task: "review part 1" },
-					{ agent: "reviewer-b", task: "review part 2" },
+					{
+						agent: "reviewer-a",
+						task: "review part 1",
+						inheritProjectContext: true,
+						inheritSkills: true,
+					},
+					{
+						agent: "reviewer-b",
+						task: "review part 2",
+						inheritProjectContext: true,
+						inheritSkills: true,
+					},
 				],
 			},
-			{ agent: "summarizer", task: "combine" },
+			{
+				agent: "summarizer",
+				task: "combine",
+				inheritProjectContext: true,
+				inheritSkills: true,
+			},
 		];
 		const flat = flattenSteps(steps);
 		assert.equal(flat.length, 4);
@@ -72,9 +112,19 @@ describe("flattenSteps", () => {
 
 	it("handles empty parallel group", () => {
 		const steps: RunnerStep[] = [
-			{ agent: "before", task: "x" },
+			{
+				agent: "before",
+				task: "x",
+				inheritProjectContext: true,
+				inheritSkills: true,
+			},
 			{ parallel: [] },
-			{ agent: "after", task: "y" },
+			{
+				agent: "after",
+				task: "y",
+				inheritProjectContext: true,
+				inheritSkills: true,
+			},
 		];
 		const flat = flattenSteps(steps);
 		assert.equal(flat.length, 2);
@@ -147,8 +197,8 @@ describe("mapConcurrent", () => {
 		});
 
 		// All workers should start nearly simultaneously
-		const d1 = startTimes[1]! - startTimes[0]!;
-		const d2 = startTimes[2]! - startTimes[0]!;
+		const d1 = startTimes[1] - startTimes[0];
+		const d2 = startTimes[2] - startTimes[0];
 		assert.ok(d1 < 20, `worker 1 should start immediately, got ${d1}ms delay`);
 		assert.ok(d2 < 20, `worker 2 should start immediately, got ${d2}ms delay`);
 	});

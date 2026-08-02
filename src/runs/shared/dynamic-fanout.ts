@@ -154,8 +154,8 @@ function assertOnlyKeys(value: unknown, allowed: Set<string>, label: string): vo
 
 export function assertNoUnresolvedItemReferences(template: string, itemName: string, label: string): void {
 	for (const match of template.matchAll(/\{([^{}]*)\}/g)) {
-		const raw = match[0]!;
-		const reference = match[1]!;
+		const raw = match[0];
+		const reference = match[1];
 		if (reference === itemName || reference.startsWith(`${itemName}.`)) {
 			if (!ITEM_REF_PATTERN.test(raw) || reference === `${itemName}.` || reference.includes("..")) {
 				throw new DynamicFanoutError(`Invalid item reference '${raw}' in ${label}.`);
@@ -227,7 +227,7 @@ export function resolveDynamicFanoutItems(step: DynamicParallelStep, outputs: Ch
 	if (value.length > maxItems) throw new DynamicFanoutError(`Dynamic chain step ${stepIndex + 1} resolved ${value.length} items, exceeding maxItems ${maxItems}.`);
 	const seen = new Set<string>();
 	const seenIds = new Set<string>();
-	return value.map((item, index) => {
+	return value.map((item: unknown, index) => {
 		const key = step.expand.key === undefined
 			? String(index)
 			: scalarToKey(resolveJsonPointer(item, step.expand.key, `Dynamic chain step ${stepIndex + 1} expand.key`), `Dynamic chain step ${stepIndex + 1} expand.key`);
@@ -269,7 +269,7 @@ export function collectDynamicResults(
 	return items.map((entry, index) => {
 		const result = results[index];
 		const text = result
-			? ("output" in result && typeof result.output === "string" ? result.output : getSingleResultOutput(result as SingleResult))
+			? ("output" in result && typeof result.output === "string" ? result.output : getSingleResultOutput(result))
 			: "";
 		return {
 			key: entry.key,

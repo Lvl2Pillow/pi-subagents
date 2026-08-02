@@ -36,7 +36,7 @@ try {
 		DYNAMIC_TEMPLATE_KEYS: string[];
 	};
 	validateChainInput = mod.validateChainInput;
-	const schemas = await import("../../src/extension/schemas.ts") as {
+	const schemas = await import("../../src/extension/schemas.ts") as unknown as {
 		ChainItem: JsonSchemaNode;
 		DynamicParallelTemplateSchema: JsonSchemaNode;
 		SubagentParams: JsonSchemaNode;
@@ -296,7 +296,7 @@ describe("registered subagent tool prepareArguments", { skip: !schemasAvailable 
 			],
 			{ cwd: projectRoot, env: parentToolEnv(), encoding: "utf-8", stdio: "pipe" },
 		);
-		return JSON.parse(output) as { error?: string; ok: boolean };
+		return JSON.parse(output) as { error?: string; ok: true } | { error: string; ok: false };
 	}
 
 	it("throws a friendly chain error before schema validation when a step has a disallowed property", () => {

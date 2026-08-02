@@ -1094,7 +1094,7 @@ function readSubagentSettings(filePath: string | null): SubagentSettings {
 			);
 		}
 		defaultExtensions = subagentsObject.defaultExtensions.map((item) =>
-			item.trim(),
+			(item as string).trim(),
 		);
 	}
 	const modelScope = parseModelScopeConfig(subagentsObject.modelScope, {

@@ -95,7 +95,7 @@ export function parseScheduledRunTime(schedule: string, now = Date.now()): numbe
 		const hour = Number(iso[4]);
 		const minute = Number(iso[5]);
 		const second = iso[6] === undefined ? 0 : Number(iso[6]);
-		const offset = iso[7]!;
+		const offset = iso[7];
 		const offsetHour = offset === "Z" ? 0 : Number(offset.slice(1, 3));
 		const offsetMinute = offset === "Z" ? 0 : Number(offset.slice(4, 6));
 		const daysInMonth = month >= 1 && month <= 12 ? new Date(Date.UTC(year, month, 0)).getUTCDate() : 0;
@@ -215,7 +215,7 @@ function resolveJobById(jobs: ScheduledRunJob[], requestedId: string): Scheduled
 	const exact = jobs.find((job) => job.id === requestedId);
 	if (exact) return exact;
 	const matches = jobs.filter((job) => job.id.startsWith(requestedId));
-	if (matches.length === 1) return matches[0]!;
+	if (matches.length === 1) return matches[0];
 	if (matches.length > 1) throw new Error(`Ambiguous scheduled run id prefix '${requestedId}' matched: ${matches.map((job) => job.id).join(", ")}. Provide a longer id.`);
 	throw new Error(`Scheduled run '${requestedId}' not found.`);
 }
@@ -231,9 +231,10 @@ function sanitizeScheduledParams(params: SubagentParamsLike): { params?: Subagen
 	if (params.context === "fork") return { error: "Scheduled subagent runs require fresh context. Forked parent-session context is not safe at fire time." };
 	if (params.async === false) return { error: "Scheduled subagent runs are always async; omit async or set async: true." };
 	if (params.clarify === true) return { error: "Scheduled subagent runs cannot open clarify UI; omit clarify or set clarify: false." };
-	const acceptanceErrors = validateExecutionAcceptance(params);
+	const acceptanceErrors = validateExecutionAcceptance(params as Parameters<typeof validateExecutionAcceptance>[0]);
 	if (acceptanceErrors.length > 0) return { error: acceptanceErrors.join(" ") };
 
+	/* eslint-disable @typescript-eslint/no-unused-vars -- destructure-to-exclude: management-only fields are deliberately dropped from execution params */
 	const {
 		action: _action,
 		id: _id,
@@ -247,6 +248,7 @@ function sanitizeScheduledParams(params: SubagentParamsLike): { params?: Subagen
 		scheduleName: _scheduleName,
 		...executionParams
 	} = params;
+	/* eslint-enable @typescript-eslint/no-unused-vars */
 	return { params: { ...executionParams, async: true, clarify: false, context: "fresh" } };
 }
 

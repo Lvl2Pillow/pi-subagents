@@ -310,7 +310,7 @@ export function validateExecutionAcceptance(input: {
 }
 
 function normalizeCriteria(criteria: Array<string | { id?: string; must?: string; evidence?: AcceptanceEvidenceKind[]; severity?: "required" | "recommended" }> | undefined, evidence: AcceptanceEvidenceKind[]): ResolvedAcceptanceGate[] {
-	return (criteria ?? []).map((criterion, index) => {
+	return (criteria ?? []).map((criterion, index): ResolvedAcceptanceGate => {
 		if (typeof criterion === "string") {
 			return { id: `criterion-${index + 1}`, must: criterion, evidence, severity: "required" };
 		}
@@ -342,7 +342,7 @@ export function resolveEffectiveAcceptance(input: {
 			: explicitLevel;
 		const evidence = unique(explicit.evidence ?? []);
 		const criteria = normalizeCriteria(
-			explicit.criteria as Array<string | { id?: string; must?: string; evidence?: AcceptanceEvidenceKind[]; severity?: "required" | "recommended" }> | undefined,
+			explicit.criteria,
 			evidence,
 		);
 		return {
@@ -365,7 +365,7 @@ export function resolveEffectiveAcceptance(input: {
 			: (LEVEL_RANK[explicitLevel] >= LEVEL_RANK[inferred.level] ? explicitLevel : inferred.level);
 	const evidence = unique([...(level === inferred.level ? inferred.evidence : requiredEvidenceForLevel(level)), ...(explicit.evidence ?? [])]);
 	const criteria = normalizeCriteria(
-		(explicit.criteria?.length ? explicit.criteria : inferred.criteria) as Array<string | { id?: string; must?: string; evidence?: AcceptanceEvidenceKind[]; severity?: "required" | "recommended" }>,
+		(explicit.criteria?.length ? explicit.criteria : inferred.criteria),
 		evidence,
 	);
 	const review = explicit.review !== undefined ? explicit.review : inferred.review;
@@ -404,7 +404,7 @@ export function formatAcceptancePrompt(acceptance: ResolvedAcceptanceConfig, opt
 		lines.push("", "Runtime verification commands configured by parent:");
 		for (const command of acceptance.verify) lines.push(`- ${command.id}: ${command.command}`);
 	}
-	if (acceptance.review && acceptance.review !== false) {
+	if (acceptance.review !== false && acceptance.review) {
 		lines.push("", `Review gate: ${acceptance.review.required === false ? "optional" : "required"}${acceptance.review.agent ? ` by ${acceptance.review.agent}` : ""}.`);
 		if (acceptance.review.focus) lines.push(`Review focus: ${acceptance.review.focus}`);
 	}
@@ -443,7 +443,7 @@ function extractBalancedJson(text: string, start: number): string | undefined {
 	let inString = false;
 	let escaped = false;
 	for (let i = start; i < text.length; i++) {
-		const char = text[i]!;
+		const char = text[i];
 		if (inString) {
 			if (escaped) escaped = false;
 			else if (char === "\\") escaped = true;
@@ -552,7 +552,7 @@ function normalizeAcceptanceReportValue(value: unknown, pathLabel = ""): { value
 		const record = reportValue as Record<string, unknown>;
 		const wrapperKeys = Object.keys(record).filter((key) => ACCEPTANCE_REPORT_WRAPPERS.has(key));
 		if (wrapperKeys.length > 0) {
-			const wrapperKey = wrapperKeys[0]!;
+			const wrapperKey = wrapperKeys[0];
 			if (wrapperKeys.length > 1) errors.push(`${pathLabel || "acceptance-report"}: multiple acceptance report wrappers are ambiguous`);
 			for (const key of Object.keys(record)) {
 				if (key !== wrapperKey) errors.push(`${pathFor(pathLabel, key)}: unsupported alongside acceptance report wrapper '${wrapperKey}'`);
@@ -951,7 +951,7 @@ export function aggregateAcceptanceReport(input: {
 		criteriaSatisfied: [
 			{ id: "criterion-1", status: successfulChildren ? "satisfied" : "not-satisfied", evidence: successfulChildren ? `All ${input.results.length} dynamic child run(s) completed without child or acceptance blockers.` : "Dynamic fanout produced no accepted child evidence." },
 			{ id: "criterion-2", status: successfulChildren ? "satisfied" : "not-satisfied", evidence: successfulChildren ? "Collected child acceptance evidence for aggregate review." : "Dynamic fanout produced no aggregate review evidence." },
-			...input.results.map((result, index) => ({
+			...input.results.map((result, index): { id?: string; status: "satisfied" | "not-satisfied" | "not-applicable"; evidence: string } => ({
 				id: `child-${index + 1}`,
 				status: result.exitCode === 0 && result.acceptance?.status !== "rejected" ? "satisfied" : "not-satisfied",
 				evidence: `${result.agent}: acceptance ${result.acceptance?.status ?? "unreported"}${result.error ? ` (${result.error})` : ""}`,
@@ -1147,7 +1147,7 @@ export async function evaluateAcceptance(input: {
 		ledger.evidenceStatus = ledger.status;
 	}
 
-	if (acceptance.review && acceptance.review !== false) {
+	if (acceptance.review !== false && acceptance.review) {
 		if (input.reviewResult?.status === "reviewed") {
 			ledger.reviewResult = input.reviewResult;
 			ledger.status = "reviewed";

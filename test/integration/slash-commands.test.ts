@@ -942,7 +942,7 @@ describe(
 				(sent[0] as { details?: unknown }).details,
 			);
 			assert.ok(visibleDetails);
-			const visibleSnapshot = getSlashRenderableSnapshot!(visibleDetails!);
+			const visibleSnapshot = getSlashRenderableSnapshot!(visibleDetails);
 			assert.equal(
 				(visibleSnapshot.result.content[0] as { text?: string }).text,
 				"Scout finished",
@@ -1074,7 +1074,7 @@ describe(
 				(sent[0] as { details?: unknown }).details,
 			);
 			assert.ok(visibleDetails);
-			const visibleSnapshot = getSlashRenderableSnapshot!(visibleDetails!);
+			const visibleSnapshot = getSlashRenderableSnapshot!(visibleDetails);
 			assert.equal(
 				(visibleSnapshot.result.content[0] as { text?: string }).text,
 				"Subagent failed",
@@ -1940,7 +1940,7 @@ Gather context
 				const built = params as { chain?: Array<Record<string, unknown>> };
 				assert.equal(built.chain?.[0]?.as, "ctx");
 				assert.equal(built.chain?.[0]?.phase, "recon");
-				const group = built.chain?.[1] as Record<string, unknown>;
+				const group = built.chain?.[1];
 				assert.equal((group.parallel as unknown[]).length, 2);
 				assert.equal(group.concurrency, 2);
 				assert.equal(group.failFast, true);
@@ -3084,7 +3084,7 @@ describe(
 
 			await commands.get("subagents-fleet")!.handler("", ctx);
 			assert.equal(shortcuts.size, 1);
-			const shortcut = [...shortcuts.values()][0]!;
+			const shortcut = [...shortcuts.values()][0];
 			assert.equal(shortcut.description, "Open subagent fleet inspector");
 			await shortcut.handler(ctx);
 

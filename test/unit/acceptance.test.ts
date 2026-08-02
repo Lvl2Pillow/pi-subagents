@@ -55,7 +55,7 @@ describe("acceptance gates", () => {
 			resolveEffectiveAcceptance({ agentName: "worker", task: "Fix each item", mode: "chain", dynamic: true }),
 		]) {
 			assert.equal(resolved.level, "checked");
-			assert.equal(resolved.review && resolved.review !== false ? resolved.review.required : undefined, true);
+			assert.equal(resolved.review !== false && resolved.review ? resolved.review.required : undefined, true);
 		}
 	});
 
@@ -152,14 +152,14 @@ describe("acceptance gates", () => {
 			dynamic: true,
 		});
 		assert.equal(dynamicReviewer.level, "checked");
-		assert.equal(dynamicReviewer.review && dynamicReviewer.review !== false ? dynamicReviewer.review.required : undefined, true);
+		assert.equal(dynamicReviewer.review !== false && dynamicReviewer.review ? dynamicReviewer.review.required : undefined, true);
 	});
 
 	it("preserves risky keyword review inference when acceptance role metadata is omitted", () => {
 		for (const task of ["Inspect the security posture", "Read-only security audit"]) {
 			const resolved = resolveEffectiveAcceptance({ agentName: "worker", task });
 			assert.equal(resolved.level, "checked", task);
-			assert.equal(resolved.review && resolved.review !== false ? resolved.review.required : undefined, true, task);
+			assert.equal(resolved.review !== false && resolved.review ? resolved.review.required : undefined, true, task);
 		}
 	});
 
@@ -177,7 +177,7 @@ describe("acceptance gates", () => {
 	it("agent contract v1 disables inferred acceptance without changing current defaults", () => {
 		const current = resolveEffectiveAcceptance({ agentName: "worker", acceptanceRole: "writer", task: "Implement the fix", mode: "single", async: true });
 		assert.equal(current.level, "checked");
-		assert.equal(current.review && current.review !== false ? current.review.required : undefined, true);
+		assert.equal(current.review !== false && current.review ? current.review.required : undefined, true);
 		assert.deepEqual(current.inferredReason, ["async write-capable or risky run"]);
 
 		for (const explicit of [undefined, "auto" as const, false] as const) {
@@ -244,7 +244,7 @@ describe("acceptance gates", () => {
 		const inferredExample = formatAcceptancePrompt(inferred).match(/```acceptance-report\n([\s\S]*?)\n```/);
 		assert.ok(inferredExample?.[1]);
 		assert.deepEqual(
-			(JSON.parse(inferredExample[1]!) as { criteriaSatisfied: Array<{ id: string }> }).criteriaSatisfied.map((criterion) => criterion.id),
+			(JSON.parse(inferredExample[1]) as { criteriaSatisfied: Array<{ id: string }> }).criteriaSatisfied.map((criterion) => criterion.id),
 			["criterion-1", "criterion-2"],
 		);
 
@@ -259,7 +259,7 @@ describe("acceptance gates", () => {
 		const customExample = formatAcceptancePrompt(custom).match(/```acceptance-report\n([\s\S]*?)\n```/);
 		assert.ok(customExample?.[1]);
 		assert.deepEqual(
-			(JSON.parse(customExample[1]!) as { criteriaSatisfied: Array<{ id: string }> }).criteriaSatisfied.map((criterion) => criterion.id),
+			(JSON.parse(customExample[1]) as { criteriaSatisfied: Array<{ id: string }> }).criteriaSatisfied.map((criterion) => criterion.id),
 			["required-check"],
 		);
 	});
@@ -731,7 +731,7 @@ describe("acceptance gates", () => {
 				});
 
 				assert.equal(acceptance.level, "checked");
-				assert.equal(acceptance.review && acceptance.review !== false ? acceptance.review.required : undefined, true);
+				assert.equal(acceptance.review !== false && acceptance.review ? acceptance.review.required : undefined, true);
 				const ledger = await evaluateAcceptance({ acceptance, output: report({ criteriaSatisfied: [
 					{ id: "criterion-1", status: "satisfied", evidence: "implemented" },
 					{ id: "criterion-2", status: "satisfied", evidence: "evidence returned" },
@@ -918,7 +918,7 @@ describe("acceptance gates", () => {
 
 			const inline = await evaluateAcceptance({
 				acceptance,
-				output: malformedReports[0]!,
+				output: malformedReports[0],
 				fileOutput: { content: report({ notes: "valid file report" }), path: "/tmp/report.md" },
 				cwd,
 			});
@@ -1016,7 +1016,7 @@ describe("acceptance gates", () => {
 		for (const task of tasks) {
 			const resolved = resolveEffectiveAcceptance({ agentName: "delegate", task, async: true });
 			assert.equal(resolved.level, "checked", task);
-			assert.equal(resolved.review && resolved.review !== false ? resolved.review.required : undefined, true, task);
+			assert.equal(resolved.review !== false && resolved.review ? resolved.review.required : undefined, true, task);
 		}
 	});
 

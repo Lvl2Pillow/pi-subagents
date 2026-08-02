@@ -298,8 +298,8 @@ describe("registerSubagentNotify", () => {
 		// The failure must arrive immediately, and the held success must be
 		// flushed ahead of it rather than waiting on the debounce timer.
 		assert.equal(sent.length, 2);
-		assert.match((sent[0]!.message as { content: string }).content, /Background task completed: \*\*ok-1\*\*/);
-		assert.match((sent[1]!.message as { content: string }).content, /Background task failed: \*\*fail-1\*\*/);
+		assert.match((sent[0].message as { content: string }).content, /Background task completed: \*\*ok-1\*\*/);
+		assert.match((sent[1].message as { content: string }).content, /Background task failed: \*\*fail-1\*\*/);
 
 		// No deferred emission should arrive later.
 		clock.advance(1000);
@@ -317,11 +317,11 @@ describe("registerSubagentNotify", () => {
 
 		clock.advance(150);
 		assert.equal(sent.length, 1);
-		const content = (sent[0]!.message as { content: string }).content;
+		const content = (sent[0].message as { content: string }).content;
 		assert.match(content, /^Background tasks completed \(3\): \*\*alpha\*\*, \*\*beta\*\*, \*\*gamma\*\*/);
 		assert.match(content, /1\. alpha\nalpha done/);
 		assert.match(content, /3\. gamma\ngamma done/);
-		assert.deepEqual(sent[0]!.options, { triggerTurn: true });
+		assert.deepEqual(sent[0].options, { triggerTurn: true });
 	});
 
 	it("ignores successes from other sessions instead of grouping them", () => {
@@ -333,8 +333,8 @@ describe("registerSubagentNotify", () => {
 		clock.advance(150);
 
 		assert.equal(sent.length, 1);
-		assert.match((sent[0]!.message as { content: string }).content, /^Background task completed: \*\*alpha\*\*/);
-		assert.doesNotMatch((sent[0]!.message as { content: string }).content, /beta done/);
+		assert.match((sent[0].message as { content: string }).content, /^Background task completed: \*\*alpha\*\*/);
+		assert.doesNotMatch((sent[0].message as { content: string }).content, /beta done/);
 	});
 
 	it("does not let another session failure flush held successes", () => {
@@ -347,8 +347,8 @@ describe("registerSubagentNotify", () => {
 
 		clock.advance(150);
 		assert.equal(sent.length, 1);
-		assert.match((sent[0]!.message as { content: string }).content, /^Background task completed: \*\*alpha\*\*/);
-		assert.doesNotMatch((sent[0]!.message as { content: string }).content, /boom/);
+		assert.match((sent[0].message as { content: string }).content, /^Background task completed: \*\*alpha\*\*/);
+		assert.doesNotMatch((sent[0].message as { content: string }).content, /boom/);
 	});
 
 	it("disposes queued completions without emitting and is idempotent", () => {
@@ -411,7 +411,7 @@ describe("completion formatting helpers", () => {
 			agent: "worker",
 			success: true,
 			summary: "Done",
-			parallelHandoff: { path: "/tmp/run/handoff.json" },
+			parallelHandoff: { version: 1, path: "/tmp/run/handoff.json", groupCount: 1, childCount: 1, changedPatches: 0, cleanupState: "complete" },
 		}).handoffPath, "/tmp/run/handoff.json");
 	});
 

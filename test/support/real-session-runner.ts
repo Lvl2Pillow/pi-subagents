@@ -74,7 +74,7 @@ export function subagentToolResults(session: AgentSession): string[] {
 
 function latestSubagentToolResultText(messages: Array<{ role?: string; toolName?: string; content?: unknown }>): string | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const message = messages[i]!;
+		const message = messages[i];
 		if (message.role === "toolResult" && message.toolName === "subagent") {
 			return textFromContent(message.content);
 		}
@@ -92,8 +92,10 @@ function textFromContent(content: unknown): string {
 }
 
 function toAssistantMessage(reply: FauxReply): AssistantMessage {
-	if (reply && typeof reply === "object" && "role" in reply) return reply as AssistantMessage;
-	const content: FauxContentBlock[] = typeof reply === "string" ? [fauxText(reply)] : Array.isArray(reply) ? reply : [reply];
+	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false does not narrow `in` checks on unions; the cast is required for the extension tsconfig but looks redundant under eslint's strict program
+	if (reply && typeof reply === "object" && "role" in reply) return reply as unknown as AssistantMessage;
+	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false leaves AssistantMessage in the union after the `in` check, so Array.isArray narrowing is incomplete
+	const content: FauxContentBlock[] = typeof reply === "string" ? [fauxText(reply)] : Array.isArray(reply) ? (reply as unknown as FauxContentBlock[]) : [reply as unknown as FauxContentBlock];
 	const hasToolCall = content.some((block) => (block as { type?: string }).type === "toolCall");
 	return fauxAssistantMessage(content, { stopReason: hasToolCall ? "toolUse" : "stop" });
 }

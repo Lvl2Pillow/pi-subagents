@@ -34,6 +34,8 @@ export interface RunnerSubagentStep {
 	namespaceOutputPath?: boolean;
 	outputMode?: "inline" | "file-only";
 	sessionFile?: string;
+	sessionFiles?: string[];
+	thinkingOverrides?: (string | false | undefined)[];
 	maxSubagentDepth?: number;
 	waitToolEnabled?: boolean;
 	structuredOutput?: {
@@ -79,12 +81,13 @@ export interface DynamicRunnerGroup {
 	phase?: string;
 	label?: string;
 	sessionFiles?: (string | undefined)[];
-	thinkingOverrides?: (string | undefined)[];
+	thinkingOverrides?: (string | false | undefined)[];
 	effectiveAcceptance?: import("../../shared/types.ts").ResolvedAcceptanceConfig;
 	acceptanceInput?: import("../../shared/types.ts").AcceptanceInput;
 	acceptanceRole?: import("../../shared/types.ts").AcceptanceRole;
 	agentContract?: import("../../shared/types.ts").AgentContract;
 	gateOn?: import("../../shared/types.ts").ChainGateLayer;
+	capabilityCeiling?: import("./capability-ceiling.ts").ResolvedSubagentCapabilityCeiling;
 }
 
 export type RunnerStep = RunnerSubagentStep | ParallelStepGroup | DynamicRunnerGroup | RunnerCheckpointStep;
@@ -160,7 +163,7 @@ export async function mapConcurrent<T, R>(
 	globalSemaphore?: Semaphore,
 ): Promise<R[]> {
 	const safeLimit = Math.max(1, Math.floor(limit) || 1);
-	const results: R[] = new Array(items.length);
+	const results: R[] = new Array<R>(items.length);
 	let next = 0;
 
 	async function worker(_workerIndex: number): Promise<void> {

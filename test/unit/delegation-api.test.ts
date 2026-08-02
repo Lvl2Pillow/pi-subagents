@@ -691,9 +691,9 @@ describe("public subagent delegation contract", () => {
 			[{ turnBudgetExceeded: true }, "turn_budget_exhausted"],
 			[{ toolBudgetBlocked: true }, "tool_budget_exhausted"],
 			[{ turnBudgetExceeded: true, structuredOutputFailed: true }, "structured_output_failed"],
-			[{ acceptance: { status: "rejected", explicit: true } }, "acceptance_failed"],
-			[{ agentContract: { version: 1 }, acceptance: { status: "rejected", explicit: true } }, "completed"],
-			[{ acceptance: { status: "rejected", explicit: false } }, "completed"],
+			[{ acceptance: { status: "rejected", explicit: true, evidenceStatus: "rejected" } }, "acceptance_failed"],
+			[{ agentContract: { version: 1 }, acceptance: { status: "rejected", explicit: true, evidenceStatus: "rejected" } }, "completed"],
+			[{ acceptance: { status: "rejected", explicit: false, evidenceStatus: "rejected" } }, "completed"],
 			[{ exitCode: 1, error: "failed" }, "failed"],
 		] as const;
 		for (const [child, expectedStatus] of cases) {

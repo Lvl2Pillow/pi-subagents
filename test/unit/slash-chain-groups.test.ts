@@ -250,7 +250,7 @@ describe("buildChainExpressionSteps", () => {
 			"scout",
 		);
 		assert.equal(
-			built.chain[1] && "parallel" in built.chain[1]
+			built.chain[1] && "parallel" in built.chain[1] && Array.isArray(built.chain[1].parallel)
 				? built.chain[1].parallel.length
 				: undefined,
 			2,
@@ -313,7 +313,7 @@ describe("buildChainExpressionSteps", () => {
 		assert.ok(built);
 		if (!built) return;
 		assert.deepEqual(notifications, []);
-		const first = built.chain[0] as Record<string, unknown>;
+		const first = built.chain[0] as unknown as Record<string, unknown>;
 		assert.equal(first.as, "ctx");
 		assert.equal(first.label, "Scan");
 		assert.equal(first.phase, "recon");
@@ -330,8 +330,8 @@ describe("buildChainExpressionSteps", () => {
 		if (!built) return;
 		assert.deepEqual(notifications, []);
 		// sequential first step: count ignored
-		assert.equal((built.chain[0] as Record<string, unknown>).count, undefined);
-		const parallel = (built.chain[1] as { parallel: Array<Record<string, unknown>> }).parallel;
+		assert.equal((built.chain[0] as unknown as Record<string, unknown>).count, undefined);
+		const parallel = (built.chain[1] as unknown as { parallel: Array<Record<string, unknown>> }).parallel;
 		assert.equal(parallel[0]?.count, 3);
 		assert.equal(parallel[1]?.count, undefined);
 	});
@@ -346,7 +346,7 @@ describe("buildChainExpressionSteps", () => {
 		assert.ok(built);
 		if (!built) return;
 		assert.deepEqual(notifications, []);
-		const group = built.chain[1] as Record<string, unknown>;
+		const group = built.chain[1] as unknown as Record<string, unknown>;
 		assert.equal(group.concurrency, 2);
 		assert.equal(group.failFast, true);
 		assert.equal(group.worktree, undefined);
@@ -390,7 +390,7 @@ describe("buildChainExpressionSteps", () => {
 		);
 		assert.ok(built);
 		if (built) {
-			assert.deepEqual((built.chain[0] as Record<string, unknown>).outputSchema, { type: "object" });
+			assert.deepEqual((built.chain[0] as unknown as Record<string, unknown>).outputSchema, { type: "object" });
 		}
 
 		const missing: string[] = [];

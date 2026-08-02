@@ -2,11 +2,8 @@ import {
 	SUBAGENT_DELEGATION_PROTOCOL_VERSION,
 	SUBAGENT_DELEGATION_V2_PROTOCOL_VERSION,
 	type SubagentDelegationAcceptanceResult,
-	type SubagentDelegationEffectsResult,
-	type SubagentDelegationExecutionResult,
 	type SubagentDelegationRequest,
 	type SubagentDelegationResponse,
-	type SubagentDelegationReviewResult,
 	type SubagentDelegationStatus,
 	type SubagentDelegationUpdate,
 	type SubagentDelegationV2Request,
@@ -108,6 +105,7 @@ export interface PromptTemplateBridgeResult {
 			structuredOutputFailed?: boolean;
 			savedOutputPath?: string;
 			sessionFile?: string;
+			launchContractDigest?: string;
 			agentContract?: AgentContract;
 			execution?: ExecutionProjection;
 			acceptance?: SubagentDelegationAcceptanceResult;
@@ -202,8 +200,8 @@ export function parsePromptTemplateRequest(data: unknown): PromptTemplateDelegat
 	const fallbackTask = tasks[0];
 	return {
 		requestId: value.requestId,
-		agent: hasSingle ? value.agent! : fallbackTask!.agent,
-		task: hasSingle ? value.task! : fallbackTask!.task,
+		agent: hasSingle ? value.agent! : fallbackTask.agent,
+		task: hasSingle ? value.task! : fallbackTask.task,
 		...(tasks.length > 0 ? { tasks } : {}),
 		context: value.context,
 		model: value.model,
@@ -491,13 +489,13 @@ export function toSubagentDelegationResponse(
 		...(child?.agent ? { agent: child.agent } : {}),
 		...(child?.model ? { model: child.model } : {}),
 		...(typeof child?.exitCode === "number" ? { exitCode: child.exitCode } : {}),
-		...(child?.execution ? { execution: child.execution as SubagentDelegationExecutionResult } : {}),
+		...(child?.execution ? { execution: child.execution } : {}),
 		...(child?.finalOutput ? { output: child.finalOutput } : {}),
 		...(child?.savedOutputPath ? { outputPath: child.savedOutputPath } : {}),
 		...(child?.sessionFile ? { sessionFile: child.sessionFile } : {}),
 		...(child?.acceptance ? { acceptance: { status: child.acceptance.status, evidenceStatus: child.acceptance.evidenceStatus, explicit: child.acceptance.explicit } } : {}),
-		...(child?.review ? { review: child.review as SubagentDelegationReviewResult } : {}),
-		...(child?.effects ? { effects: child.effects as SubagentDelegationEffectsResult } : {}),
+		...(child?.review ? { review: child.review } : {}),
+		...(child?.effects ? { effects: child.effects } : {}),
 		...(typeof child?.usage?.turns === "number" ? { turns: child.usage.turns } : {}),
 		...(typeof progress?.toolCount === "number" ? { toolCount: progress.toolCount } : {}),
 		...(typeof progress?.durationMs === "number" ? { durationMs: progress.durationMs } : {}),
@@ -536,7 +534,7 @@ export function toSubagentDelegationV2Response(
 			const inspected = cloneJsonWithinByteLimit(child.structuredOutput, MAX_V2_RESULT_BYTES);
 			if (!inspected.ok) {
 				status = "failed";
-				error = inspected.reason === "too_large"
+				error = ("reason" in inspected ? inspected.reason : "invalid") === "too_large"
 					? "Delegated structured result exceeds 1 MiB when encoded."
 					: "Delegated structured result is not plain JSON data.";
 			} else {

@@ -99,7 +99,7 @@ function messagesFromEvent(event: unknown): unknown[] {
 	if (!event || typeof event !== "object") return [];
 	const input = event as Record<string, unknown>;
 	if (input.type === "turn_end" || input.event === "turn_end") {
-		return [input.message, ...(Array.isArray(input.toolResults) ? input.toolResults : [])].filter(Boolean);
+		return [input.message, ...(Array.isArray(input.toolResults) ? (input.toolResults as unknown[]) : [])].filter(Boolean);
 	}
 	if (input.message) return [input.message];
 	if (input.type === "tool_execution_start" || input.event === "tool_execution_start") {

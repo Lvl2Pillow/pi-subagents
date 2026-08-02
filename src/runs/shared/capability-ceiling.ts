@@ -108,7 +108,7 @@ export function registerSubagentCapabilityCeiling(options: RegisterSubagentCapab
 	const setRegistration = () => {
 		normalized = normalizeCeiling(normalized);
 		normalized.sources = [source];
-		session!.set(token, { source, ceiling: normalized });
+		session.set(token, { source, ceiling: normalized });
 	};
 	setRegistration();
 	let disposed = false;
@@ -117,13 +117,13 @@ export function registerSubagentCapabilityCeiling(options: RegisterSubagentCapab
 			if (disposed) throw new Error("Cannot update a disposed capability ceiling handle.");
 			normalized = normalizeCeiling(ceiling);
 			normalized.sources = [source];
-			session!.set(token, { source, ceiling: normalized });
+			session.set(token, { source, ceiling: normalized });
 		},
 		dispose() {
 			if (disposed) return;
 			disposed = true;
-			session!.delete(token);
-			if (session!.size === 0) store.delete(sessionId);
+			session.delete(token);
+			if (session.size === 0) store.delete(sessionId);
 		},
 	};
 }
@@ -134,7 +134,7 @@ export function intersectSubagentCapabilityCeilings(...ceilings: Array<ResolvedS
 	const definedLists = active.filter((ceiling) => ceiling.allowedTools !== undefined).map((ceiling) => new Set(ceiling.allowedTools));
 	let allowedTools: string[] | undefined;
 	if (definedLists.length > 0) {
-		allowedTools = [...definedLists[0]!].filter((tool) => definedLists.every((list) => list.has(tool))).sort();
+		allowedTools = [...definedLists[0]].filter((tool) => definedLists.every((list) => list.has(tool))).sort();
 	}
 	return {
 		version: SUBAGENT_CAPABILITY_CEILING_VERSION,

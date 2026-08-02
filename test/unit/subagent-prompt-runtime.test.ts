@@ -20,6 +20,7 @@ import { TOOL_BUDGET_ENV } from "../../src/runs/shared/tool-budget.ts";
 import { CHILD_TOOL_DIAGNOSTIC_PATH_ENV, formatChildToolDiagnostic, MCP_DIRECT_CHILD_TOOLS_ENV, readChildToolDiagnostic, REQUIRED_CHILD_TOOLS_ENV } from "../../src/runs/shared/tool-availability.ts";
 import { CHILD_WATCHDOG_CONFIG_ENV } from "../../src/watchdog/child-status.ts";
 import { SUBAGENT_WATCHDOG_WARNING_TYPE } from "../../src/watchdog/types.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import registerSubagentPromptRuntime, {
 	CHILD_FANOUT_BOUNDARY_INSTRUCTIONS,
 	CHILD_SUBAGENT_BOUNDARY_INSTRUCTIONS,
@@ -131,7 +132,7 @@ describe("subagent prompt runtime", () => {
 			sendUserMessage(content: string) {
 				sent.push(content);
 			},
-		} as { on(event: string, handler: (payload: { toolName?: string }) => unknown): void; sendUserMessage(content: string): void });
+		} as unknown as ExtensionAPI);
 
 		const toolCall = handlers.get("tool_call");
 		assert.ok(toolCall, "tool_call handler should be registered");
@@ -154,14 +155,14 @@ describe("subagent prompt runtime", () => {
 			process.env[SUBAGENT_STEER_INBOX_ENV] = inbox;
 			const handlers = new Map<string, (payload?: unknown) => unknown>();
 			let watchedDir: fs.PathLike | undefined;
-			const fakeWatcher = { on() { return fakeWatcher; }, close() {} } as fs.FSWatcher;
+			const fakeWatcher = { on() { return fakeWatcher; }, close() {} } as unknown as fs.FSWatcher;
 
 			registerSteeringInbox({
 				on(event: string, handler: (payload?: unknown) => unknown) {
 					handlers.set(event, handler);
 				},
 				sendUserMessage() {},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; sendUserMessage(): void }, {
+			} as unknown as ExtensionAPI, {
 				nativeRealpath(target) {
 					assert.equal(target, inbox);
 					return nativeInbox;
@@ -169,7 +170,7 @@ describe("subagent prompt runtime", () => {
 				watch: ((target: fs.PathLike) => {
 					watchedDir = target;
 					return fakeWatcher;
-				}) as typeof fs.watch,
+				}),
 			});
 
 			handlers.get("session_start")?.({});
@@ -195,7 +196,7 @@ describe("subagent prompt runtime", () => {
 				sendUserMessage(content: string, options: { deliverAs: string }) {
 					sent.push({ content, options });
 				},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; sendUserMessage(content: string, options: { deliverAs: string }): void });
+			} as unknown as ExtensionAPI);
 
 			writeSteerRequestToDir(inbox, { type: "steer", id: "steer-1", ts: 1, message: "Focus on tests." });
 			handlers.get("message_start")?.({});
@@ -295,7 +296,7 @@ describe("subagent prompt runtime", () => {
 			on(event: string, handler: unknown) {
 				handlersWithout.set(event, [...(handlersWithout.get(event) ?? []), handler]);
 			},
-		} as { on(event: string, handler: unknown): void });
+		} as unknown as ExtensionAPI);
 		assert.equal(handlersWithout.get("agent_end")?.length ?? 0, 1, "headless auto-drain is always registered");
 
 		process.env[CHILD_WATCHDOG_CONFIG_ENV] = JSON.stringify({
@@ -320,7 +321,7 @@ describe("subagent prompt runtime", () => {
 				return "off";
 			},
 			sendMessage() {},
-		} as { on(event: string, handler: unknown): void; getThinkingLevel(): string; sendMessage(): void });
+		} as unknown as ExtensionAPI);
 
 		assert.ok((handlersWith.get("before_agent_start")?.length ?? 0) >= 2);
 		assert.ok((handlersWith.get("turn_end")?.length ?? 0) >= 1);
@@ -346,7 +347,7 @@ describe("subagent prompt runtime", () => {
 					}
 				},
 				on() {},
-			} as { registerTool(tool: { name: string; parameters: unknown; execute: (_id: string, params: { value: unknown }) => Promise<{ terminate?: boolean }> }): void; on(): void });
+			} as unknown as ExtensionAPI);
 
 			assert.ok(execute, "structured_output tool should be registered");
 			assert.deepEqual(parameters, {
@@ -388,7 +389,7 @@ describe("subagent prompt runtime", () => {
 					if (tool.name === "structured_output") parameters = tool.parameters as typeof parameters;
 				},
 				on() {},
-			} as { registerTool(tool: { name: string; parameters: unknown }): void; on(): void });
+			} as unknown as ExtensionAPI);
 
 			assert.equal(parameters.properties?.value?.properties?.name?.$ref, "#/properties/value/$defs/item");
 			assert.equal(parameters.properties?.value?.properties?.nested?.properties?.label?.$ref, "#/properties/value/$defs/item");
@@ -582,7 +583,7 @@ describe("subagent prompt runtime", () => {
 			registerTool(tool: { name: string }) {
 				registered.push(tool.name);
 			},
-		} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(tool: { name: string }): void });
+		} as unknown as ExtensionAPI);
 
 		assert.deepEqual(registered, ["subagent_wait"]);
 		handlers.get("session_start")?.({});
@@ -609,7 +610,7 @@ describe("subagent prompt runtime", () => {
 				registerTool(tool: { name: string }) {
 					registered.push(tool.name);
 				},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(tool: { name: string }): void });
+			} as unknown as ExtensionAPI);
 
 			handlers.get("session_start")?.({});
 			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor"]);
@@ -633,7 +634,7 @@ describe("subagent prompt runtime", () => {
 			registerTool(tool: { name: string }) {
 				registered.push(tool.name);
 			},
-		} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(tool: { name: string }): void });
+		} as unknown as ExtensionAPI);
 
 		handlers.get("session_start")?.({});
 		await handlers.get("before_agent_start")?.({ systemPrompt: BASE_PROMPT });
@@ -657,7 +658,7 @@ describe("subagent prompt runtime", () => {
 				registerTool(tool: { name: string }) {
 					registered.push(tool.name);
 				},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(tool: { name: string }): void });
+			} as unknown as ExtensionAPI);
 
 			handlers.get("session_start")?.({});
 			assert.deepEqual(registered, ["subagent_wait", "contact_supervisor"]);
@@ -686,7 +687,7 @@ describe("subagent prompt runtime", () => {
 				},
 				getAllTools: () => available.map((name) => ({ name })),
 				registerTool() {},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(): void });
+			} as unknown as ExtensionAPI);
 
 			const promptRewrite = await handlers.get("before_agent_start")?.({ systemPrompt: BASE_PROMPT }) as { systemPrompt?: string } | undefined;
 			assert.equal(fs.existsSync(diagnosticPath), false);
@@ -724,7 +725,7 @@ describe("subagent prompt runtime", () => {
 				},
 				getAllTools: () => [{ name: "read" }],
 				registerTool() {},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(): void });
+			} as unknown as ExtensionAPI);
 
 			assert.doesNotThrow(() => handlers.get("agent_start")?.({}));
 			assert.deepEqual(readChildToolDiagnostic(diagnosticPath), {
@@ -754,7 +755,7 @@ describe("subagent prompt runtime", () => {
 				},
 				getAllTools: () => [{ name: "read" }],
 				registerTool() {},
-			} as { on(event: string, handler: (payload?: unknown) => unknown): void; getAllTools(): Array<{ name: string }>; registerTool(): void });
+			} as unknown as ExtensionAPI);
 
 			handlers.get("agent_start")?.({});
 			const diagnostic = readChildToolDiagnostic(diagnosticPath);
@@ -765,8 +766,8 @@ describe("subagent prompt runtime", () => {
 				missing: ["rust_symbols_workspace_symbols", "fixture_search"],
 				missingMcpDirectTools: ["rust_symbols_workspace_symbols"],
 			});
-			assert.match(formatChildToolDiagnostic(diagnostic!), /host\/pi-mcp-adapter registration problem/);
-			assert.match(formatChildToolDiagnostic(diagnostic!), /fixture_search/);
+			assert.match(formatChildToolDiagnostic(diagnostic), /host\/pi-mcp-adapter registration problem/);
+			assert.match(formatChildToolDiagnostic(diagnostic), /fixture_search/);
 			assert.equal(fs.existsSync(diagnosticPath), true);
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
@@ -780,7 +781,7 @@ describe("subagent prompt runtime", () => {
 				if (event === "before_agent_start") beforeAgentStart = handler;
 			},
 			getAllTools: () => [{ name: "contact_supervisor" }],
-		} as { on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>): void; getAllTools(): Array<{ name: string }> });
+		} as unknown as ExtensionAPI);
 
 		assert.ok(beforeAgentStart, "expected before_agent_start handler");
 		process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT = "0";
@@ -800,7 +801,7 @@ describe("subagent prompt runtime", () => {
 				if (event === "before_agent_start") beforeAgentStart = handler;
 			},
 			getAllTools: () => [{ name: "contact_supervisor" }],
-		} as { on(event: string, handler: (payload: { systemPrompt: string }) => Promise<{ systemPrompt: string } | undefined>): void; getAllTools(): Array<{ name: string }> });
+		} as unknown as ExtensionAPI);
 
 		process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT = "1";
 		process.env.PI_SUBAGENT_INHERIT_SKILLS = "1";
@@ -817,7 +818,7 @@ describe("subagent prompt runtime", () => {
 			on(event: string, handler: (payload: { messages: unknown[] }) => { messages: unknown[] } | undefined) {
 				if (event === "context") contextHandler = handler;
 			},
-		} as { on(event: string, handler: (payload: { messages: unknown[] }) => { messages: unknown[] } | undefined): void });
+		} as unknown as ExtensionAPI);
 
 		const priorParentTurn = { role: "user", content: "Earlier we said planner → worker → reviewers → worker." };
 		const currentTask = { role: "user", content: "Now implement only the assigned fix." };
@@ -840,7 +841,7 @@ describe("subagent prompt runtime", () => {
 			on(event: string, handler: (payload: { messages: unknown[] }) => { messages: unknown[] } | undefined) {
 				if (event === "context") contextHandler = handler;
 			},
-		} as { on(event: string, handler: (payload: { messages: unknown[] }) => { messages: unknown[] } | undefined): void });
+		} as unknown as ExtensionAPI);
 
 		const messages = [
 			{ role: "user", content: "Task" },

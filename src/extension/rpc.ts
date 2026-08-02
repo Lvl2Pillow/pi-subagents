@@ -581,7 +581,7 @@ function parseRequest(raw: unknown): SubagentRpcRequestEnvelope {
 		requestId,
 		method: raw.method as SubagentRpcMethod,
 		...(raw.params !== undefined ? { params: raw.params } : {}),
-		...(isRecord(raw.source) ? { source: raw.source as SubagentRpcRequestEnvelope["source"] } : {}),
+		...(isRecord(raw.source) ? { source: raw.source } : {}),
 	};
 }
 

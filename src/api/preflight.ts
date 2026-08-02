@@ -8,6 +8,7 @@ import { buildSkillInjection, normalizeSkillInput, resolveSkillsWithFallback } f
 import { buildModelCandidates, resolveEffectiveSubagentModel, type AvailableModelInfo, type ParentModel } from "../runs/shared/model-fallback.ts";
 import { applyThinkingSuffix, resolvePiLaunchToolPlan, type PiLaunchToolPlan } from "../runs/shared/pi-args.ts";
 import { injectOutputPathSystemPrompt, normalizeSingleOutputOverride, resolveSingleOutputPath } from "../runs/shared/single-output.ts";
+import { resolveTurnBudgetConfig } from "../runs/shared/turn-budget.ts";
 import { getArtifactPaths, getArtifactsDir } from "../shared/artifacts.ts";
 import { resolveEffectiveThinking } from "../shared/model-info.ts";
 import { SUBAGENT_LIFECYCLE_ARTIFACT_VERSION, type ArtifactDirPreference, type ArtifactPaths, type JsonSchemaObject, type OutputMode } from "../shared/types.ts";
@@ -305,7 +306,7 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	}
 	effectiveSystemPrompt = injectOutputPathSystemPrompt(effectiveSystemPrompt, outputPath, agent);
 	const turnBudget = input.turnBudget ?? agent.defaultTurnBudget;
-	effectiveSystemPrompt = appendTurnBudgetSystemPrompt(effectiveSystemPrompt, turnBudget);
+	effectiveSystemPrompt = appendTurnBudgetSystemPrompt(effectiveSystemPrompt, resolveTurnBudgetConfig(turnBudget).turnBudget);
 	const candidates = candidateList(input.agent, agent, effectiveCwd);
 	const shadowedCandidates = candidates.filter((candidate) => !candidate.selected);
 	const definitionDigest = agentDefinitionDigest(agent);

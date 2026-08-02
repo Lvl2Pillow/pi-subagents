@@ -19,7 +19,7 @@ function readConfigForUpdate(configPath = getConfigPath()): ExtensionConfig {
 	if (config.artifactDir !== undefined && !ARTIFACT_DIR_PREFERENCES.has(config.artifactDir as ArtifactDirPreference)) {
 		throw new Error(`config.artifactDir must be "project", "session", or "temp"`);
 	}
-	return parsed as ExtensionConfig;
+	return parsed;
 }
 
 export function saveConfig(config: ExtensionConfig, configPath = getConfigPath()): void {

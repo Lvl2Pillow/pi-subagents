@@ -270,7 +270,7 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 		mcpDirectTools: input.mcpDirectTools,
 		cwd: input.cwd,
 		requireReadTool: input.requireReadTool,
-		structuredOutput: input.structuredOutput,
+		structuredOutput: Boolean(input.structuredOutput),
 		capabilityCeiling: input.capabilityCeiling,
 		inheritedCapabilityCeiling: decodeSubagentCapabilityCeiling(process.env[SUBAGENT_CAPABILITY_CEILING_ENV]),
 	});

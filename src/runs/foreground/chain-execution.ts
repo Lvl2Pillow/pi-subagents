@@ -279,7 +279,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 		);
 	});
 	for (let taskIndex = 0; taskIndex < input.step.parallel.length; taskIndex++) {
-		const task = input.step.parallel[taskIndex]!;
+		const task = input.step.parallel[taskIndex];
 		input.sessionFileForTask?.(task.agent, input.globalTaskIndex + taskIndex, effectiveModels[taskIndex]);
 	}
 
@@ -309,11 +309,11 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 					messages: [],
 					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
 					error: "Skipped due to fail-fast",
-				} as SingleResult;
+				};
 			}
 
 			const taskTemplate = input.parallelTemplates[taskIndex] ?? "{previous}";
-			const behavior = suppressProgressForReadOnlyTask(input.parallelBehaviors[taskIndex]!, taskTemplate, input.originalTask);
+			const behavior = suppressProgressForReadOnlyTask(input.parallelBehaviors[taskIndex], taskTemplate, input.originalTask);
 			const taskAgentConfig = input.agents.find((agent) => agent.name === task.agent);
 			const templateHasPrevious = taskTemplate.includes("{previous}");
 			const { prefix, suffix } = buildChainInstructions(
@@ -336,7 +336,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			if (toolBudget.error) throw new Error(toolBudget.error);
 
 			const taskCwd = input.worktreeSetup
-				? input.worktreeSetup.worktrees[taskIndex]!.agentCwd
+				? input.worktreeSetup.worktrees[taskIndex].agentCwd
 				: resolveChildCwd(input.cwd ?? input.ctx.cwd, task.cwd);
 
 			const outputPath = typeof behavior.output === "string"
@@ -552,7 +552,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 			? `[${step.parallel.map((t) => t.agent).join("+")}]`
 			: isDynamicParallelStep(step)
 				? `expand:${step.parallel.agent}`
-			: (step as SequentialStep).agent,
+			: (step).agent,
 	);
 	const totalSteps = chainSteps.length;
 
@@ -580,15 +580,15 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		return buildChainExecutionErrorResult(usageBudgetExceededMessage(state), makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: flatIndex }));
 	};
 
-	const firstStep = chainSteps[0]!;
+	const firstStep = chainSteps[0];
 	const originalTask = params.task
 		?? (isCheckpointStep(firstStep)
 			? undefined
 			: isParallelStep(firstStep)
-				? firstStep.parallel[0]!.task!
+				? firstStep.parallel[0].task!
 				: isDynamicParallelStep(firstStep)
 					? firstStep.parallel.task!
-					: (firstStep as SequentialStep).task!);
+					: (firstStep).task!);
 	try {
 		validateChainOutputBindings(chainSteps, { maxItems: params.dynamicFanoutMaxItems });
 	} catch (error) {
@@ -636,7 +636,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		}));
 
 		const resolvedBehaviors = agentConfigs.map((config, i) =>
-			resolveStepBehavior(config, stepOverrides[i]!, chainSkills),
+			resolveStepBehavior(config, stepOverrides[i], chainSkills),
 		);
 		const flatTemplates = templates as string[];
 
@@ -676,7 +676,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 				const override = result.behaviorOverrides[i];
 				return {
 					...step,
-					task: result.templates[i]!,
+					task: result.templates[i],
 					...(override?.model !== undefined ? { model: override.model } : {}),
 					...(override?.output !== undefined ? { output: override.output } : {}),
 					...("outputMode" in step && step.outputMode !== undefined ? { outputMode: step.outputMode } : {}),
@@ -705,8 +705,8 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 	for (let stepIndex = 0; stepIndex < chainSteps.length; stepIndex++) {
 		const budgetError = usageBudgetError(stepIndex, globalTaskIndex);
 		if (budgetError) return budgetError;
-		const step = chainSteps[stepIndex]!;
-		const stepTemplates = templates[stepIndex]!;
+		const step = chainSteps[stepIndex];
+		const stepTemplates = templates[stepIndex];
 
 		if (isCheckpointStep(step)) {
 			const checkpoint = { name: step.checkpoint, ...(step.message ? { message: step.message } : {}), status: "pending" as const, stepIndex };
@@ -750,11 +750,11 @@ ${step.message}` : ""}` }],
 				const parallelBehaviors = resolveParallelBehaviors(step.parallel, agents, stepIndex, chainSkills)
 					.map((behavior, taskIndex) => suppressProgressForReadOnlyTask(behavior, parallelTemplates[taskIndex] ?? step.parallel[taskIndex]?.task, originalTask));
 				for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
-					const behavior = parallelBehaviors[taskIndex]!;
+					const behavior = parallelBehaviors[taskIndex];
 					const outputPath = typeof behavior.output === "string"
 						? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 						: undefined;
-					const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Parallel chain step ${stepIndex + 1} task ${taskIndex + 1} (${step.parallel[taskIndex]!.agent})`);
+					const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Parallel chain step ${stepIndex + 1} task ${taskIndex + 1} (${step.parallel[taskIndex].agent})`);
 					if (validationError) return buildChainExecutionErrorResult(validationError, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex + taskIndex }));
 				}
 				progressCreated = ensureParallelProgressFile(chainDir, progressCreated, parallelBehaviors);
@@ -874,7 +874,7 @@ ${step.message}` : ""}` }],
 						isError: true,
 						details: buildChainExecutionDetails(makeDetailsInput({
 							currentStepIndex: stepIndex,
-							currentFlatIndex: globalTaskIndex - step.parallel.length + failures[0]!.originalIndex,
+							currentFlatIndex: globalTaskIndex - step.parallel.length + failures[0].originalIndex,
 						})),
 					};
 				}
@@ -892,14 +892,14 @@ ${step.message}` : ""}` }],
 						isError: true,
 						details: buildChainExecutionDetails(makeDetailsInput({
 							currentStepIndex: stepIndex,
-							currentFlatIndex: globalTaskIndex - step.parallel.length + acceptanceFailures[0]!.originalIndex,
+							currentFlatIndex: globalTaskIndex - step.parallel.length + acceptanceFailures[0].originalIndex,
 						})),
 					};
 				}
 
 				for (let taskIndex = 0; taskIndex < parallelResults.length; taskIndex++) {
 					const outputName = step.parallel[taskIndex]?.as;
-					if (outputName) outputs[outputName] = outputEntryFromResult(parallelResults[taskIndex]!, stepIndex);
+					if (outputName) outputs[outputName] = outputEntryFromResult(parallelResults[taskIndex], stepIndex);
 				}
 
 				const taskResults: ParallelTaskResult[] = parallelResults.map((result, i) => {
@@ -1003,11 +1003,11 @@ ${step.message}` : ""}` }],
 				.map((behavior, taskIndex) => suppressProgressForReadOnlyTask(behavior, parallelTemplates[taskIndex] ?? dynamicParallelStep.parallel[taskIndex]?.task, originalTask));
 
 			for (let taskIndex = 0; taskIndex < dynamicParallelStep.parallel.length; taskIndex++) {
-				const behavior = parallelBehaviors[taskIndex]!;
+				const behavior = parallelBehaviors[taskIndex];
 				const outputPath = typeof behavior.output === "string"
 					? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 					: undefined;
-				const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Dynamic chain step ${stepIndex + 1} item ${taskIndex + 1} (${dynamicParallelStep.parallel[taskIndex]!.agent})`);
+				const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Dynamic chain step ${stepIndex + 1} item ${taskIndex + 1} (${dynamicParallelStep.parallel[taskIndex].agent})`);
 				if (validationError) {
 					dynamicGroupStatuses[stepIndex] = { status: "failed", error: validationError };
 					return buildChainExecutionErrorResult(validationError, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex + taskIndex }));
@@ -1114,7 +1114,7 @@ ${step.message}` : ""}` }],
 					isError: true,
 					details: buildChainExecutionDetails(makeDetailsInput({
 						currentStepIndex: stepIndex,
-						currentFlatIndex: dynamicStartIndex + failures[0]!.originalIndex,
+						currentFlatIndex: dynamicStartIndex + failures[0].originalIndex,
 					})),
 				};
 			}
@@ -1131,7 +1131,7 @@ ${step.message}` : ""}` }],
 				return {
 					content: [{ type: "text", text: summary }],
 					isError: true,
-					details: buildChainExecutionDetails(makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: dynamicStartIndex + acceptanceFailures[0]!.originalIndex })),
+					details: buildChainExecutionDetails(makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: dynamicStartIndex + acceptanceFailures[0].originalIndex })),
 				};
 			}
 			try {
@@ -1185,7 +1185,7 @@ ${step.message}` : ""}` }],
 			}));
 			prev = aggregateParallelOutputs(taskResults, (i, agent) => `=== Dynamic Item ${i + 1} (${agent}, key ${materialized.items[i]?.key ?? i}) ===`);
 		} else {
-			const seqStep = step as SequentialStep;
+			const seqStep = step;
 			const stepTemplate = stepTemplates as string;
 
 			const agentConfig = agents.find((a) => a.name === seqStep.agent);

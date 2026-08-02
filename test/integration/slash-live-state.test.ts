@@ -44,6 +44,7 @@ describe("slash live state", { skip: !available ? "slash-live-state.ts not impor
 			toolCount: 2,
 			progress: [{
 				agent: "scout",
+				index: 0,
 				status: "running",
 				task: "scan codebase",
 				currentTool: "find",

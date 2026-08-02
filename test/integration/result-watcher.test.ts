@@ -202,7 +202,7 @@ describe("result watcher", () => {
 				},
 				close() {},
 				unref() {},
-			} as fs.FSWatcher;
+			} as unknown as fs.FSWatcher;
 			const realpathSync = ((target: fs.PathLike, options?: unknown) => fs.realpathSync(target, options as BufferEncoding)) as typeof fs.realpathSync;
 			realpathSync.native = ((target: fs.PathLike) => target === resultsDir ? nativeResultsDir : fs.realpathSync.native(target)) as typeof fs.realpathSync.native;
 			const watcher = createResultWatcher(pi, state, resultsDir, 60_000, {
@@ -261,10 +261,10 @@ describe("result watcher", () => {
 				timers: {
 					setTimeout,
 					clearTimeout() {},
-					setInterval(handler: () => void) {
+					setInterval: ((handler: () => void) => {
 						poll = handler;
 						return { unref() {} } as NodeJS.Timeout;
-					},
+					}) as unknown as typeof setInterval,
 					clearInterval() {
 						poll = undefined;
 					},
@@ -334,7 +334,7 @@ describe("result watcher", () => {
 				},
 				close() {},
 				unref() {},
-			} as fs.FSWatcher;
+			} as unknown as fs.FSWatcher;
 			const watcher = createResultWatcher(pi, state, resultsDir, 60_000, {
 				fs: {
 					...fs,
@@ -343,10 +343,10 @@ describe("result watcher", () => {
 				timers: {
 					setTimeout,
 					clearTimeout() {},
-					setInterval(handler: () => void) {
+					setInterval: ((handler: () => void) => {
 						poll = handler;
 						return { unref() {} } as NodeJS.Timeout;
-					},
+					}) as unknown as typeof setInterval,
 					clearInterval() {
 						poll = undefined;
 					},

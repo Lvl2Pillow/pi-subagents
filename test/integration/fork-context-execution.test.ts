@@ -11,7 +11,7 @@ import {
 	removeTempDir,
 	tryImport,
 } from "../support/helpers.ts";
-import { discoverAgents } from "../../src/agents/agents.ts";
+import { discoverAgents, type AgentConfig, type AgentScope } from "../../src/agents/agents.ts";
 import {
 	DEFAULT_FORK_PREAMBLE,
 	SUBAGENT_DETACH_REQUEST_EVENT,
@@ -28,7 +28,7 @@ interface ExecutorModule {
 			ctx: unknown,
 		) => Promise<{
 			isError?: boolean;
-			content: Array<{ text?: string }>;
+			content: Array<{ text?: string; type?: string }>;
 			details?: {
 				context?: "fresh" | "fork" | "mixed";
 				mode?: "single" | "parallel" | "chain";
@@ -159,7 +159,10 @@ describe(
 		}
 
 		function makeExecutorWithDiscoverAgents(
-			discoverAgentsImpl: typeof discoverAgents,
+			discoverAgentsImpl: (cwd: string, scope: AgentScope) => {
+				agents: Array<Partial<AgentConfig>>;
+				projectAgentsDir: string | null;
+			},
 			config: Record<string, unknown> = {},
 		) {
 			let sessionName: string | undefined;
@@ -180,7 +183,23 @@ describe(
 					tempArtifactsDir: tempDir,
 					getSubagentSessionRoot: () => tempDir,
 					expandTilde: (p: string) => p,
-					discoverAgents: discoverAgentsImpl,
+					discoverAgents: ((cwd: string, scope: AgentScope) => {
+						const result = discoverAgentsImpl(cwd, scope);
+						return {
+							...result,
+							agents: result.agents.map((agent) => ({
+								name: agent.name ?? "agent",
+								description: agent.description ?? "",
+								systemPromptMode: agent.systemPromptMode ?? "append",
+								inheritProjectContext: agent.inheritProjectContext ?? true,
+								inheritSkills: agent.inheritSkills ?? true,
+								systemPrompt: agent.systemPrompt ?? "",
+								source: agent.source ?? "project",
+								filePath: agent.filePath ?? path.join(tempDir, ".pi", "agents", `${agent.name ?? "agent"}.md`),
+								...agent,
+							})),
+						};
+					}) as typeof discoverAgents,
 				}),
 				{ eventsApi },
 			);
@@ -865,7 +884,7 @@ describe(
 				assert.equal(result.isError, undefined);
 				assert.equal(warnings.length, 1);
 				assert.match(
-					warnings[0]!,
+					warnings[0],
 					/outside the configured subagent model scope/,
 				);
 				const args = readCallArgs();
@@ -1833,7 +1852,7 @@ describe(
 				path.join(tempDir, "parent.jsonl"),
 			);
 			assert.ok(args[sessionIndex + 1]);
-			assert.equal(fs.existsSync(args[sessionIndex + 1]!), true);
+			assert.equal(fs.existsSync(args[sessionIndex + 1]), true);
 		});
 
 		it("creates isolated forked sessions per parallel task", async () => {
@@ -2249,7 +2268,7 @@ describe(
 					assert.ok(result.details?.asyncId);
 					assert.equal(warnings.length, 1);
 					assert.match(
-						warnings[0]!,
+						warnings[0],
 						/outside the configured subagent model scope/,
 					);
 				} finally {

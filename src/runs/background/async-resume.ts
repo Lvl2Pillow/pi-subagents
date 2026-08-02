@@ -229,7 +229,7 @@ export function resolveAsyncRunLocation(params: AsyncResumeParams, asyncDirRoot:
 	if (matching.length > 1) {
 		throw new Error(`Ambiguous async run id prefix '${requestedId}' matched: ${matching.map((match) => match.id).join(", ")}. Provide a longer id.`);
 	}
-	return matching[0]!.location;
+	return matching[0].location;
 }
 
 function resultState(result: AsyncResultFile): AsyncStatus["state"] {
@@ -263,7 +263,8 @@ function validateStatusForResume(status: AsyncStatus | null, source: string): vo
 
 function normalizeRecoveryAcceptance(value: unknown, descriptorPath: string): AcceptanceInput | undefined {
 	if (value && typeof value === "object" && !Array.isArray(value) && ("explicit" in value || "inferredReason" in value)) {
-		const { explicit, inferredReason: _inferredReason, ...publicAcceptance } = value as Record<string, unknown>;
+		const { explicit, ...publicAcceptance } = value as Record<string, unknown>;
+		delete publicAcceptance.inferredReason;
 		if (explicit === false) return undefined;
 		value = publicAcceptance;
 	}
@@ -296,7 +297,7 @@ export function readAsyncRecoveryDescriptor(asyncDir: string | undefined): Steer
 	}
 	const requiredStrings = ["sourceRunId", "agent", "cwd", "systemPromptMode", "outputMode"] as const;
 	for (const field of requiredStrings) {
-		if (typeof parsed[field] !== "string" || !(parsed[field] as string).trim()) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': ${field} must be a non-empty string.`);
+		if (typeof parsed[field] !== "string" || !(parsed[field]).trim()) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': ${field} must be a non-empty string.`);
 	}
 	if (parsed.version !== 1) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': version must be 1.`);
 	if (parsed.capabilityCeiling !== undefined) parsed.capabilityCeiling = parseSubagentCapabilityCeiling(parsed.capabilityCeiling, `async recovery descriptor '${descriptorPath}' capabilityCeiling`);
@@ -317,7 +318,7 @@ export function readAsyncRecoveryDescriptor(asyncDir: string | undefined): Steer
 	}
 	if (parsed.systemPrompt !== undefined && typeof parsed.systemPrompt !== "string") throw new Error(`Invalid async recovery descriptor '${descriptorPath}': systemPrompt must be a string.`);
 	for (const field of ["launchContractDigest", "sessionFile", "model", "thinking", "agentFilePath", "outputPath", "sessionDir", "artifactsDir"] as const) {
-		if (parsed[field] !== undefined && (typeof parsed[field] !== "string" || !(parsed[field] as string).trim())) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': ${field} must be a non-empty string.`);
+		if (parsed[field] !== undefined && (typeof parsed[field] !== "string" || !(parsed[field]).trim())) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': ${field} must be a non-empty string.`);
 	}
 	if (parsed.completionGuard !== undefined && typeof parsed.completionGuard !== "boolean") throw new Error(`Invalid async recovery descriptor '${descriptorPath}': completionGuard must be a boolean.`);
 	if (parsed.structuredOutputSchema !== undefined && (!parsed.structuredOutputSchema || typeof parsed.structuredOutputSchema !== "object" || Array.isArray(parsed.structuredOutputSchema))) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': structuredOutputSchema must be an object.`);

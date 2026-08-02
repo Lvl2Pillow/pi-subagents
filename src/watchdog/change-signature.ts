@@ -144,7 +144,7 @@ function parsePorcelainZ(raw: string): Array<{ status: string; paths: string[] }
 	const tokens = raw.split("\0").filter(Boolean);
 	const entries: Array<{ status: string; paths: string[] }> = [];
 	for (let index = 0; index < tokens.length; index++) {
-		const token = tokens[index]!;
+		const token = tokens[index];
 		if (token.length < 4) continue;
 		const status = token.slice(0, 2);
 		const relPath = token.slice(3);
@@ -212,7 +212,7 @@ export function eventIndicatesRepoEdit(event: unknown): boolean {
 	if (!event || typeof event !== "object") return false;
 	const input = event as Record<string, unknown>;
 	if (input.type === "turn_end" || input.event === "turn_end") {
-		return [input.message, ...(Array.isArray(input.toolResults) ? input.toolResults : [])].some(messageIndicatesRepoEdit);
+		return [input.message, ...(Array.isArray(input.toolResults) ? (input.toolResults as unknown[]) : [])].some(messageIndicatesRepoEdit);
 	}
 	if (input.type === "tool_result" || input.event === "tool_result") return messageIndicatesRepoEdit({ role: "toolResult", ...input });
 	if (input.type !== "tool_result_end" && input.event !== "tool_result_end") return false;

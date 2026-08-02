@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
@@ -85,14 +86,15 @@ describe("nested route index", () => {
 	});
 
 	it("keeps at most one route when a root run id has duplicate route dirs", () => {
-		const first = trackRoute("dup-root");
-		const second = trackRoute("dup-root");
+		const dupRoot = `dup-root-${randomUUID().slice(0, 8)}`;
+		const first = trackRoute(dupRoot);
+		const second = trackRoute(dupRoot);
 
 		const index = buildNestedRouteIndex();
 
 		// readdir order is not guaranteed, so the contract is deduplication: exactly
 		// one route is indexed per root run id, not a specific winner.
-		const indexed = index.get("dup-root");
+		const indexed = index.get(dupRoot);
 		assert.ok(indexed, "expected one route for dup-root");
 		const tokens = new Set([first.capabilityToken, second.capabilityToken]);
 		assert.ok(tokens.has(indexed.capabilityToken), "indexed route must be one of the two created routes");

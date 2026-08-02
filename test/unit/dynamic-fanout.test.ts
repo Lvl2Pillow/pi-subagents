@@ -160,7 +160,7 @@ describe("dynamic fanout helpers", () => {
 		];
 		assert.throws(() => validateChainOutputBindings(chain), ChainOutputValidationError);
 		assert.throws(
-			() => validateChainOutputBindings([chain[1]!]),
+			() => validateChainOutputBindings([chain[1]]),
 			/unknown output 'targets'/,
 		);
 	});

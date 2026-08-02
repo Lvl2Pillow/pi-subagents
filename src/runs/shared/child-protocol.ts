@@ -87,10 +87,10 @@ export function createBoundedLineReader(options: {
 	};
 }
 
-function trimToUtf8Boundary(buffer: Buffer, maxBytes: number): Buffer {
+function trimToUtf8Boundary(buffer: Buffer<ArrayBufferLike>, maxBytes: number): Buffer<ArrayBufferLike> {
 	if (buffer.length <= maxBytes) return buffer;
 	let start = buffer.length - maxBytes;
-	while (start < buffer.length && (buffer[start]! & 0xc0) === 0x80) start++;
+	while (start < buffer.length && (buffer[start] & 0xc0) === 0x80) start++;
 	return buffer.subarray(start);
 }
 
@@ -100,7 +100,7 @@ export function createBoundedByteTail(maxBytes = MAX_CHILD_STDERR_BYTES): {
 	byteLength(): number;
 } {
 	if (!Number.isInteger(maxBytes) || maxBytes < 1) throw new Error("maxBytes must be a positive integer.");
-	let tail = Buffer.alloc(0);
+	let tail: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 	return {
 		push(chunk) {
 			const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;

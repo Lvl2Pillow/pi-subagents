@@ -74,6 +74,8 @@ interface ProgressSummary {
 	tokens?: number;
 	durationMs: number;
 	toolCount: number;
+	recentOutput?: string[];
+	recentTools?: Array<{ tool?: string; args?: string; endMs?: number }>;
 }
 
 interface ArtifactPaths {
@@ -94,7 +96,7 @@ interface LaunchResolvedExtensions {
 interface RunSyncResult {
 	exitCode: number;
 	agent: string;
-	messages: unknown[];
+	messages: Array<{ role?: string; content?: unknown }>;
 	error?: string;
 	protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number };
 	model?: string;
@@ -133,6 +135,7 @@ interface RunSyncResult {
 		runtimeChecks?: Array<{ id?: string; status?: string; message?: string }>;
 	};
 	launchResolvedExtensions?: LaunchResolvedExtensions;
+	launchContractDigest?: string;
 }
 
 interface MockPiCallRecord {
@@ -234,6 +237,9 @@ interface ExecutorToolResult {
 		timeoutMs?: number;
 		turnBudget?: { maxTurns: number; graceTurns: number };
 		artifacts?: { dir: string; files: ArtifactPaths[] };
+		spawnBudget?: { used?: number; configuredLimit?: number; granted?: number; limit?: number };
+		usageBudget?: { exhausted?: boolean; reason?: string };
+		results?: Array<{ skipped?: boolean; error?: string; structuredOutput?: unknown; structuredOutputFailed?: boolean; structuredOutputPath?: string; turnBudgetExceeded?: boolean; agent?: string; acceptance?: { status?: string; effectiveAcceptance?: { reason?: string } } }>;
 	};
 }
 

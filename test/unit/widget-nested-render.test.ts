@@ -71,7 +71,7 @@ describe("nested widget rendering", () => {
 		const child = nested("still-running", "root-run", "running");
 		const state = job(child);
 		state.status = "complete";
-		state.steps![0]!.status = "complete";
+		state.steps![0].status = "complete";
 		const expanded = buildWidgetLines([state], theme as any, 120, true).join("\n");
 		assert.match(expanded, /✓ Step 1\/1: owner · complete/);
 		assert.match(expanded, /↳ \[\d{2}:\d{2}:\d{2}\] . still-running · running/);

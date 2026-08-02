@@ -201,7 +201,7 @@ describe("control channel: request file", () => {
 		const asyncDir = tmpAsyncDir("pi-control-step-steer-");
 		try {
 			enqueueStepSteer(asyncDir, 2, { type: "steer", id: "s1", ts: 300, message: "focus", targetIndexes: [0, 1] });
-			const request = JSON.parse(fs.readFileSync(path.join(stepSteerInboxDir(asyncDir, 2), fs.readdirSync(stepSteerInboxDir(asyncDir, 2))[0]!), "utf-8"));
+			const request = JSON.parse(fs.readFileSync(path.join(stepSteerInboxDir(asyncDir, 2), fs.readdirSync(stepSteerInboxDir(asyncDir, 2))[0]), "utf-8"));
 			assert.equal(request.targetIndex, 2);
 			assert.equal(request.targetIndexes, undefined);
 			assert.equal(request.message, "focus");

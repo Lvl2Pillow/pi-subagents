@@ -140,7 +140,7 @@ function runningSeed(...values: Array<number | undefined>): number | undefined {
 
 function runningGlyph(seed?: number): string {
 	if (seed === undefined) return STATIC_RUNNING_GLYPH;
-	return RUNNING_FRAMES[Math.abs(seed) % RUNNING_FRAMES.length]!;
+	return RUNNING_FRAMES[Math.abs(seed) % RUNNING_FRAMES.length];
 }
 
 function progressRunningSeed(progress: ProgressSeedSource | undefined): number | undefined {
@@ -333,7 +333,7 @@ function formatWidgetAgents(agents: string[]): string {
 function widgetJobName(job: AsyncJobState): string {
 	if (job.mode === "parallel") return "parallel";
 	if (job.mode === "chain") return "chain";
-	if (job.mode === "single" && job.agents?.length === 1) return job.agents[0]!;
+	if (job.mode === "single" && job.agents?.length === 1) return job.agents[0];
 	if (job.agents?.length) return formatWidgetAgents(job.agents);
 	return job.mode ?? "subagent";
 }
@@ -520,7 +520,7 @@ function buildChainStepSpans(details: Pick<Details, "chainAgents" | "workflowGra
 	const spans: ChainStepSpan[] = [];
 	let start = 0;
 	for (let stepIndex = 0; stepIndex < details.chainAgents.length; stepIndex++) {
-		const label = details.chainAgents[stepIndex]!;
+		const label = details.chainAgents[stepIndex];
 		const parsedCount = parseParallelGroupAgentCount(label);
 		const count = parsedCount ?? 1;
 		spans.push({ stepIndex, start, count, isParallel: parsedCount !== undefined });
@@ -634,7 +634,7 @@ function buildMultiProgressLabel(details: Pick<Details, "mode" | "results" | "pr
 			if (progress.index >= 0 && progress.index < totalCount) statuses[progress.index] = progress.status;
 		}
 		for (let i = 0; i < details.results.length; i++) {
-			const result = details.results[i]!;
+			const result = details.results[i];
 			const progressFromArray = details.progress?.find((progress) => progress.index === i)
 				|| details.progress?.find((progress) => progress.agent === result.agent && progress.status === "running");
 			const index = result.progress?.index ?? progressFromArray?.index ?? i;
@@ -861,7 +861,7 @@ function formatNestedWidgetLines(children: NestedRunSummary[] | undefined, theme
 			return;
 		}
 		for (let index = 0; index < items.length; index++) {
-			const child = items[index]!;
+			const child = items[index];
 			if (lines.length >= lineBudget) {
 				const aggregate = formatNestedAggregate(items.slice(index));
 				if (aggregate) lines[lines.length - 1] = theme.fg("dim", `${prefix}↳ ${aggregate}`);
@@ -1216,7 +1216,7 @@ function buildWidgetComponent(jobs: AsyncJobState[], expanded: boolean): (_tui: 
 		const lines = expanded
 			? buildWidgetLines(jobs, theme, width, true)
 			: jobs.length === 1
-				? compactSingleWidgetLines(jobs[0]!, theme, width)
+				? compactSingleWidgetLines(jobs[0], theme, width)
 				: buildWidgetLines(jobs, theme, width, false);
 		const container = new Container();
 		for (const line of fitAdaptiveWidgetLines(jobs, lines, theme, width, expanded)) container.addChild(new Text(line, 1, 0));
@@ -1226,7 +1226,7 @@ function buildWidgetComponent(jobs: AsyncJobState[], expanded: boolean): (_tui: 
 
 export function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, width = getTermWidth(), expanded = false): string[] {
 	if (jobs.length === 0) return [];
-	if (jobs.length === 1) return buildSingleWidgetLines(jobs[0]!, theme, width, expanded);
+	if (jobs.length === 1) return buildSingleWidgetLines(jobs[0], theme, width, expanded);
 	const running = jobs.filter((job) => job.status === "running");
 	const queued = jobs.filter((job) => job.status === "queued");
 	const finished = jobs.filter((job) => job.status !== "running" && job.status !== "queued");
@@ -1281,7 +1281,7 @@ export function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, width = ge
 	}
 
 	for (let i = 0; i < items.length; i++) {
-		const item = items[i]!;
+		const item = items[i];
 		const last = i === items.length - 1;
 		const branch = last ? "└─" : "├─";
 		const continuation = last ? "   " : "│  ";
@@ -1420,7 +1420,7 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 		}
 		const output = getSingleResultOutput(r);
 		const progressFromArray = d.progress?.find((p) => p.index === i) || d.progress?.find((p) => p.agent === r.agent && p.status === "running");
-		const rProg = r.progress || progressFromArray || r.progressSummary;
+		const rProg = (r.progress || progressFromArray || r.progressSummary) as unknown as AgentProgress | undefined;
 		const rRunning = rProg && "status" in rProg && rProg.status === "running";
 		const rPending = rProg && "status" in rProg && rProg.status === "pending";
 		const stepNumber = r.progress?.index !== undefined ? r.progress.index + 1 : progressFromArray?.index !== undefined ? progressFromArray.index + 1 : i + 1;
@@ -1723,7 +1723,7 @@ export function renderSubagentResult(
 
 		const progressFromArray = d.progress?.find((p) => p.index === i) 
 			|| d.progress?.find((p) => p.agent === r.agent && p.status === "running");
-		const rProg = r.progress || progressFromArray || r.progressSummary;
+		const rProg = (r.progress || progressFromArray || r.progressSummary) as unknown as AgentProgress | undefined;
 		const rRunning = rProg?.status === "running";
 		const stepNumber = typeof rProg?.index === "number" ? rProg.index + 1 : i + 1;
 

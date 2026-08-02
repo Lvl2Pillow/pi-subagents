@@ -101,9 +101,14 @@ function successResult(asyncId: string): { content: [{ type: "text"; text: strin
 	return { content: [{ type: "text", text: "started" }], details: { mode: "single", results: [], asyncId } };
 }
 
+const textOf = (content: readonly { type?: string; text?: string }[]): string => {
+	const first = content[0];
+	return first?.type === "text" ? (first.text ?? "") : "";
+};
+
 describe("acknowledged steering action", () => {
 	it("returns delivered only after the runner records child-session acceptance", async () => {
-		const runId = `steer-delivered-${Date.now().toString(36)}`;
+		const runId = `steer-delivered-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		try {
@@ -113,33 +118,33 @@ describe("acknowledged steering action", () => {
 			const status = runningStatus(runId);
 			projectRequest(status, request, ["routed"]);
 			updateSteeringTarget(status.steering!, request.id, 0, "delivered", Date.now());
-			updateSteeringTarget(status.steps![0]!.steering!, request.id, 0, "delivered", Date.now());
+			updateSteeringTarget(status.steps![0].steering!, request.id, 0, "delivered", Date.now());
 			writeStatus(asyncDir, status);
 			const result = await action;
 			assert.equal(result.isError, undefined);
 			assert.equal(result.details.steering?.state, "delivered");
-			assert.match(result.content[0]!.text, /Steering delivered/);
+			assert.match(textOf(result.content), /Steering delivered/);
 		} finally {
 			fs.rmSync(asyncDir, { recursive: true, force: true });
 		}
 	});
 
 	it("returns a tool error when the runner has closed its steering inbox", async () => {
-		const runId = `steer-closed-${Date.now().toString(36)}`;
+		const runId = `steer-closed-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		closeSteerInbox(asyncDir, "complete");
 		try {
 			const result = await steerAsyncRun({ state: createState(), runId, message: "too late", location: { asyncDir }, kill: () => true });
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]!.text, /no longer accepts steering requests/);
+			assert.match(textOf(result.content), /no longer accepts steering requests/);
 		} finally {
 			fs.rmSync(asyncDir, { recursive: true, force: true });
 		}
 	});
 
 	it("does not commit recovery when the caller aborts the acknowledgment wait", async () => {
-		const runId = `steer-abort-${Date.now().toString(36)}`;
+		const runId = `steer-abort-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		const controller = new AbortController();
@@ -162,7 +167,7 @@ describe("acknowledged steering action", () => {
 	});
 
 	it("honors an acknowledgment persisted before recovery commit without interrupting", async () => {
-		const runId = `steer-final-ack-${Date.now().toString(36)}`;
+		const runId = `steer-final-ack-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		let request: SteerRequest | undefined;
@@ -186,7 +191,7 @@ describe("acknowledged steering action", () => {
 					const acknowledged = runningStatus(runId);
 					projectRequest(acknowledged, request, ["routed"]);
 					updateSteeringTarget(acknowledged.steering!, request.id, 0, "delivered", committedAt);
-					updateSteeringTarget(acknowledged.steps![0]!.steering!, request.id, 0, "delivered", committedAt);
+					updateSteeringTarget(acknowledged.steps![0].steering!, request.id, 0, "delivered", committedAt);
 					writeStatus(asyncDir, acknowledged);
 				},
 				recover: async () => { recovered = true; return successResult("replacement"); },
@@ -202,7 +207,7 @@ describe("acknowledged steering action", () => {
 	});
 
 	it("releases the recovery claim when interrupt delivery definitively fails", async () => {
-		const runId = `steer-interrupt-failed-${Date.now().toString(36)}`;
+		const runId = `steer-interrupt-failed-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		try {
@@ -226,7 +231,7 @@ describe("acknowledged steering action", () => {
 			writeStatus(asyncDir, routed);
 			const result = await action;
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]!.text, /Failed to commit steering recovery interrupt/);
+			assert.match(textOf(result.content), /Failed to commit steering recovery interrupt/);
 			const recoveryDir = path.join(asyncDir, "control", "steer-recovery");
 			assert.equal(fs.existsSync(path.join(recoveryDir, "claim.json")), false);
 			assert.equal(fs.existsSync(path.join(recoveryDir, `${Buffer.from(request.id).toString("base64url")}.json`)), false);
@@ -236,7 +241,7 @@ describe("acknowledged steering action", () => {
 	});
 
 	it("keeps the claim after an unconfirmed pause to prevent delayed duplicate recovery", async () => {
-		const runId = `steer-pause-unconfirmed-${Date.now().toString(36)}`;
+		const runId = `steer-pause-unconfirmed-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		try {
@@ -251,7 +256,7 @@ describe("acknowledged steering action", () => {
 			writeStatus(asyncDir, routed);
 			const result = await action;
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]!.text, /claim remains committed to prevent a delayed duplicate/);
+			assert.match(textOf(result.content), /claim remains committed to prevent a delayed duplicate/);
 			assert.equal(fs.existsSync(path.join(asyncDir, "control", "steer-recovery", "claim.json")), true);
 		} finally {
 			fs.rmSync(asyncDir, { recursive: true, force: true });
@@ -259,7 +264,7 @@ describe("acknowledged steering action", () => {
 	});
 
 	it("pauses and revives a single run with only its remaining budgets", async () => {
-		const runId = `steer-recover-${Date.now().toString(36)}`;
+		const runId = `steer-recover-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		const sessionFile = path.join(asyncDir, "child.jsonl");
 		writeStatus(asyncDir, runningStatus(runId));
@@ -291,7 +296,7 @@ describe("acknowledged steering action", () => {
 				state: "paused",
 				turnBudget: { maxTurns: 10, graceTurns: 2, turnCount: 7, outcome: "within-budget" },
 				toolBudget: { soft: 8, hard: 12, block: ["read"], toolCount: 9, outcome: "soft-reached" },
-				steps: [{ ...routed.steps![0]!, status: "paused", sessionFile }],
+				steps: [{ ...routed.steps![0], status: "paused", sessionFile }],
 			};
 			writeStatus(asyncDir, paused);
 			await new Promise((resolve) => setTimeout(resolve, 30));
@@ -319,7 +324,7 @@ describe("acknowledged steering action", () => {
 	});
 
 	it("leaves an unacknowledged single run paused when no session can be revived", async () => {
-		const runId = `steer-no-session-${Date.now().toString(36)}`;
+		const runId = `steer-no-session-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId));
 		writePrivateAtomicJson(path.join(asyncDir, "recovery-descriptor.json"), recoveryDescriptor(runId));
@@ -334,18 +339,18 @@ describe("acknowledged steering action", () => {
 			projectRequest(routed, request, ["routed"]);
 			writeStatus(asyncDir, routed);
 			await waitUntil(() => fs.existsSync(interruptRequestPath(asyncDir)) ? true : undefined);
-			writeStatus(asyncDir, { ...routed, state: "paused", endedAt: Date.now(), steps: [{ ...routed.steps![0]!, status: "paused" }] });
+			writeStatus(asyncDir, { ...routed, state: "paused", endedAt: Date.now(), steps: [{ ...routed.steps![0], status: "paused" }] });
 			const result = await action;
 			assert.equal(result.isError, true);
 			assert.equal(recovered, false);
-			assert.match(result.content[0]!.text, /no persisted child session|does not have a persisted session file/i);
+			assert.match(textOf(result.content), /no persisted child session|does not have a persisted session file/i);
 		} finally {
 			fs.rmSync(asyncDir, { recursive: true, force: true });
 		}
 	});
 
 	it("never auto-interrupts a nested single run", async () => {
-		const runId = `steer-nested-${Date.now().toString(36)}`;
+		const runId = `steer-nested-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		const initial = runningStatus(runId);
 		initial.isNested = true;
@@ -374,7 +379,7 @@ describe("acknowledged steering action", () => {
 	});
 
 	it("reports partial multi-child delivery without interrupting the run", async () => {
-		const runId = `steer-partial-${Date.now().toString(36)}`;
+		const runId = `steer-partial-${process.pid}`;
 		const asyncDir = path.join(ASYNC_DIR, runId);
 		writeStatus(asyncDir, runningStatus(runId, "parallel", 2));
 		let killed = false;

@@ -1,4 +1,4 @@
-import { isCheckpointStep, isDynamicParallelStep, isParallelStep, type ChainStep, type SequentialStep } from "../../shared/settings.ts";
+import { isCheckpointStep, isDynamicParallelStep, isParallelStep, type ChainStep } from "../../shared/settings.ts";
 import type { ChainOutputMap, ChainOutputMapEntry, SingleResult } from "../../shared/types.ts";
 import { getSingleResultOutput } from "../../shared/utils.ts";
 import { DynamicFanoutError, hasDynamicFanoutFields, type DynamicFanoutConfig, validateDynamicStepShape } from "./dynamic-fanout.ts";
@@ -17,7 +17,7 @@ function outputNamesForStep(step: ChainStep): string[] {
 	if (isCheckpointStep(step)) return [];
 	if (isParallelStep(step)) return step.parallel.map((task) => task.as).filter((name): name is string => Boolean(name));
 	if (isDynamicParallelStep(step)) return [step.collect.as];
-	const name = (step as SequentialStep).as;
+	const name = (step).as;
 	return name ? [name] : [];
 }
 
@@ -25,7 +25,7 @@ function taskTemplatesForStep(step: ChainStep): string[] {
 	if (isCheckpointStep(step)) return [];
 	if (isParallelStep(step)) return step.parallel.map((task) => task.task ?? "{previous}");
 	if (isDynamicParallelStep(step)) return [step.parallel.task ?? "{previous}", step.parallel.label ?? ""].filter(Boolean);
-	return [(step as SequentialStep).task ?? "{previous}"];
+	return [(step).task ?? "{previous}"];
 }
 
 export function validateChainOutputBindings(steps: ChainStep[], dynamicFanoutConfig: DynamicFanoutConfig = {}): void {
@@ -42,7 +42,7 @@ export function validateChainOutputBindingsWithContext(
 	const seen = new Set<string>(priorOutputNames);
 	for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
 		const displayStepIndex = (context.startStepIndex ?? 0) + stepIndex + 1;
-		const step = steps[stepIndex]!;
+		const step = steps[stepIndex];
 		if (hasDynamicFanoutFields(step)) {
 			if (!isDynamicParallelStep(step)) {
 				throw new ChainOutputValidationError(`Dynamic chain step ${displayStepIndex} requires expand, a single parallel template object, and collect; dynamic expand/collect cannot be mixed with static parallel arrays.`);
@@ -69,7 +69,7 @@ export function validateChainOutputBindingsWithContext(
 		for (const template of taskTemplatesForStep(step)) {
 			for (const match of template.matchAll(OUTPUT_REF_PATTERN)) {
 				const rawReference = match[0];
-				const name = match[1]!;
+				const name = match[1];
 				if (!SAFE_OUTPUT_NAME_PATTERN.test(name)) {
 					throw new ChainOutputValidationError(`Invalid chain output reference '${rawReference}' at step ${displayStepIndex}. Use {outputs.name} with /^[A-Za-z_][A-Za-z0-9_]*$/ names.`);
 				}

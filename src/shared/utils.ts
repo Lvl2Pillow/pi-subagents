@@ -410,7 +410,7 @@ export function boundStreamedToolCalls(result: Pick<SingleResult, "toolCalls" | 
 }
 
 export function hasEmptyTerminalAssistantResponse(messages: Message[]): boolean {
-	const lastAssistant = messages.findLast((message) => message.role === "assistant");
+	const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
 	return lastAssistant?.role === "assistant"
 		&& Array.isArray(lastAssistant.content)
 		&& lastAssistant.content.length === 0
@@ -500,7 +500,7 @@ export function extractToolArgsPreview(args: Record<string, unknown>): string {
 	const previewKeys = ["command", "path", "file_path", "pattern", "query", "url", "task", "describe", "search"];
 	for (const key of previewKeys) {
 		if (args[key] && typeof args[key] === "string") {
-			const value = args[key] as string;
+			const value = args[key];
 			return truncatePreview(value, 60);
 		}
 	}
@@ -527,7 +527,7 @@ export function extractTextFromContent(content: unknown): string {
 	// Handle array content
 	if (!Array.isArray(content)) return "";
 	const texts: string[] = [];
-	for (const part of content) {
+	for (const part of content as unknown[]) {
 		if (part && typeof part === "object") {
 			// Handle { type: "text", text: "..." }
 			if ("type" in part && part.type === "text" && "text" in part) {

@@ -85,7 +85,7 @@ function validateSharedFields(
 	if (value.timeoutMs !== undefined && (typeof value.timeoutMs !== "number" || !Number.isInteger(value.timeoutMs) || value.timeoutMs < 1)) {
 		return { ok: false, ...identity, error: "timeoutMs must be an integer >= 1." };
 	}
-	if (identity.version === SUBAGENT_DELEGATION_V2_PROTOCOL_VERSION && value.timeoutMs !== undefined && value.timeoutMs > 2_147_483_647) {
+	if (identity.version === SUBAGENT_DELEGATION_V2_PROTOCOL_VERSION && value.timeoutMs !== undefined && typeof value.timeoutMs === "number" && value.timeoutMs > 2_147_483_647) {
 		return { ok: false, ...identity, error: "timeoutMs must be <= 2147483647 for delegation v2." };
 	}
 	const turnBudget = resolveTurnBudgetConfig(value.turnBudget);
@@ -174,7 +174,7 @@ function parseV2(value: Record<string, unknown>, requestId: string): SubagentDel
 			return {
 				ok: false,
 				...identity,
-				error: inspectedSchema.reason === "too_large"
+				error: ("reason" in inspectedSchema ? inspectedSchema.reason : "invalid") === "too_large"
 					? "result.schema exceeds 64 KiB when encoded."
 					: "result.schema must be plain JSON data.",
 			};

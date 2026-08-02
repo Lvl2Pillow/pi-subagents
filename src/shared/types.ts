@@ -391,7 +391,7 @@ export type ProcessTerminalV1 =
 	});
 
 export type SteeringActionState = "delivered" | "scheduled" | "pending" | "partial" | "recovered" | "failed";
-export type SteeringTargetState = "scheduled" | "routed" | "delivered" | "late" | "failed" | "recovered";
+export type SteeringTargetState = "pending" | "scheduled" | "routed" | "delivered" | "late" | "failed" | "recovered";
 
 export interface SteeringTargetStatus {
 	index: number;
@@ -455,6 +455,7 @@ export interface SteeringNotice {
 export interface SteeringRecoveryDescriptor {
 	version: 1;
 	launchContractDigest?: string;
+	launchResolvedExtensions?: LaunchResolvedChildExtensionsV1;
 	sourceRunId: string;
 	agentContract?: AgentContract;
 	agent: string;
@@ -1172,7 +1173,6 @@ export interface AsyncStatus {
 	sessionDir?: string;
 	outputFile?: string;
 	totalTokens?: TokenUsage;
-	usageBudget?: UsageBudgetState;
 	totalCost?: CostSummary;
 	sessionFile?: string;
 	outputs?: ChainOutputMap;

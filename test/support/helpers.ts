@@ -65,6 +65,13 @@ interface AgentConfig {
 	mcpDirectTools?: string[];
 	maxSubagentDepth?: number;
 	completionGuard?: boolean;
+	aliases?: string[];
+	defaultAsync?: boolean;
+	defaultTimeoutMs?: number;
+	defaultTurnBudget?: unknown;
+	defaultAcceptance?: unknown;
+	defaultProgress?: boolean;
+	acceptanceRole?: string;
 }
 
 export function makeAgentConfigs(names: string[]): AgentConfig[] {

@@ -9,6 +9,7 @@ import {
 	resolveModelCandidate,
 	resolveSubagentModelOverride,
 } from "../../src/runs/shared/model-fallback.ts";
+import type { ModelScopeConfig } from "../../src/runs/shared/model-scope.ts";
 
 describe("model fallback helpers", () => {
 	const availableModels = [
@@ -296,7 +297,7 @@ describe("resolveSubagentModelOverride scope enforcement", () => {
 		{ provider: "deepseek", id: "deepseek-v4", fullId: "deepseek/deepseek-v4" },
 	];
 	const parentModel = { provider: "deepseek", id: "deepseek-v4" };
-	const scope = { enforce: true, allow: ["anthropic/*", "openai/gpt-5-*"] } as const;
+	const scope = { enforce: true, allow: ["anthropic/*", "openai/gpt-5-*"] } as unknown as ModelScopeConfig;
 
 	it("is a no-op when scope is not enforced", () => {
 		assert.equal(
@@ -321,7 +322,7 @@ describe("resolveSubagentModelOverride scope enforcement", () => {
 		});
 		assert.equal(resolved, "deepseek/deepseek-v4");
 		assert.equal(warnings.length, 1);
-		assert.match(warnings[0]!, /outside the configured subagent model scope/);
+		assert.match(warnings[0], /outside the configured subagent model scope/);
 	});
 
 	it("warns for an inherited parent-session model that is out of scope", () => {
@@ -377,6 +378,6 @@ describe("resolveSubagentModelOverride scope enforcement", () => {
 		});
 		assert.deepEqual(candidates, ["openai/gpt-5-mini", "deepseek/deepseek-v4"]);
 		assert.equal(warnings.length, 1);
-		assert.match(warnings[0]!, /deepseek\/deepseek-v4/);
+		assert.match(warnings[0], /deepseek\/deepseek-v4/);
 	});
 });

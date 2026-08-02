@@ -16,6 +16,13 @@ function makeState(sessionId = "session-a"): SubagentState {
 		asyncJobs: new Map(),
 		foregroundControls: new Map(),
 		lastForegroundControlId: null,
+		cleanupTimers: new Map(),
+		lastUiContext: null,
+		poller: null,
+		completionSeen: new Map(),
+		watcher: null,
+		watcherRestartTimer: null,
+		resultFileCoalescer: { schedule: () => true, clear: () => {} },
 	};
 }
 

@@ -5,6 +5,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { parseFrontmatter } from "../agents/frontmatter.ts";
 import type { SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
 import type { ChainStep } from "../shared/settings.ts";
+import { SLASH_TEXT_RESULT_TYPE } from "../shared/types.ts";
 import { getAgentDir, getProjectConfigDir } from "../shared/utils.ts";
 
 interface PromptWorkflow {
@@ -179,7 +180,7 @@ function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?:
 	let worktree = false;
 	let bg = false;
 	for (let i = 0; i < words.length; i++) {
-		const word = words[i]!;
+		const word = words[i];
 		if (word === "--fork") {
 			fork = true;
 			continue;
@@ -245,7 +246,7 @@ function workflowChainStep(workflow: PromptWorkflow, args: string[], runtime: Re
 		...(params.model ? { model: params.model } : {}),
 		...(params.skill !== undefined ? { skill: params.skill } : {}),
 		...(params.cwd ? { cwd: params.cwd } : {}),
-	};
+	} as ChainStep;
 }
 
 function findWorkflow(workflows: PromptWorkflow[], name: string): PromptWorkflow | undefined {
@@ -273,7 +274,7 @@ export function registerPromptWorkflowCommands(input: {
 			const name = words.shift();
 			const workflows = discoverPromptWorkflows(ctx.cwd);
 			if (!name || name === "list") {
-				pi.sendMessage({ content: formatWorkflowList(workflows), display: true });
+				pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: formatWorkflowList(workflows), display: true });
 				return;
 			}
 			const workflow = findWorkflow(workflows, name);
@@ -306,7 +307,7 @@ export function registerPromptWorkflowCommands(input: {
 			const { declaration, argsText } = splitChainDeclaration(rawArgs);
 			const workflows = discoverPromptWorkflows(ctx.cwd);
 			if (!declaration || declaration === "list") {
-				pi.sendMessage({ content: formatWorkflowList(workflows), display: true });
+				pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: formatWorkflowList(workflows), display: true });
 				return;
 			}
 			const runtime = parseRuntimeOptions(shellWords(argsText));

@@ -205,6 +205,7 @@ interface AsyncSingleParams {
 	usageBudget?: UsageBudgetConfig;
 	configToolBudget?: ResolvedToolBudget;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+	allowZeroToolBudget?: boolean;
 }
 
 interface AsyncExecutionResult {
@@ -426,7 +427,7 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, onProcessTerminal
 	const nodeCommand = resolveAsyncRunnerNodeCommand();
 	const startupPath = typeof (launchConfig as { revivalLease?: unknown; asyncDir?: unknown }).revivalLease === "object"
 		&& typeof (launchConfig as { asyncDir?: unknown }).asyncDir === "string"
-		? path.join((launchConfig as { asyncDir: string }).asyncDir, "runner-startup.json")
+		? path.join((launchConfig as unknown as { asyncDir: unknown }).asyncDir as string, "runner-startup.json")
 		: undefined;
 	const startupAckPath = startupPath ? path.join(path.dirname(startupPath), "runner-startup-ack.json") : undefined;
 	const startupProceedPath = startupPath ? path.join(path.dirname(startupPath), "runner-startup-proceed.json") : undefined;
@@ -482,7 +483,7 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, onProcessTerminal
 							runId,
 							mode: "single",
 							state: persisted.state === "observed" ? "complete" : "failed",
-							startedAt: persisted.observedAt ?? Date.now(),
+							startedAt: persisted.state === "observed" ? persisted.observedAt : Date.now(),
 							lastUpdate: Date.now(),
 							processTerminal: persisted,
 						};
@@ -516,7 +517,7 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, onProcessTerminal
 			const ready = waitForRunnerStartup(startupPath, "ready", RUNNER_STARTUP_TIMEOUT_MS);
 			if (!ready.ok) {
 				terminateRunnerBeforeProceed(proc.pid);
-				return { error: ready.error };
+				return { error: "error" in ready ? ready.error : "async runner startup failed" };
 			}
 			try {
 				writeRunnerStartupControl(startupAckPath, { action: "ack", token: ready.token });
@@ -527,7 +528,7 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, onProcessTerminal
 			const acknowledged = waitForRunnerStartup(startupPath, "acknowledged", RUNNER_STARTUP_TIMEOUT_MS, ready.token);
 			if (!acknowledged.ok) {
 				terminateRunnerBeforeProceed(proc.pid);
-				return { error: acknowledged.error };
+				return { error: "error" in acknowledged ? acknowledged.error : "async runner startup acknowledgement failed" };
 			}
 			try {
 				writeRunnerStartupControl(startupProceedPath, { action: "proceed", token: ready.token });
@@ -596,7 +597,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 				? firstStep.parallel[0]?.task
 				: isDynamicParallelStep(firstStep)
 					? firstStep.parallel.task
-					: (firstStep as SequentialStep).task)
+					: (firstStep).task)
 		: undefined);
 	try {
 		if (params.validateOutputBindings !== false) {
@@ -615,7 +616,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 				? s.parallel.map((t) => t.agent)
 				: isDynamicParallelStep(s)
 					? [s.parallel.agent]
-					: [(s as SequentialStep).agent];
+					: [(s).agent];
 		for (const agentName of stepAgents) {
 			if (!agents.find((x) => x.name === agentName)) {
 				return { error: `Unknown agent: ${agentName}` };
@@ -647,7 +648,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 		if (inheritedRelativeParallelOutput && parallelOutputNamespace.taskIndex !== undefined) {
 			behavior = {
 				...behavior,
-				output: path.join(`parallel-${parallelOutputNamespace.stepIndex}`, `${parallelOutputNamespace.taskIndex}-${s.agent}`, behavior.output),
+				output: path.join(`parallel-${parallelOutputNamespace.stepIndex}`, `${parallelOutputNamespace.taskIndex}-${s.agent}`, behavior.output as string),
 			};
 		}
 		const namespaceOutputPath = Boolean(inheritedRelativeParallelOutput && parallelOutputNamespace.taskIndex === undefined);
@@ -842,7 +843,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 				};
 			}
 			const staticStep = nextFlatStep();
-			return buildSeqStep(s as SequentialStep, staticStep.sessionFile, undefined, false, undefined, staticStep.index);
+			return buildSeqStep(s, staticStep.sessionFile, undefined, false, undefined, staticStep.index);
 		});
 		const steps = params.attachRoot
 			? [{
@@ -864,7 +865,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 			if (!("parallel" in step) || !Array.isArray(step.parallel)) continue;
 			const seen = new Map<string, { index: number; agent: string }>();
 			for (let index = 0; index < step.parallel.length; index++) {
-				const task = step.parallel[index]!;
+				const task = step.parallel[index];
 				if (!task.outputPath) continue;
 				const previous = seen.get(task.outputPath);
 				if (previous) {
@@ -1032,7 +1033,7 @@ export function executeAsyncChain(
 		const flatAgents: string[] = [];
 		let flatStepStart = 0;
 		for (let stepIndex = 0; stepIndex < eventChain.length; stepIndex++) {
-			const step = eventChain[stepIndex]!;
+			const step = eventChain[stepIndex];
 			if (isParallelStep(step)) {
 				parallelGroups.push({ start: flatStepStart, count: step.parallel.length, stepIndex });
 				flatAgents.push(...step.parallel.map((task) => task.agent));

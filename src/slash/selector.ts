@@ -99,7 +99,7 @@ export class SelectorComponent extends Container {
 		const endIndex = Math.min(startIndex + MAX_VISIBLE, this.filtered.length);
 
 		for (let i = startIndex; i < endIndex; i++) {
-			const item = this.filtered[i]!;
+			const item = this.filtered[i];
 			const isSelected = i === this.selectedIndex;
 			const badge = item.badge ? ` ${th.fg("muted", `[${item.badge}]`)}` : "";
 			const checkmark = item.current ? th.fg("success", " ✓") : "";

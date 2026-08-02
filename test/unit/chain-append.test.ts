@@ -11,7 +11,7 @@ import {
 	runnerStepOutputNames,
 } from "../../src/runs/background/chain-append.ts";
 import type { AsyncStatus } from "../../src/shared/types.ts";
-import type { RunnerStep } from "../../src/runs/shared/parallel-utils.ts";
+import type { RunnerStep, RunnerSubagentStep } from "../../src/runs/shared/parallel-utils.ts";
 import { createTempDir, removeTempDir } from "../support/helpers.ts";
 
 function writeStatus(asyncDir: string, status: Partial<AsyncStatus> & Pick<AsyncStatus, "runId" | "mode" | "state" | "startedAt">): void {
@@ -64,7 +64,7 @@ describe("chain append requests", () => {
 
 			const consumed = consumeChainAppendRequests(asyncDir);
 			assert.equal(consumed.length, 1);
-			assert.equal(consumed[0]!.id, result.request.id);
+			assert.equal(consumed[0].id, result.request.id);
 			assert.equal(countPendingChainAppendRequests(asyncDir), 0);
 		} finally {
 			removeTempDir(root);
@@ -87,8 +87,8 @@ describe("chain append requests", () => {
 				runId: "run-pending",
 				steps: [{
 					parallel: [
-						{ ...runnerStep("worker"), outputName: "draft" },
-						{ ...runnerStep("reviewer"), outputName: "review" },
+						{ ...(runnerStep("worker") as RunnerSubagentStep), outputName: "draft" },
+						{ ...(runnerStep("reviewer") as RunnerSubagentStep), outputName: "review" },
 					],
 				}],
 				now: 200,
@@ -97,7 +97,7 @@ describe("chain append requests", () => {
 			const pending = readPendingChainAppendRequests(asyncDir);
 
 			assert.equal(pending.length, 1);
-			assert.deepEqual(runnerStepOutputNames(pending[0]!.steps), ["draft", "review"]);
+			assert.deepEqual(runnerStepOutputNames(pending[0].steps), ["draft", "review"]);
 			assert.equal(countPendingChainAppendRequests(asyncDir), 1);
 		} finally {
 			removeTempDir(root);
@@ -179,8 +179,8 @@ describe("chain append requests", () => {
 			runnerStep("worker"),
 			{
 				parallel: [
-					runnerStep("reviewer"),
-					runnerStep("auditor"),
+					runnerStep("reviewer") as RunnerSubagentStep,
+					runnerStep("auditor") as RunnerSubagentStep,
 				],
 				concurrency: 2,
 			},

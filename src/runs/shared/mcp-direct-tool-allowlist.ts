@@ -143,7 +143,7 @@ function validateConfig(raw: unknown): McpConfig {
 		mcpServers: servers && typeof servers === "object" && !Array.isArray(servers) ? servers as Record<string, ServerEntry> : {},
 		imports: Array.isArray(obj.imports) ? obj.imports.filter((value): value is ImportKind => isImportKind(value)) : undefined,
 		settings: obj.settings && typeof obj.settings === "object" && !Array.isArray(obj.settings)
-			? obj.settings as McpConfig["settings"]
+			? obj.settings
 			: undefined,
 	};
 }

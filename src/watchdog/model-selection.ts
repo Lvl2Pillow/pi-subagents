@@ -125,7 +125,7 @@ function strongFamilyOrder(ctx: ExtensionContext): StrongWatchdogFamily[] {
 
 function findFamilyMatch(family: StrongWatchdogFamily, availableModels: ModelInfo[]): string | undefined {
 	const matches = availableModels.filter((entry) => familyForModel(entry) === family);
-	if (matches.length === 1) return matches[0]!.fullId;
+	if (matches.length === 1) return matches[0].fullId;
 	return undefined;
 }
 
@@ -134,7 +134,7 @@ function resolveStrongCandidate(ctx: ExtensionContext, family: StrongWatchdogFam
 	const preference = STRONG_WATCHDOG_MODELS[family];
 	const queries = [...preference.queries];
 	const familyMatch = findFamilyMatch(family, availableModels);
-	if (familyMatch) queries.push(familyMatch);
+	if (familyMatch) queries.push(familyMatch as (typeof queries)[number]);
 	for (const query of queries) {
 		let resolved: ResolvedWatchdogModelInput;
 		try {

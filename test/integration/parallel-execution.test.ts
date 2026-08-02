@@ -252,15 +252,15 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 		const handoff = JSON.parse(fs.readFileSync(handoffPath, "utf-8")) as {
 			groups: Array<{ children: Array<{ agent: string; summary: string; patch: { path: string } }>; cleanup: { state: string; tasks: Array<{ path: string; worktreeRemoved: boolean; branchRemoved: boolean }> } }>;
 		};
-		assert.equal(handoff.groups[0]!.children[0]!.agent, "echo");
-		assert.equal(handoff.groups[0]!.children[0]!.summary, "Worktree task complete");
-		assert.equal(fs.existsSync(handoff.groups[0]!.children[0]!.patch.path), true);
+		assert.equal(handoff.groups[0].children[0].agent, "echo");
+		assert.equal(handoff.groups[0].children[0].summary, "Worktree task complete");
+		assert.equal(fs.existsSync(handoff.groups[0].children[0].patch.path), true);
 		assert.ok(result.details?.runId);
-		assert.ok(handoff.groups[0]!.children[0]!.patch.path.includes(`${path.sep}worktree-diffs${path.sep}${result.details.runId}${path.sep}`));
-		assert.equal(handoff.groups[0]!.cleanup.state, "complete");
-		assert.equal(handoff.groups[0]!.cleanup.tasks[0]!.worktreeRemoved, true);
-		assert.equal(handoff.groups[0]!.cleanup.tasks[0]!.branchRemoved, true);
-		assert.equal(fs.existsSync(handoff.groups[0]!.cleanup.tasks[0]!.path), false);
+		assert.ok(handoff.groups[0].children[0].patch.path.includes(`${path.sep}worktree-diffs${path.sep}${result.details.runId}${path.sep}`));
+		assert.equal(handoff.groups[0].cleanup.state, "complete");
+		assert.equal(handoff.groups[0].cleanup.tasks[0].worktreeRemoved, true);
+		assert.equal(handoff.groups[0].cleanup.tasks[0].branchRemoved, true);
+		assert.equal(fs.existsSync(handoff.groups[0].cleanup.tasks[0].path), false);
 	});
 
 	it("keeps worktree parallel runs successful when handoff manifest writing fails", { skip: !createSubagentExecutor || process.platform === "win32" ? "executor unavailable or worktree paths differ on Windows" : undefined }, async () => {

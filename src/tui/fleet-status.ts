@@ -308,7 +308,7 @@ export class SubagentFleetStatus {
 		const hiddenBelow = this.entries.length - (start + visibleCount);
 		if (start > 0) lines.push(rightAlign("", theme.fg("dim", `↑ ${start} more`), width));
 		for (let index = start; index < start + visibleCount; index++) {
-			lines.push(this.renderEntry(index + 1, selectedIndex, this.entries[index]!, width, theme));
+			lines.push(this.renderEntry(index + 1, selectedIndex, this.entries[index], width, theme));
 		}
 		if (hiddenBelow > 0) lines.push(rightAlign("", theme.fg("dim", `↓ ${hiddenBelow} more`), width));
 		return lines;

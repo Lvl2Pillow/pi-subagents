@@ -63,7 +63,7 @@ describe("foreground child control", () => {
 		finishForegroundChild(control, 1);
 		assert.equal(control.currentIndex, 0);
 		assert.equal(control.tokens, 120);
-		assert.deepEqual([...control.activeChildren!.keys()], [0]);
+		assert.deepEqual([...control.activeChildren.keys()], [0]);
 
 		finishForegroundChild(control, 0);
 		assert.equal(control.activeChildren?.size, 0);

@@ -14,6 +14,9 @@ import {
 	discoverAgentsAll,
 	type AgentConfig,
 } from "../../src/agents/agents.ts";
+import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
+
+const mockModelRegistry = { getAvailable: () => [] } as unknown as ModelRegistry;
 import { parseFrontmatter } from "../../src/agents/frontmatter.ts";
 import { buildPiArgs } from "../../src/runs/shared/pi-args.ts";
 import { THINKING_LEVELS } from "../../src/shared/model-info.ts";
@@ -66,6 +69,11 @@ afterEach(() => {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+const textOf = (content: readonly { type?: string; text?: string }[]): string => {
+	const first = content[0];
+	return first?.type === "text" ? (first.text ?? "") : "";
+};
 
 describe("folded frontmatter blocks", () => {
 	it("folds ordinary lines and paragraph breaks for > and >-", () => {
@@ -207,14 +215,13 @@ body`,
 			assert.deepEqual(worker.aliases, ["developer", "coder"]);
 			assert.match(serializeAgent(worker), /^aliases: developer, coder$/m);
 
-			const ctx = { cwd: project, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: project, modelRegistry: mockModelRegistry };
 			assert.match(
-				handleManagementAction("list", {}, ctx).content[0]?.text ?? "",
+				textOf(handleManagementAction("list", {}, ctx).content),
 				/aliases: developer, coder/,
 			);
 			assert.match(
-				handleManagementAction("get", { agent: "developer" }, ctx).content[0]
-					?.text ?? "",
+				textOf(handleManagementAction("get", { agent: "developer" }, ctx).content),
 				/Agent: worker/,
 			);
 		}));
@@ -244,7 +251,7 @@ aliases: developer
 body`,
 			);
 
-			const ctx = { cwd: project, modelRegistry: { getAvailable: () => [] } };
+			const ctx = { cwd: project, modelRegistry: mockModelRegistry };
 			const getResult = handleManagementAction(
 				"get",
 				{ agent: "developer" },
@@ -252,7 +259,7 @@ body`,
 			);
 			assert.equal(getResult.isError, true);
 			assert.match(
-				getResult.content[0]?.text ?? "",
+				textOf(getResult.content),
 				/Ambiguous agent alias or name 'developer': review-agent, worker/,
 			);
 
@@ -263,7 +270,7 @@ body`,
 			);
 			assert.equal(disableResult.isError, true);
 			assert.match(
-				disableResult.content[0]?.text ?? "",
+				textOf(disableResult.content),
 				/Ambiguous agent alias 'developer': worker, review-agent|Ambiguous agent alias 'developer': review-agent, worker/,
 			);
 		}));
@@ -355,7 +362,7 @@ Do MCP work
 		assert.deepEqual(agent?.tools, []);
 		assert.deepEqual(agent?.mcpDirectTools, ["github/search_repositories"]);
 		assert.match(
-			serializeAgent(agent!),
+			serializeAgent(agent),
 			/^tools: mcp:github\/search_repositories$/m,
 		);
 	});
@@ -447,7 +454,7 @@ bash:
   "git *": allow`,
 		);
 
-		const serialized = serializeAgent(worker!);
+		const serialized = serializeAgent(worker);
 		assert.match(
 			serialized,
 			/^permission:\n  "\*": ask\n  read: allow\n  bash:\n    "\*": ask\n    "git \*": allow$/m,
@@ -627,7 +634,7 @@ Explore the codebase
 			(agent) => agent.name === "explorer",
 		);
 		assert.equal(explorer?.acceptanceRole, "read-only");
-		assert.match(serializeAgent(explorer!), /^acceptanceRole: read-only$/m);
+		assert.match(serializeAgent(explorer), /^acceptanceRole: read-only$/m);
 		assert.equal(explorer?.extraFields?.acceptanceRole, undefined);
 
 		writeAgent(
@@ -1370,12 +1377,12 @@ Review only.
 				},
 				{
 					cwd: dir,
-					modelRegistry: { getAvailable: () => [] },
+					modelRegistry: mockModelRegistry,
 				},
 			);
 
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]?.text ?? "", /read-only/);
+			assert.match(textOf(result.content), /read-only/);
 		}));
 });
 

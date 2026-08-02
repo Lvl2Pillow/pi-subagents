@@ -61,7 +61,7 @@ describe("watchdog tool actions", () => {
 		const result = handleWatchdogToolAction("watchdog.configure", { model: "recommended" }, createCtx({ provider: "openai-codex", id: "gpt-5.5" }), runtime);
 
 		assert.equal(result.isError, undefined);
-		assert.match(text(result), /session model configured: anthropic\/claude-opus-4-8:high/);
+		assert.match(text(result as unknown as { content: Array<{ text?: string }> }), /session model configured: anthropic\/claude-opus-4-8:high/);
 		assert.equal(fs.existsSync(path.join(tempHome, ".pi", "agent", "settings.json")), false);
 		assert.equal(runtime.getSnapshot(tempProject).config.main.model, "anthropic/claude-opus-4-8");
 		assert.equal(runtime.getSnapshot(tempProject).config.main.thinking, "high");

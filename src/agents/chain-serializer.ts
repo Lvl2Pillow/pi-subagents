@@ -108,11 +108,11 @@ export function parseChain(content: string, source: AgentSource, filePath: strin
 	const steps: ChainStepConfig[] = [];
 
 	for (let i = 0; i < matches.length; i++) {
-		const match = matches[i]!;
-		const agent = match[1]!.trim();
-		const lineEndOffset = body[match.index! + match[0].length] === "\n" ? 1 : 0;
-		const sectionStart = match.index! + match[0].length + lineEndOffset;
-		const sectionEnd = i + 1 < matches.length ? matches[i + 1]!.index! : body.length;
+		const match = matches[i];
+		const agent = match[1].trim();
+		const lineEndOffset = body[match.index + match[0].length] === "\n" ? 1 : 0;
+		const sectionStart = match.index + match[0].length + lineEndOffset;
+		const sectionEnd = i + 1 < matches.length ? matches[i + 1].index : body.length;
 		const sectionBody = body.slice(sectionStart, sectionEnd).trimEnd();
 		steps.push(parseStepBody(agent, sectionBody));
 	}
@@ -166,7 +166,7 @@ export function parseJsonChain(content: string, source: AgentSource, filePath: s
 		throw new Error(`JSON chain '${filePath}' must include array chain.`);
 	}
 	for (let i = 0; i < input.chain.length; i++) {
-		const step = input.chain[i];
+		const step = input.chain[i] as unknown;
 		if (!step || typeof step !== "object" || Array.isArray(step)) {
 			throw new Error(`JSON chain '${filePath}' step ${i + 1} must be an object.`);
 		}
@@ -179,7 +179,7 @@ export function parseJsonChain(content: string, source: AgentSource, filePath: s
 		const parallel = stepRecord.parallel;
 		if (Array.isArray(parallel)) {
 			for (let taskIndex = 0; taskIndex < parallel.length; taskIndex++) {
-				const task = parallel[taskIndex];
+				const task = parallel[taskIndex] as unknown;
 				if (!task || typeof task !== "object" || Array.isArray(task)) continue;
 				const taskRecord = task as Record<string, unknown>;
 				if (taskRecord.toolBudget !== undefined) validateJsonChainToolBudget(taskRecord.toolBudget, `step ${i + 1} parallel task ${taskIndex + 1} toolBudget`);
@@ -252,7 +252,7 @@ export function serializeChain(config: ChainConfig): string {
 	lines.push("");
 
 	for (let i = 0; i < config.steps.length; i++) {
-		const step = config.steps[i]!;
+		const step = config.steps[i];
 		lines.push(`## ${step.agent}`);
 		if (step.output === false) lines.push("output: false");
 		else if (step.output) lines.push(`output: ${step.output}`);

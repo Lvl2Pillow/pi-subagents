@@ -119,7 +119,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 		try {
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot);
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot);
 			(state as { lastUiContext: unknown }).lastUiContext = {
 				get hasUI() {
 					throw new Error("This extension ctx is stale after session replacement or reload.");
@@ -141,10 +141,10 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-1", asyncDir: path.join(asyncRoot, "run-1"), agent: "worker" });
 			tracker.handleComplete({ id: "run-1", success: true });
 
@@ -167,16 +167,16 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				widgetEnabled: false,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-hidden", asyncDir: path.join(asyncRoot, "run-hidden"), agent: "worker" });
 
 			assert.equal(state.asyncJobs.size, 1, "disabled rendering must not disable lifecycle tracking");
 			assert.ok(ui.widgets.length > 0, "expected widget clear calls");
 			assert.ok(ui.widgets.every((widget) => widget === undefined), "disabled widget must stay cleared");
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			assert.equal(state.fleetJobs.size, 0, "session reset should clear fleet history");
 		} finally {
 			removeTempDir(asyncRoot);
@@ -228,11 +228,11 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			state.currentSessionId = "session-restored";
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
-			tracker.resetJobs(ui.ctx as never);
-			tracker.restoreActiveJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
+			tracker.restoreActiveJobs(ui.ctx);
 
 			const job = state.asyncJobs.get("run-restored");
 			assert.ok(job);
@@ -295,7 +295,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const state = createState();
 			state.currentSessionId = "session-owner";
-			const tracker = trackerMod!.createAsyncJobTracker(createEventRecorder().pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(createEventRecorder().pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.restoreActiveJobs();
@@ -312,7 +312,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 		try {
 			const state = createState();
 			state.currentSessionId = "session-owner";
-			const tracker = trackerMod!.createAsyncJobTracker(createEventRecorder().pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(createEventRecorder().pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 			});
@@ -351,11 +351,11 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 				errors.push(args);
 			};
 
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
-			tracker.resetJobs(ui.ctx as never);
-			assert.doesNotThrow(() => tracker.restoreActiveJobs(ui.ctx as never));
+			tracker.resetJobs(ui.ctx);
+			assert.doesNotThrow(() => tracker.restoreActiveJobs(ui.ctx));
 			assert.equal(state.asyncJobs.size, 0);
 			assert.equal(state.poller, null);
 			assert.match(String(errors[0]?.[0] ?? ""), /Failed to restore active async jobs/);
@@ -370,7 +370,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 		try {
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot);
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot);
 
 			tracker.handleStarted({
 				id: "run-parallel-start",
@@ -427,10 +427,10 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-chain", asyncDir: runDir, mode: "chain", agents: ["scout", "reviewer", "auditor", "writer"] });
 
 			await new Promise((resolve) => setTimeout(resolve, 50));
@@ -466,10 +466,10 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-unchanged", asyncDir: runDir, agent: "worker" });
 
 			const requestsAfterStart = ui.renderRequests;
@@ -518,11 +518,11 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-2", asyncDir: runDir, agent: "worker" });
 
 			await new Promise((resolve) => setTimeout(resolve, 80));
@@ -554,14 +554,14 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 				resultsDir,
 				kill: pidGone,
 				now: () => Date.now(),
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-stale", asyncDir: runDir, agent: "worker" });
 
 			await waitForCondition(() => state.asyncJobs.size === 0, "stale async job cleanup");
@@ -583,14 +583,14 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 				resultsDir,
 				kill: pidGone,
 				now: () => Date.now() + 2000,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({
 				id: "run-no-status",
 				asyncDir: runDir,
@@ -635,11 +635,11 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			const state = createState();
 			const ui = createUiContext();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 			});
-			tracker.resetJobs(ui.ctx as never);
+			tracker.resetJobs(ui.ctx);
 			tracker.handleStarted({ id: "run-bad-status", asyncDir: runDir, agent: "worker" });
 
 			await new Promise((resolve) => setTimeout(resolve, 80));
@@ -662,7 +662,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			fs.writeFileSync(path.join(runDir, "status.json"), "{", "utf-8");
 			const state = createState();
 			const recorder = createEventRecorder();
-			tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 			});
@@ -709,7 +709,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const state = createState();
 			const recorder = createEventRecorder();
-			tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 5,
 				pollIntervalMs: 10,
 			});
@@ -744,7 +744,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			fs.mkdirSync(runDir, { recursive: true });
 			const state = createState();
 			const recorder = createEventRecorder();
-			tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				completionRetentionMs: 1_000,
 				pollIntervalMs: 10,
 			});
@@ -804,7 +804,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.handleStarted({ id: "run-partial", asyncDir: runDir, agent: "worker" });
@@ -855,12 +855,12 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			Buffer.alloc = ((size: number, fill?: string | Buffer | number, encoding?: BufferEncoding) => {
 				allocationSizes.push(size);
-				return originalAlloc(size, fill as never, encoding);
-			}) as typeof Buffer.alloc;
+				return originalAlloc(size, fill, encoding);
+			});
 
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.handleStarted({ id: "run-chunked-control", asyncDir: runDir, agent: "worker" });
@@ -924,7 +924,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 				controlEventCursor: 0,
 			});
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.ensurePoller();
@@ -975,7 +975,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.handleStarted({ id: "run-new-large-control", asyncDir: runDir, agent: "worker" });
@@ -1029,8 +1029,8 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			Buffer.alloc = ((size: number, fill?: string | Buffer | number, encoding?: BufferEncoding) => {
 				allocationSizes.push(size);
-				return originalAlloc(size, fill as never, encoding);
-			}) as typeof Buffer.alloc;
+				return originalAlloc(size, fill, encoding);
+			});
 
 			const state = createState();
 			state.asyncJobs.set("run-large-legacy-control", {
@@ -1042,7 +1042,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 				updatedAt: Date.now(),
 			});
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.ensurePoller();
@@ -1082,7 +1082,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.handleStarted({ id: "run-clear-tool", asyncDir: runDir, agent: "worker" });
@@ -1140,7 +1140,7 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state, asyncRoot, {
 				pollIntervalMs: 10,
 			});
 			tracker.handleStarted({ id: "run-3", asyncDir: runDir, agent: "worker" });

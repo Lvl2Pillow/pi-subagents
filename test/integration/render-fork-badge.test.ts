@@ -10,6 +10,10 @@ type RenderSubagentResult = (
 			mode: "single" | "parallel" | "chain" | "management";
 			context?: "fresh" | "fork" | "mixed";
 			results: unknown[];
+			totalSteps?: number;
+			chainAgents?: string[];
+			currentStepIndex?: number;
+			progress?: unknown[];
 		};
 	},
 	options: { expanded: boolean },
@@ -19,10 +23,9 @@ type RenderSubagentResult = (
 	},
 ) => { render(width: number): string[] };
 
-let renderSubagentResult: RenderSubagentResult | undefined;
-({ renderSubagentResult } = await import("../../src/tui/render.ts") as {
+const { renderSubagentResult } = await import("../../src/tui/render.ts") as {
 	renderSubagentResult?: RenderSubagentResult;
-});
+};
 
 const theme = {
 	fg: (_name: string, text: string) => text,
@@ -146,11 +149,11 @@ describe("renderSubagentResult fork indicator", () => {
 		}, { expanded: false }, theme);
 
 		const lines = widget.render(120).map((line) => line.trimEnd());
-		assert.match(lines[0]!, /^\[fork\] Managed agents:/);
-		assert.match(lines[0]!, /…$/);
+		assert.match(lines[0], /^\[fork\] Managed agents:/);
+		assert.match(lines[0], /…$/);
 		const hintLineIndex = lines.findIndex((line) => line.includes(expandHint) || (expandKey === "" && line.includes("Press ") && line.includes(" for full output")));
 		assert.ok(hintLineIndex > 0);
-		assert.doesNotMatch(lines[0]!, /reviewer/);
+		assert.doesNotMatch(lines[0], /reviewer/);
 	});
 
 	it("keeps multiline structured zero-result errors visible", () => {
@@ -591,8 +594,8 @@ describe("renderSubagentResult fork indicator", () => {
 		const lines = widget.render(120);
 		const pendingIndex = lines.findIndex((line) => /Step 2: b/.test(line));
 		assert.notEqual(pendingIndex, -1);
-		assert.match(lines[pendingIndex]!, /◦ Step 2: b · pending/);
-		assert.doesNotMatch(lines[pendingIndex]!, /0ms/);
+		assert.match(lines[pendingIndex], /◦ Step 2: b · pending/);
+		assert.doesNotMatch(lines[pendingIndex], /0ms/);
 		assert.doesNotMatch(lines[pendingIndex + 1] ?? "", /Done \(no text output\)/);
 	});
 

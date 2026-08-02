@@ -150,7 +150,7 @@ function findTool(
 	if (toolCallId) {
 		for (let index = events.length - 1; index >= 0; index--) {
 			const event = events[index];
-			if (event?.kind === "tool" && event.toolCallId === toolCallId) return event as MutableToolEvent;
+			if (event?.kind === "tool" && event.toolCallId === toolCallId) return event;
 		}
 		return undefined;
 	}
