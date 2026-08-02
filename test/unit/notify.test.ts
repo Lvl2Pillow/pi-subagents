@@ -128,9 +128,9 @@ describe("registerSubagentNotify", () => {
 			message: {
 				customType: "subagent-notify",
 				content: "Background task completed: **worker**\n\n(no output)",
-				display: true,
+				display: false,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		});
 	});
 
@@ -211,9 +211,9 @@ describe("registerSubagentNotify", () => {
 			message: {
 				customType: "subagent-notify",
 				content: `Background task completed: **worker** (2/3)\n\n${summary}`,
-				display: true,
+				display: false,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		});
 	});
 
@@ -235,9 +235,9 @@ describe("registerSubagentNotify", () => {
 			message: {
 				customType: "subagent-notify",
 				content: "Background task completed: **worker**\n\nDone\n\nSession file: /tmp/session.jsonl",
-				display: true,
+				display: false,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		}]);
 	});
 
@@ -321,7 +321,12 @@ describe("registerSubagentNotify", () => {
 		assert.match(content, /^Background tasks completed \(3\): \*\*alpha\*\*, \*\*beta\*\*, \*\*gamma\*\*/);
 		assert.match(content, /1\. alpha\nalpha done/);
 		assert.match(content, /3\. gamma\ngamma done/);
-		assert.deepEqual(sent[0].options, { triggerTurn: true });
+		assert.deepEqual(sent[0].message, {
+			customType: "subagent-notify",
+			content,
+			display: false,
+		});
+		assert.deepEqual(sent[0].options, { triggerTurn: false });
 	});
 
 	it("ignores successes from other sessions instead of grouping them", () => {
