@@ -5,7 +5,7 @@
  * - Sync (default): Streams output, renders markdown, tracks usage
  * - Async: Background execution, emits events when done
  *
- * Modes: single (agent + task), parallel (tasks[]), chain (chain[] with {previous})
+ * Modes: single (agent + task), parallel (tasks[]), workflow (workflowScript), chain (chain[] with {previous})
  * Toggle: async parameter (default: false, configurable via config.json)
  *
  * Config file: ~/.pi/agent/extensions/subagent/config.json
@@ -599,6 +599,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 					0,
 				);
 			}
+			if (args.workflowScript)
+				return new Text(
+					`${theme.fg("toolTitle", theme.bold("subagent "))}workflow script`,
+					0,
+					0,
+				);
 			const isParallel = (args.tasks?.length ?? 0) > 0;
 			const parallelCount = effectiveParallelTaskCount(args.tasks);
 			const asyncLabel =

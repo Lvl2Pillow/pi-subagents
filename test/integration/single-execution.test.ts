@@ -312,6 +312,17 @@ interface ExecutorToolResult {
 	content: Array<{ text?: string }>;
 	isError?: boolean;
 	details?: {
+		mode?: string;
+		workflow?: {
+			trace: Array<{
+				operation: string;
+				key: string;
+				state: string;
+				runId?: string;
+				durationMs?: number;
+				error?: string;
+			}>;
+		};
 		totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
 		asyncId?: string;
 		timeoutMs?: number;
@@ -595,6 +606,32 @@ describe(
 				assert.equal(mockPi.callCount(), 0);
 			},
 		);
+
+	it("routes workflow script children through ordinary foreground execution", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "scanned auth" });
+		mockPi.onCall({ output: "reviewed auth" });
+		const executor = makeExecutor([makeAgent("echo")]);
+
+		const result = await executor.execute(
+			"scripted-workflow",
+			{
+				workflowScript: `
+					const scan = await runs.run("scan", { agent: "echo", task: "Scan auth" });
+					const review = await runs.run("review", { agent: "echo", task: "Review: " + scan.output });
+					return review.output;
+				`,
+			},
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, undefined);
+		assert.match(result.content[0]?.text ?? "", /reviewed auth/);
+		assert.equal(result.details.mode, "workflow");
+		assert.equal(result.details.results.length, 2);
+		assert.deepEqual(result.details.workflow?.trace.filter((entry) => entry.state === "completed").map((entry) => entry.key), ["scan", "review"]);
+	});
 
 		it(
 			'rejects string "none" acceptance before spawning',

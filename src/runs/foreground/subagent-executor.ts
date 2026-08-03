@@ -74,6 +74,7 @@ import { resolveSubagentRunId, type ResolvedSubagentRunId } from "../background/
 import { formatNestedRunStatusLines } from "../shared/nested-render.ts";
 import { inspectSubagentStatus } from "../background/run-status.ts";
 import { applyForceTopLevelAsyncOverride } from "../background/top-level-async.ts";
+import { runWorkflowScript, WorkflowScriptError, type WorkflowScriptChildResult } from "../../workflows/scripted-workflow.ts";
 import {
 	cleanupWorktrees,
 	createWorktrees,
@@ -106,7 +107,6 @@ import {
 	type ToolBudgetConfig,
 	type TurnBudgetConfig,
 	type UsageBudgetConfig,
-	type SubagentRunMode,
 	type SubagentState,
 	DIRS,
 	DEFAULT_ARTIFACT_CONFIG,
@@ -152,6 +152,7 @@ export interface SubagentParamsLike {
 	task?: string;
 	message?: string;
 	steeringRecovery?: boolean;
+	workflowScript?: string;
 	chain?: ChainStep[];
 	tasks?: TaskParam[];
 	concurrency?: number;
@@ -1616,6 +1617,7 @@ function validateExecutionChainBindings(params: SubagentParamsLike, dynamicFanou
 }
 
 function getRequestedModeLabel(params: SubagentParamsLike): Details["mode"] {
+	if (params.workflowScript !== undefined) return "workflow";
 	if ((params.chain?.length ?? 0) > 0) return "chain";
 	if ((params.tasks?.length ?? 0) > 0) return "parallel";
 	if (params.agent) return "single";
@@ -3435,7 +3437,8 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 	};
 }
 
-function inferExecutionMode(params: SubagentParamsLike): SubagentRunMode {
+function inferExecutionMode(params: SubagentParamsLike): Details["mode"] {
+	if (params.workflowScript !== undefined) return "workflow";
 	if ((params.chain?.length ?? 0) > 0) return "chain";
 	if ((params.tasks?.length ?? 0) > 0) return "parallel";
 	return "single";
@@ -3450,6 +3453,37 @@ function duplicateSubagentCallResult(params: SubagentParamsLike): AgentToolResul
 		isError: true,
 		details: { mode: inferExecutionMode(params), results: [] },
 	};
+}
+
+function workflowChildResult(key: string, result: AgentToolResult<Details>): WorkflowScriptChildResult {
+	const output = result.content.map((part) => part.type === "text" ? part.text : "").filter(Boolean).join("\n");
+	const artifactPaths = new Set<string>();
+	if (result.details.asyncDir) artifactPaths.add(result.details.asyncDir);
+	for (const child of result.details.results) {
+		if (child.savedOutputPath) artifactPaths.add(child.savedOutputPath);
+		if (child.outputReference?.path) artifactPaths.add(child.outputReference.path);
+		if (child.sessionFile) artifactPaths.add(child.sessionFile);
+	}
+	const structured = result.details.results.map((child) => child.structuredOutput).filter((value) => value !== undefined);
+	return {
+		key,
+		ok: result.isError !== true,
+		...(result.details.runId || result.details.asyncId ? { runId: result.details.runId ?? result.details.asyncId } : {}),
+		output,
+		...(structured.length === 1 ? { structuredOutput: structured[0] } : structured.length > 1 ? { structuredOutput: structured } : {}),
+		artifactPaths: [...artifactPaths],
+		results: result.details.results,
+	};
+}
+
+function formatWorkflowValue(value: unknown): string {
+	if (value === undefined) return "(undefined)";
+	if (typeof value === "string") return value;
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
 }
 
 function omitExecutionModeActionAlias(params: SubagentParamsLike): SubagentParamsLike {
@@ -3504,6 +3538,58 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		deps.state.foregroundControls ??= new Map();
 		deps.state.lastForegroundControlId ??= null;
 		const requestParams = omitExecutionModeActionAlias(params);
+		if (requestParams.workflowScript !== undefined) {
+			const invalidMode = requestParams.action !== undefined || requestParams.agent !== undefined || requestParams.tasks !== undefined || requestParams.chain !== undefined;
+			if (invalidMode) {
+				return { content: [{ type: "text", text: "workflowScript is its own execution mode; do not combine it with action, agent, tasks, or chain." }], isError: true, details: { mode: "workflow", results: [] } };
+			}
+			if (requestParams.async === true || requestParams.clarify === true) {
+				return { content: [{ type: "text", text: "workflowScript currently runs in the foreground only; detached durability and clarify UI are deferred." }], isError: true, details: { mode: "workflow", results: [] } };
+			}
+			const timeout = requestParams.timeoutMs ?? requestParams.maxRuntimeMs ?? DEFAULT_FOREGROUND_TIMEOUT_MS;
+			const workflowUsageBudget = validateUsageBudgetConfig(requestParams.usageBudget ?? deps.config.usageBudget, requestParams.usageBudget ? "usageBudget" : "config.usageBudget");
+			if (workflowUsageBudget.error) return buildRequestedModeError(requestParams, workflowUsageBudget.error);
+			const { workflowScript: _workflowScript, action: _action, agent: _agent, task: _task, tasks: _tasks, chain: _chain, concurrency: _concurrency, async: _async, foregroundOnly: _foregroundOnly, clarify: _clarify, timeoutMs: _timeoutMs, maxRuntimeMs: _maxRuntimeMs, usageBudget: _usageBudget, ...workflowChildDefaults } = requestParams;
+			const workflowResults: SingleResult[] = [];
+			try {
+				const workflow = await runWorkflowScript({
+					script: requestParams.workflowScript,
+					timeoutMs: timeout,
+					signal,
+					launch: async (key, childParams, workflowSignal) => {
+						if (workflowUsageBudget.budget && childParams.async === true) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, "workflow usageBudget does not support async runs.run launches."));
+						const budgetState = usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults));
+						if (budgetState?.exhausted) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, usageBudgetExceededMessage(budgetState)));
+						const result = await execute(randomUUID(), { ...workflowChildDefaults, ...childParams } as SubagentParamsLike, workflowSignal, undefined, ctx);
+						workflowResults.push(...result.details.results);
+						return workflowChildResult(key, result);
+					},
+					status: async (keyOrRunId, workflowSignal) => workflowChildResult(keyOrRunId, await execute(randomUUID(), { action: "status", id: keyOrRunId }, workflowSignal, undefined, ctx)),
+				});
+				const traceLines = workflow.trace.map((entry) => `- ${entry.operation} ${entry.key}: ${entry.state}${entry.runId ? ` (${entry.runId})` : ""}${entry.durationMs !== undefined ? ` in ${entry.durationMs}ms` : ""}${entry.error ? ` — ${entry.error}` : ""}`);
+				const sections = ["Workflow completed.", `Return:\n${formatWorkflowValue(workflow.value)}`];
+				if (workflow.emits.length > 0) sections.push(`Emitted:\n${workflow.emits.map(formatWorkflowValue).join("\n")}`);
+				if (workflow.console.length > 0) sections.push(`Console:\n${workflow.console.map((entry) => `[${entry.level}] ${entry.text}`).join("\n")}`);
+				if (traceLines.length > 0) sections.push(`Call trace:\n${traceLines.join("\n")}`);
+				return {
+					content: [{ type: "text", text: sections.join("\n\n") }],
+					details: { mode: "workflow", results: workflow.children.flatMap((child) => (child.results ?? []) as SingleResult[]), totalChildUsage: sumResultsUsage(workflowResults), totalCost: sumResultsCost(workflowResults), usageBudget: usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults)), workflow: { trace: workflow.trace, emits: workflow.emits, console: workflow.console } },
+				};
+			} catch (error) {
+				const partial = error instanceof WorkflowScriptError ? error.partial : { trace: [], emits: [], console: [], children: [] };
+				const text = error instanceof Error ? error.message : String(error);
+				const traceLines = partial.trace.map((entry) => `- ${entry.operation} ${entry.key}: ${entry.state}${entry.runId ? ` (${entry.runId})` : ""}${entry.error ? ` — ${entry.error}` : ""}`);
+				const sections = [`Workflow failed: ${text}`];
+				if (partial.emits.length > 0) sections.push(`Emitted:\n${partial.emits.map(formatWorkflowValue).join("\n")}`);
+				if (partial.console.length > 0) sections.push(`Console:\n${partial.console.map((entry) => `[${entry.level}] ${entry.text}`).join("\n")}`);
+				if (traceLines.length > 0) sections.push(`Call trace:\n${traceLines.join("\n")}`);
+				return {
+					content: [{ type: "text", text: sections.join("\n\n") }],
+					isError: true,
+					details: { mode: "workflow", results: partial.children.flatMap((child) => (child.results ?? []) as SingleResult[]), totalChildUsage: sumResultsUsage(workflowResults), totalCost: sumResultsCost(workflowResults), usageBudget: usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults)), workflow: { trace: partial.trace, emits: partial.emits, console: partial.console } },
+				};
+			}
+		}
 		const requestCwd = resolveRequestedCwd(ctx.cwd, requestParams.cwd);
 		const paramsWithResolvedCwd = requestParams.cwd === undefined ? requestParams : { ...requestParams, cwd: requestCwd };
 		const action = paramsWithResolvedCwd.action;

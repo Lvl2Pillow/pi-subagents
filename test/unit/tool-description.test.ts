@@ -43,18 +43,11 @@ describe("registered subagent tool description", () => {
 		for (const agentName of ["scout", "worker", "planner"]) {
 			assert.doesNotMatch(description, new RegExp(`\\b${agentName}\\b`));
 		}
-		assert.match(
-			description,
-			/^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i,
-		);
-		assert.match(
-			description,
-			/Use action only for management\/control actions listed below/i,
-		);
-		assert.match(
-			description,
-			/use \{ action: "list" \} to inspect configured agents\/chains/i,
-		);
+		assert.match(description, /^To delegate work, call with \{ agent, task \}, \{ tasks \}, \{ workflowScript \}, or compatibility \{ chain \}; omit action\./i);
+		assert.match(description, /Use action only for management\/control actions listed below/i);
+		assert.match(description, /runs\.run/);
+		assert.match(description, /cannot access filesystem, shell, arbitrary Pi tools, or host globals/i);
+		assert.match(description, /use \{ action: "list" \} to inspect configured agents\/chains/i);
 		assert.match(description, /executable\/non-disabled/i);
 		assert.match(description, /proactive skill subagent suggestions/i);
 		assert.doesNotMatch(description, /disabled builtins/i);
@@ -125,18 +118,10 @@ describe("registered subagent tool description", () => {
 		});
 
 		assert.equal(description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
-		assert.match(
-			description,
-			/^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i,
-		);
-		assert.match(
-			description,
-			/Use action only for management\/control actions listed below/i,
-		);
-		assert.ok(
-			description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length * 0.8,
-			"compact mode should be materially shorter than full mode",
-		);
+		assert.match(description, /^To delegate work, call with \{ agent, task \}, \{ tasks \}, \{ workflowScript \}, or compatibility \{ chain \}; omit action\./i);
+		assert.match(description, /Use action only for management\/control actions listed below/i);
+		assert.match(description, /stable-key runs\.run\/runs\.all/i);
+		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length * 0.8, "compact mode should be materially shorter than full mode");
 		assert.match(description, /SINGLE/);
 		assert.match(description, /PARALLEL/);
 		assert.match(description, /CHAIN/);
