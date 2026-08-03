@@ -102,9 +102,8 @@ import { buildSubagentToolDescription } from "./tool-description.ts";
 import {
 	type Details,
 	type SubagentState,
-	ASYNC_DIR,
+	DIRS,
 	DEFAULT_ARTIFACT_CONFIG,
-	RESULTS_DIR,
 	SLASH_RESULT_TYPE,
 	SLASH_TEXT_RESULT_TYPE,
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
@@ -265,8 +264,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	ensureAccessibleDir(RESULTS_DIR);
-	ensureAccessibleDir(ASYNC_DIR);
+	DIRS.results = ensureAccessibleDir(DIRS.results);
+	DIRS.async = ensureAccessibleDir(DIRS.async);
 	cleanupOldChainDirs();
 
 	const config = loadConfig();
@@ -334,7 +333,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			)
 		: undefined;
 	const { startResultWatcher, primeExistingResults, stopResultWatcher } =
-		createResultWatcher(pi, state, RESULTS_DIR, 10 * 60 * 1000);
+		createResultWatcher(pi, state, DIRS.results, 10 * 60 * 1000, {
+			notifier: completionNotifier,
+		});
 
 	const runtimeCleanup = () => {
 		stopResultWatcher();
@@ -360,7 +361,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		handleComplete,
 		resetJobs,
 		restoreActiveJobs,
-	} = createAsyncJobTracker(pi, state, ASYNC_DIR, {
+	} = createAsyncJobTracker(pi, state, DIRS.async, {
 		widgetEnabled: asyncWidgetEnabled,
 	});
 	// eslint-disable-next-line prefer-const -- assigned once after declaration; the launch closure reads it before the assignment, so const would break

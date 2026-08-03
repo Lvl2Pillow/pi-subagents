@@ -17,11 +17,12 @@ import {
 import { getArtifactPaths, getArtifactsDir } from "../shared/artifacts.ts";
 import {
 	formatDuration,
+	formatModelThinking,
 	formatTokens,
 	shortenPath,
 } from "../shared/formatters.ts";
 import {
-	RESULTS_DIR,
+	DIRS,
 	type AsyncJobState,
 	type Details,
 	type ForegroundChildControl,
@@ -291,7 +292,7 @@ export function collectFleetSnapshot(
 					? { sessionId: state.currentSessionId }
 					: {}),
 				limit: options.limit ?? MAX_RECENT_ASYNC_RUNS,
-				resultsDir: options.resultsDir ?? RESULTS_DIR,
+				resultsDir: options.resultsDir ?? DIRS.results,
 				reconcile: false,
 			});
 		} else {
