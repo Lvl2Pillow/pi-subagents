@@ -3,7 +3,9 @@
 ## [Unreleased]
 
 ### Added
-- Added trusted inline `workflowScript` orchestration with stable-key child launches through the ordinary executor, timed worker isolation, captured console and emitted milestones, artifact references, status lookup, and a concise call trace. Chains remain supported for compatibility; durable replay and saved scripts are deferred.
+- Added a source-only, strict TypeScript typecheck command and CI gate.
+- Added trusted inline `workflowScript` orchestration with stable-key child launches through the ordinary executor, timed worker isolation, captured console and emitted milestones, artifact references, status lookup, and a concise call trace.
+- Added opt-in async one-shot `external-cli` agent profiles with stdin prompt delivery, argv-only spawning, lifecycle/status artifacts, stdout/stderr logs, timeout, and stop support.
 - Added default-on durable project missions with management actions, launch attachment, lifecycle/artifact links, explicit opt-out, a user-local cross-project pointer index, and typed delivery receipts for pull requests, CI, deployments, and releases.
 - Made ordinary top-level subagent launches run asynchronously by default; `async: false`, agent defaults, and clarify UI retain foreground escape hatches.
 - Added a small fixed authority policy for worktree discard, destructive cleanup, spawn-budget grants, schedule creation, stop, and steer actions.
@@ -12,10 +14,12 @@
 - Added Herdr project panes so an orchestrator can open a project-rooted Pi session for substantial cross-codebase work.
 
 ### Changed
-- Scripted workflows now start asynchronously by default as first-class status/fleet runs, stream trace and emitted progress, support stop by workflow id, preserve async child parentage, and present single + workflow as the primary public authoring surface while retaining `tasks[]` and `chain[]` compatibility.
+- Removed the public top-level `tasks[]`, `chain[]`, static parallel controls, and `/chain`, `/parallel`, and `/run-chain` commands; `workflowScript` is now the sole public multi-agent orchestration surface. `append-step` now accepts a control-only `step` object.
+- Scripted workflows now start asynchronously by default as first-class status/fleet runs, stream trace and emitted progress, support stop by workflow id, preserve async child parentage, and present single + workflow as the public authoring surface.
 - Scheduled subagent runs are now enabled by default; set `{ "scheduledRuns": { "enabled": false } }` to opt out.
 
 ### Fixed
+- Count clear `git add`, `git commit`, and `git push` bash calls as implementation mutation attempts so workers that finalize pre-applied changes do not fail the completion guard.
 - Render structured-output-only children as useful JSON output instead of misleading `(no output)` summaries and empty output artifacts.
 - Journaled managed worktree ownership before child execution so abrupt exits retain a manifest-backed cleanup path.
 - Made automatic mission persistence best-effort without weakening explicit mission requests, bounded terminal mission retention and stale global pointers, exposed auto missions without modifying structured JSON output, added authority-consistent manifest-backed preserved-worktree discard, and clarified the Herdr inspector/schema surface.

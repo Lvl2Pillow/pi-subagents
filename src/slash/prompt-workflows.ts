@@ -1,11 +1,10 @@
 import * as fs from "node:fs";
+import { SLASH_TEXT_RESULT_TYPE } from "../shared/types.ts";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { parseFrontmatter } from "../agents/frontmatter.ts";
 import type { SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
-import type { ChainStep } from "../shared/settings.ts";
-import { SLASH_TEXT_RESULT_TYPE } from "../shared/types.ts";
 import { getAgentDir, getProjectConfigDir } from "../shared/utils.ts";
 
 interface PromptWorkflow {
@@ -18,7 +17,6 @@ interface PromptWorkflow {
 	model?: string;
 	skill?: string | string[] | false;
 	cwd?: string;
-	worktree?: boolean;
 	chain?: string;
 }
 
@@ -112,7 +110,6 @@ function loadPromptWorkflow(filePath: string): PromptWorkflow | undefined {
 		...(model ? { model } : {}),
 		...(skill !== undefined ? { skill } : {}),
 		...(cwd ? { cwd } : {}),
-		...(booleanField(frontmatter, "worktree") === true ? { worktree: true } : {}),
 		...(chain ? { chain } : {}),
 	};
 }
@@ -172,12 +169,11 @@ function substituteArgs(template: string, args: string[]): string {
 		.replace(/\$(\d+)/g, (_match, index: string) => args[Number(index) - 1] ?? "");
 }
 
-function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?: string; fork?: boolean; fresh?: boolean; worktree?: boolean; bg?: boolean } {
+function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?: string; fork?: boolean; fresh?: boolean; bg?: boolean } {
 	const args: string[] = [];
 	let agentOverride: string | undefined;
 	let fork = false;
 	let fresh = false;
-	let worktree = false;
 	let bg = false;
 	for (let i = 0; i < words.length; i++) {
 		const word = words[i];
@@ -187,10 +183,6 @@ function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?:
 		}
 		if (word === "--fresh") {
 			fresh = true;
-			continue;
-		}
-		if (word === "--worktree") {
-			worktree = true;
 			continue;
 		}
 		if (word === "--bg" || word === "--async") {
@@ -208,14 +200,9 @@ function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?:
 		}
 		args.push(word);
 	}
-	return { args, agentOverride, fork, fresh, worktree, bg };
+	return { args, agentOverride, fork, fresh, bg };
 }
 
-function splitChainDeclaration(input: string): { declaration: string; argsText: string } {
-	const delimiter = input.indexOf(" -- ");
-	if (delimiter === -1) return { declaration: input.trim(), argsText: "" };
-	return { declaration: input.slice(0, delimiter).trim(), argsText: input.slice(delimiter + 4).trim() };
-}
 
 function splitPromptChain(input: string): string[] {
 	return input.split(" -> ").map((part) => part.trim()).filter(Boolean);
@@ -233,20 +220,25 @@ function workflowParams(workflow: PromptWorkflow, args: string[], runtime: Retur
 		...(workflow.model ? { model: workflow.model } : {}),
 		...(workflow.skill !== undefined ? { skill: workflow.skill } : {}),
 		...(workflow.cwd ? { cwd: workflow.cwd } : {}),
-		...(runtime.worktree || workflow.worktree ? { worktree: true } : {}),
 		...(runtime.bg ? { async: true } : {}),
 	};
 }
 
-function workflowChainStep(workflow: PromptWorkflow, args: string[], runtime: ReturnType<typeof parseRuntimeOptions>): ChainStep {
-	const params = workflowParams(workflow, args, runtime);
-	return {
-		agent: params.agent ?? "delegate",
-		task: params.task,
-		...(params.model ? { model: params.model } : {}),
-		...(params.skill !== undefined ? { skill: params.skill } : {}),
-		...(params.cwd ? { cwd: params.cwd } : {}),
-	} as ChainStep;
+function promptWorkflowScript(workflows: PromptWorkflow[], args: string[], runtime: ReturnType<typeof parseRuntimeOptions>): string {
+	const launches = workflows.map((workflow, index) => {
+		const params = workflowParams(workflow, args, runtime);
+		const task = params.task ?? "";
+		const child = {
+			agent: params.agent ?? "delegate",
+			task,
+			...(params.model ? { model: params.model } : {}),
+			...(params.skill !== undefined ? { skill: params.skill } : {}),
+			...(params.cwd ? { cwd: params.cwd } : {}),
+			...(params.context ? { context: params.context } : {}),
+		};
+		return `const step${index} = await runs.run(${JSON.stringify(`prompt-${index + 1}-${workflow.name}`)}, { ...${JSON.stringify(child)}, task: ${JSON.stringify(task)}.replaceAll("{previous}", previous) });\nprevious = step${index}.output;`;
+	});
+	return `let previous = "";\n${launches.join("\n")}\nreturn previous;`;
 }
 
 function findWorkflow(workflows: PromptWorkflow[], name: string): PromptWorkflow | undefined {
@@ -285,13 +277,12 @@ export function registerPromptWorkflowCommands(input: {
 			const runtime = parseRuntimeOptions(words);
 			try {
 				if (workflow.chain) {
-					const chainNames = splitPromptChain(workflow.chain);
-					const chain = chainNames.map((stepName) => {
+					const chain = splitPromptChain(workflow.chain).map((stepName) => {
 						const step = findWorkflow(workflows, stepName);
 						if (!step) throw new Error(`Unknown prompt workflow in chain '${workflow.name}': ${stepName}`);
-						return workflowChainStep(step, runtime.args, runtime);
+						return step;
 					});
-					await run({ chain, task: runtime.args.join(" "), clarify: false, agentScope: "both", ...(runtime.bg ? { async: true } : {}) }, ctx);
+					await run({ workflowScript: promptWorkflowScript(chain, runtime.args, runtime), clarify: false, agentScope: "both", ...(runtime.bg ? { async: true } : {}) }, ctx);
 					return;
 				}
 				await run(workflowParams(workflow, runtime.args, runtime), ctx);
@@ -301,31 +292,4 @@ export function registerPromptWorkflowCommands(input: {
 		},
 	});
 
-	pi.registerCommand("chain-prompts", {
-		description: "Run prompt templates as a native subagent chain: /chain-prompts analyze -> fix -- args",
-		handler: async (rawArgs, ctx) => {
-			const { declaration, argsText } = splitChainDeclaration(rawArgs);
-			const workflows = discoverPromptWorkflows(ctx.cwd);
-			if (!declaration || declaration === "list") {
-				pi.sendMessage({ customType: SLASH_TEXT_RESULT_TYPE, content: formatWorkflowList(workflows), display: true });
-				return;
-			}
-			const runtime = parseRuntimeOptions(shellWords(argsText));
-			const names = splitPromptChain(declaration);
-			if (names.length === 0) {
-				ctx.ui.notify("Usage: /chain-prompts prompt-a -> prompt-b -- args", "error");
-				return;
-			}
-			try {
-				const chain = names.map((name) => {
-					const workflow = findWorkflow(workflows, name);
-					if (!workflow) throw new Error(`Unknown prompt workflow: ${name}`);
-					return workflowChainStep(workflow, runtime.args, runtime);
-				});
-				await run({ chain, task: runtime.args.join(" "), clarify: false, agentScope: "both", ...(runtime.bg ? { async: true } : {}) }, ctx);
-			} catch (error) {
-				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-			}
-		},
-	});
 }

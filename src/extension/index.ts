@@ -5,7 +5,7 @@
  * - Sync (default): Streams output, renders markdown, tracks usage
  * - Async: Background execution, emits events when done
  *
- * Modes: single (agent + task), parallel (tasks[]), workflow (workflowScript), chain (chain[] with {previous})
+ * Public execution modes: single (agent + task) and workflow (workflowScript)
  * Toggle: async parameter (default: false, configurable via config.json)
  *
  * Config file: ~/.pi/agent/extensions/subagent/config.json
@@ -52,7 +52,6 @@ import {
 	resolveFleetViewPlacement,
 } from "../tui/fleet-status.ts";
 import { SubagentParams } from "./schemas.ts";
-import { validateChainInput } from "./chain-validation.ts";
 import {
 	createSubagentExecutor,
 	type SubagentParamsLike,
@@ -551,34 +550,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		state,
 	});
 
-	function effectiveParallelTaskCount(
-		tasks: Array<{ count?: unknown }> | undefined,
-	): number {
-		if (!tasks || tasks.length === 0) return 0;
-		return tasks.reduce((total, task) => {
-			const count =
-				typeof task.count === "number" &&
-				Number.isInteger(task.count) &&
-				task.count >= 1
-					? task.count
-					: 1;
-			return total + count;
-		}, 0);
-	}
 
 	const tool: ToolDefinition<typeof SubagentParams, Details> = {
 		name: "subagent",
 		label: "Subagent",
 		description: buildSubagentToolDescription(config),
 		parameters: SubagentParams,
-
-		prepareArguments(args) {
-			// Run friendly chain validation before pi-ai's raw TypeBox schema check
-			// so the model sees which property is disallowed, what is allowed, and a
-			// valid example instead of `chain.N: must not have additional properties`.
-			validateChainInput(args);
-			return args as never;
-		},
 
 		execute(id, params, signal, onUpdate, ctx) {
 			return executeSubagentCollapsed(
@@ -605,24 +582,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 					0,
 					0,
 				);
-			const isParallel = (args.tasks?.length ?? 0) > 0;
-			const parallelCount = effectiveParallelTaskCount(args.tasks);
-			const asyncLabel =
-				args.async === true && args.clarify !== true
-					? theme.fg("warning", " [async]")
-					: "";
-			if (args.chain?.length)
-				return new Text(
-					`${theme.fg("toolTitle", theme.bold("subagent "))}chain (${args.chain.length})${asyncLabel}`,
-					0,
-					0,
-				);
-			if (isParallel)
-				return new Text(
-					`${theme.fg("toolTitle", theme.bold("subagent "))}parallel (${parallelCount})${asyncLabel}`,
-					0,
-					0,
-				);
+			const asyncLabel = args.async === true && args.clarify !== true ? theme.fg("warning", " [async]") : "";
 			return new Text(
 				`${theme.fg("toolTitle", theme.bold("subagent "))}${theme.fg("accent", args.agent || "?")}${asyncLabel}`,
 				0,

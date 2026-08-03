@@ -85,10 +85,7 @@ const parseInlineConfig = (raw: string): InlineConfig => {
 		const trimmed = part.trim();
 		if (!trimmed) continue;
 		const eq = trimmed.indexOf("=");
-		if (eq === -1) {
-			if (trimmed === "progress") config.progress = true;
-			continue;
-		}
+		if (eq === -1) continue;
 		const key = trimmed.slice(0, eq).trim();
 		const val = trimmed.slice(eq + 1).trim();
 		switch (key) {
