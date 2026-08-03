@@ -45,11 +45,36 @@ const runs = Object.freeze({
   },
 });
 
+let contextObjectPrototype;
+
 const capturedConsole = Object.freeze(Object.fromEntries(
   ["log", "info", "warn", "error"].map((level) => [level, (...args) => {
     parentPort.postMessage({ type: "console", level, text: args.map((value) => typeof value === "string" ? value : inspect(value, { depth: 4, breakLength: 120 })).join(" ") });
   }]),
 ));
+
+function assertJsonValue(value, path = "emit", seen = new Set()) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error(path + " must contain only finite JSON numbers.");
+    return;
+  }
+  if (typeof value !== "object") throw new Error(path + " must be a JSON value; received " + typeof value + ".");
+  if (seen.has(value)) throw new Error(path + " must not contain cycles.");
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) throw new Error(path + " must not contain sparse array entries.");
+      assertJsonValue(value[index], path + "[" + index + "]", seen);
+    }
+  } else {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== null && prototype !== Object.prototype && prototype !== contextObjectPrototype) throw new Error(path + " must contain only plain JSON objects.");
+    if (Object.getOwnPropertySymbols(value).length > 0) throw new Error(path + " must not contain symbol keys.");
+    for (const [key, entry] of Object.entries(value)) assertJsonValue(entry, path + "." + key, seen);
+  }
+  seen.delete(value);
+}
 
 parentPort.on("message", async (message) => {
   if (message.type === "response") {
@@ -62,11 +87,14 @@ parentPort.on("message", async (message) => {
   }
   if (message.type !== "start") return;
   try {
-    const sandbox = { runs, emit(value) { parentPort.postMessage({ type: "emit", value }); }, console: capturedConsole };
+    const sandbox = { runs, emit(value) { assertJsonValue(value); parentPort.postMessage({ type: "emit", value }); }, console: capturedConsole };
     const context = vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
+    contextObjectPrototype = vm.runInContext("Object.prototype", context);
     const compiled = new vm.Script("(async () => {\n" + message.script + "\n})()", { filename: "workflow-script.js" });
     const value = await compiled.runInContext(context);
-    parentPort.postMessage({ type: "complete", value });
+    const persistedValue = value === undefined ? null : value;
+    assertJsonValue(persistedValue, "return");
+    parentPort.postMessage({ type: "complete", value: persistedValue });
   } catch (error) {
     parentPort.postMessage({ type: "error", error: error && error.stack ? error.stack : String(error) });
   }
@@ -116,10 +144,45 @@ export interface RunWorkflowScriptOptions {
 	signal?: AbortSignal;
 	launch: (key: string, params: Record<string, unknown>, signal: AbortSignal) => Promise<WorkflowScriptChildResult>;
 	status: (keyOrRunId: string, signal: AbortSignal) => Promise<WorkflowScriptChildResult>;
+	onTrace?: (trace: WorkflowScriptTraceEntry[]) => void;
+	onEmit?: (emits: unknown[]) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function assertWorkflowJsonValue(value: unknown, path = "value", seen = new Set<object>()): void {
+	if (value === null || typeof value === "string" || typeof value === "boolean") return;
+	if (typeof value === "number") {
+		if (!Number.isFinite(value)) throw new Error(`${path} must contain only finite JSON numbers.`);
+		return;
+	}
+	if (typeof value !== "object") throw new Error(`${path} must be a JSON value; received ${typeof value}.`);
+	if (seen.has(value)) throw new Error(`${path} must not contain cycles.`);
+	seen.add(value);
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index++) {
+			if (!Object.hasOwn(value, index)) throw new Error(`${path} must not contain sparse array entries.`);
+			assertWorkflowJsonValue(value[index], `${path}[${index}]`, seen);
+		}
+	} else {
+		const prototype = Object.getPrototypeOf(value);
+		if (prototype !== null && prototype !== Object.prototype) throw new Error(`${path} must contain only plain JSON objects.`);
+		if (Object.getOwnPropertySymbols(value).length > 0) throw new Error(`${path} must not contain symbol keys.`);
+		for (const [key, entry] of Object.entries(value)) assertWorkflowJsonValue(entry, `${path}.${key}`, seen);
+	}
+	seen.delete(value);
+}
+
+export function formatWorkflowJsonPreview(value: unknown, maxLength: number): string | undefined {
+	try {
+		assertWorkflowJsonValue(value);
+		const serialized = JSON.stringify(value);
+		return typeof serialized === "string" ? serialized.slice(0, maxLength) : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function stableJson(value: unknown): string {
@@ -149,6 +212,7 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
 	let settled = false;
 
 	const partial = (): Omit<WorkflowScriptResult, "value"> => ({ emits, console: consoleEntries, trace, children: [...children.values()] });
+	const traceChanged = () => options.onTrace?.([...trace]);
 
 	return await new Promise<WorkflowScriptResult>((resolve, reject) => {
 		const finish = (outcome: { value: unknown } | { error: Error }) => {
@@ -172,7 +236,19 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
 		});
 		worker.on("message", (message: Record<string, unknown>) => {
 			if (message.type === "emit") {
+				try {
+					assertWorkflowJsonValue(message.value, "emit");
+				} catch (error) {
+					finish({ error: new Error(`Workflow emit could not be persisted: ${error instanceof Error ? error.message : String(error)}`) });
+					return;
+				}
 				emits.push(message.value);
+				try {
+					options.onEmit?.([...emits]);
+				} catch (error) {
+					emits.pop();
+					finish({ error: new Error(`Workflow emit could not be persisted: ${error instanceof Error ? error.message : String(error)}`) });
+				}
 				return;
 			}
 			if (message.type === "console") {
@@ -180,7 +256,14 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
 				if ((level === "log" || level === "info" || level === "warn" || level === "error") && typeof message.text === "string") consoleEntries.push({ level, text: message.text });
 				return;
 			}
-			if (message.type === "complete") return finish({ value: message.value });
+			if (message.type === "complete") {
+				try {
+					assertWorkflowJsonValue(message.value, "return");
+				} catch (error) {
+					return finish({ error: new Error(`Workflow return could not be persisted: ${error instanceof Error ? error.message : String(error)}`) });
+				}
+				return finish({ value: message.value });
+			}
 			if (message.type === "error") return finish({ error: new Error(typeof message.error === "string" ? message.error : "Workflow script failed.") });
 			if (message.type !== "call" || typeof message.callId !== "number" || typeof message.method !== "string" || !isRecord(message.args)) return;
 
@@ -197,8 +280,10 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
 				const known = children.get(keyOrRunId);
 				const target = known?.runId ?? keyOrRunId;
 				trace.push({ operation: "status", key: keyOrRunId, state: "started", ...(known?.runId ? { runId: known.runId } : {}) });
+				traceChanged();
 				respond(options.status(target, childController.signal).then((result) => {
 					trace.push({ operation: "status", key: keyOrRunId, state: result.ok ? "completed" : "failed", ...(result.runId ? { runId: result.runId } : {}), ...(!result.ok ? { error: result.output } : {}) });
+					traceChanged();
 					if (!result.ok) throw new Error(`Status '${keyOrRunId}' failed: ${result.output}`);
 					return result;
 				}));
@@ -221,19 +306,23 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
 			if (existing) {
 				if (existing.fingerprint !== fingerprint) return respond(Promise.reject(new Error(`Duplicate workflow key '${key}' used with incompatible launch params.`)));
 				trace.push({ operation: "run", key, state: "reused" });
+				traceChanged();
 				return respond(existing.promise);
 			}
 
 			const startedAt = Date.now();
 			trace.push({ operation: "run", key, state: "started" });
+			traceChanged();
 			const promise = options.launch(key, { ...params, async: params.async ?? false }, childController.signal).then((result) => {
 				children.set(key, result);
 				trace.push({ operation: "run", key, state: result.ok ? "completed" : "failed", durationMs: Date.now() - startedAt, ...(result.runId ? { runId: result.runId } : {}), ...(!result.ok ? { error: result.output } : {}) });
+				traceChanged();
 				if (!result.ok) throw new Error(`Run '${key}' failed: ${result.output}`);
 				return result;
 			}, (error: unknown) => {
 				const text = error instanceof Error ? error.message : String(error);
 				trace.push({ operation: "run", key, state: "failed", durationMs: Date.now() - startedAt, error: text });
+				traceChanged();
 				throw new Error(`Run '${key}' failed: ${text}`);
 			});
 			launches.set(key, { fingerprint, promise });

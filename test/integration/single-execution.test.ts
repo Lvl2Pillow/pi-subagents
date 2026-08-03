@@ -42,6 +42,7 @@ import {
 } from "../../src/api/delegation.ts";
 import {
 	CHAIN_RUNS_DIR,
+	DIRS,
 	SUBAGENT_DETACH_REQUEST_EVENT,
 	SUBAGENT_DETACH_RESPONSE_EVENT,
 	type SubagentState,
@@ -313,6 +314,7 @@ interface ExecutorToolResult {
 	isError?: boolean;
 	details?: {
 		mode?: string;
+		asyncDir?: string;
 		workflow?: {
 			trace: Array<{
 				operation: string;
@@ -336,6 +338,8 @@ interface ExecutorToolResult {
 		};
 		usageBudget?: { exhausted?: boolean; reason?: string };
 		results?: Array<{
+			finalOutput?: string;
+			artifactPaths?: { outputPath?: string };
 			skipped?: boolean;
 			error?: string;
 			structuredOutput?: unknown;
@@ -454,6 +458,7 @@ describe(
 			initialSpawnState?: NonNullable<SubagentState["subagentSpawns"]>,
 			allowMutatingManagementActions = true,
 			initialAsyncJobs: SubagentState["asyncJobs"] = new Map(),
+			workflowControllers?: Map<string, AbortController>,
 		) {
 			return createSubagentExecutor!({
 				pi: { events: createEventBus(), getSessionName: () => undefined },
@@ -462,6 +467,7 @@ describe(
 					currentSessionId: initialSpawnState?.sessionId ?? null,
 					...(initialSpawnState ? { subagentSpawns: initialSpawnState } : {}),
 					asyncJobs: initialAsyncJobs,
+					...(workflowControllers ? { workflowControllers } : {}),
 					foregroundControls: new Map(),
 					lastForegroundControlId: null,
 				},
@@ -607,6 +613,192 @@ describe(
 			},
 		);
 
+	it("starts workflow scripts asynchronously by default and persists live status", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "async workflow child" });
+		const executor = makeExecutor([makeAgent("echo")]);
+		const runId = `scripted-workflow-async-${Date.now()}`;
+
+		const result = await executor.execute(
+			runId,
+			{ workflowScript: `emit("starting"); await runs.run("work", { agent: "echo", task: "Async work" }); return { answer: 42 };` },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, undefined);
+		assert.equal(result.details.mode, "workflow");
+		assert.equal(result.details.asyncId, runId);
+		assert.match(result.content[0]?.text ?? "", /Async workflow/);
+		const statusPath = path.join(result.details.asyncDir!, "status.json");
+		let status: { state?: string; workflow?: { value?: unknown; emits?: unknown[]; trace?: Array<{ key?: string; state?: string }> } } = {};
+		for (let attempt = 0; attempt < 100; attempt++) {
+			status = JSON.parse(fs.readFileSync(statusPath, "utf-8"));
+			if (status.state === "complete" || status.state === "failed") break;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.equal(status.state, "complete");
+		assert.deepEqual(status.workflow?.value, { answer: 42 });
+		assert.deepEqual(status.workflow?.emits, ["starting"]);
+		assert.ok(status.workflow?.trace?.some((entry) => entry.key === "work" && entry.state === "completed"));
+		const persistedResult = JSON.parse(fs.readFileSync(path.join(DIRS.results, `${runId}.json`), "utf-8")) as { agent?: string; summary?: string; workflow?: { value?: unknown } };
+		assert.equal(persistedResult.agent, "workflow");
+		assert.match(persistedResult.summary ?? "", /Return: \{\n  "answer": 42\n\}/);
+		assert.deepEqual(persistedResult.workflow?.value, { answer: 42 });
+		fs.rmSync(result.details.asyncDir!, { recursive: true, force: true });
+		fs.rmSync(path.join(DIRS.results, `${runId}.json`), { force: true });
+	});
+
+	it("rejects an invalid async workflow usage budget before creating run state", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const asyncJobs: SubagentState["asyncJobs"] = new Map();
+		const executor = makeExecutor([makeAgent("echo")], {}, false, undefined, true, asyncJobs);
+		const runId = `scripted-workflow-invalid-budget-${Date.now()}`;
+
+		const result = await executor.execute(
+			runId,
+			{ workflowScript: `return "unreachable";`, usageBudget: { tokens: { hard: 0 } } },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]?.text ?? "", /usageBudget\.tokens\.hard must be a positive number/);
+		assert.equal(result.details.asyncId, undefined);
+		assert.equal(asyncJobs.has(runId), false);
+		assert.equal(fs.existsSync(path.join(DIRS.async, runId)), false);
+		assert.equal(fs.existsSync(path.join(DIRS.results, `${runId}.json`)), false);
+	});
+
+	it("rejects async child launches from budgeted async workflows", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const executor = makeExecutor([makeAgent("echo")]);
+		const runId = `scripted-workflow-budget-async-child-${Date.now()}`;
+		const started = await executor.execute(
+			runId,
+			{
+				workflowScript: `await runs.run("background", { agent: "echo", task: "Async child", async: true }); return "unreachable";`,
+				usageBudget: { tokens: { hard: 100 } },
+			},
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(started.isError, undefined);
+		assert.equal(started.details.asyncId, runId);
+		const resultPath = path.join(DIRS.results, `${runId}.json`);
+		let persisted: { state?: string; summary?: string; results?: Array<{ success?: boolean; output?: string }> } = {};
+		for (let attempt = 0; attempt < 100; attempt++) {
+			if (fs.existsSync(resultPath)) persisted = JSON.parse(fs.readFileSync(resultPath, "utf-8"));
+			if (persisted.state === "failed") break;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.equal(persisted.state, "failed");
+		assert.match(persisted.summary ?? "", /workflow usageBudget does not support async runs\.run launches/);
+		assert.equal(persisted.results?.length, 1);
+		assert.equal(persisted.results?.[0]?.success, false);
+		assert.match(persisted.results?.[0]?.output ?? "", /workflow usageBudget does not support async runs\.run launches/);
+		assert.equal(mockPi.callCount(), 0);
+		fs.rmSync(started.details.asyncDir!, { recursive: true, force: true });
+		fs.rmSync(resultPath, { force: true });
+	});
+
+	it("persists workflow parent metadata in async child status and result", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "async child done" });
+		const executor = makeExecutor([makeAgent("echo")]);
+		const workflowRunId = `scripted-workflow-parent-${Date.now()}`;
+		const started = await executor.execute(
+			workflowRunId,
+			{ workflowScript: `const child = await runs.run("background", { agent: "echo", task: "Async child", async: true }); return child.runId;` },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+		const workflowResultPath = path.join(DIRS.results, `${workflowRunId}.json`);
+		let childRunId: string | undefined;
+		for (let attempt = 0; attempt < 150; attempt++) {
+			if (fs.existsSync(workflowResultPath)) {
+				const workflowResult = JSON.parse(fs.readFileSync(workflowResultPath, "utf-8")) as { workflow?: { value?: unknown } };
+				if (typeof workflowResult.workflow?.value === "string") { childRunId = workflowResult.workflow.value; break; }
+			}
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.ok(childRunId);
+		const childDir = path.join(DIRS.async, childRunId);
+		const childStatusPath = path.join(childDir, "status.json");
+		let childStatus: { state?: string; parentWorkflowRunId?: string; workflowKey?: string } = {};
+		for (let attempt = 0; attempt < 200; attempt++) {
+			if (fs.existsSync(childStatusPath)) childStatus = JSON.parse(fs.readFileSync(childStatusPath, "utf-8"));
+			if (["complete", "failed", "stopped"].includes(childStatus.state ?? "")) break;
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		assert.equal(childStatus.parentWorkflowRunId, workflowRunId);
+		assert.equal(childStatus.workflowKey, "background");
+		const childResult = JSON.parse(fs.readFileSync(path.join(DIRS.results, `${childRunId}.json`), "utf-8")) as { parentWorkflowRunId?: string; workflowKey?: string };
+		assert.equal(childResult.parentWorkflowRunId, workflowRunId);
+		assert.equal(childResult.workflowKey, "background");
+		fs.rmSync(started.details.asyncDir!, { recursive: true, force: true });
+		fs.rmSync(workflowResultPath, { force: true });
+		fs.rmSync(childDir, { recursive: true, force: true });
+		fs.rmSync(path.join(DIRS.results, `${childRunId}.json`), { force: true });
+	});
+
+	it("stops a live async workflow through its controller", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const controller = new AbortController();
+		const executor = makeExecutor([makeAgent("echo")], {}, false, undefined, true, new Map(), new Map([["workflow-stop", controller]]));
+		const result = await executor.execute(
+			"stop-call",
+			{ action: "stop", id: "workflow-stop" },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+		assert.equal(result.isError, undefined);
+		assert.equal(controller.signal.aborted, true);
+		assert.match(result.content[0]?.text ?? "", /Stop requested for async workflow workflow-stop/);
+	});
+
+	it("reports completed async workflows as not running when stopped after completion", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const runId = `workflow-stop-complete-${Date.now()}`;
+		const asyncDir = path.join(DIRS.async, runId);
+		fs.mkdirSync(asyncDir, { recursive: true });
+		fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({
+			runId,
+			sessionId: "session-123",
+			mode: "workflow",
+			state: "complete",
+			startedAt: Date.now(),
+			lastUpdate: Date.now(),
+			cwd: tempDir,
+			pid: process.pid,
+		}), "utf-8");
+		const asyncJobs: SubagentState["asyncJobs"] = new Map([[runId, {
+			asyncId: runId,
+			asyncDir,
+			cwd: tempDir,
+			status: "complete",
+			mode: "workflow",
+			agents: [],
+			steps: [],
+			startedAt: Date.now(),
+			updatedAt: Date.now(),
+		}]]);
+		const executor = makeExecutor([makeAgent("echo")], {}, false, undefined, true, asyncJobs);
+
+		const result = await executor.execute(
+			"stop-completed-workflow",
+			{ action: "stop", id: runId },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]?.text ?? "", /No running or queued async run was found/);
+		assert.doesNotMatch(result.content[0]?.text ?? "", /reload recovery/);
+		fs.rmSync(asyncDir, { recursive: true, force: true });
+	});
+
 	it("routes workflow script children through ordinary foreground execution", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
 		mockPi.onCall({ output: "scanned auth" });
 		mockPi.onCall({ output: "reviewed auth" });
@@ -615,6 +807,7 @@ describe(
 		const result = await executor.execute(
 			"scripted-workflow",
 			{
+				async: false,
 				workflowScript: `
 					const scan = await runs.run("scan", { agent: "echo", task: "Scan auth" });
 					const review = await runs.run("review", { agent: "echo", task: "Review: " + scan.output });
@@ -1865,10 +2058,10 @@ describe(
 				);
 
 				assert.equal(result.isError, undefined);
-				assert.deepEqual(result.details?.results?.[0]?.structuredOutput, {
-					ok: true,
-					note: "captured",
-				});
+				const child = result.details?.results?.[0];
+				assert.deepEqual(child?.structuredOutput, { ok: true, note: "captured" });
+				assert.match(child?.finalOutput ?? "", /"ok": true/);
+				if (child?.artifactPaths?.outputPath) assert.match(fs.readFileSync(child.artifactPaths.outputPath, "utf-8"), /"note": "captured"/);
 			},
 		);
 

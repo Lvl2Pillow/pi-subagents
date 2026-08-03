@@ -42,6 +42,7 @@ type ResultWatcherDeps = {
 type ResultFileChild = {
 	agent?: string;
 	output?: string;
+	structuredOutput?: unknown;
 	outputState?: SubagentOutputState;
 	error?: string;
 	success?: boolean;
@@ -177,7 +178,8 @@ export function createResultWatcher(
 			const normalizedChildren = attachNestedChildrenToResultChildren(runId, resultChildren.map((result = {}, index): NormalizedResultChild => {
 				const baseOutput = hasResultChildren ? result.output : result.output ?? data.summary;
 				const hasRealOutput = typeof baseOutput === "string" && baseOutput.trim().length > 0;
-				const output = hasRealOutput ? baseOutput : "(no output)";
+				const structuredPreview = result.structuredOutput === undefined ? undefined : JSON.stringify(result.structuredOutput, null, 2).slice(0, 4_000);
+				const output = hasRealOutput ? baseOutput : structuredPreview ? `Structured output:\n${structuredPreview}` : "(no output)";
 				const summary = result.success === false && result.error
 					? `${result.error}${hasRealOutput ? `\n\nOutput:\n${baseOutput}` : ""}`
 					: output;

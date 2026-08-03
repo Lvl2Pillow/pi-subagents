@@ -5,6 +5,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resolveAgentName, type AgentConfig, type AgentScope } from "../../agents/agents.ts";
 import { getArtifactsDir, getChainRunsDir } from "../../shared/artifacts.ts";
+import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
 import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import { executeChain } from "./chain-execution.ts";
@@ -86,6 +87,9 @@ import {
 } from "../shared/worktree.ts";
 import {
 	type AgentProgress,
+	type AsyncJobState,
+	type AsyncStatus,
+	type SubagentRunMode,
 	type AcceptanceInput,
 	type AgentContract,
 	type ArtifactConfig,
@@ -153,6 +157,9 @@ export interface SubagentParamsLike {
 	message?: string;
 	steeringRecovery?: boolean;
 	workflowScript?: string;
+	/** Internal workflow ownership metadata; not part of the public schema. */
+	workflowParentRunId?: string;
+	workflowKey?: string;
 	chain?: ChainStep[];
 	tasks?: TaskParam[];
 	concurrency?: number;
@@ -480,7 +487,7 @@ function applyControlEventToRememberedForegroundRun(state: SubagentState, event:
 	};
 }
 
-function updateRememberedForegroundChild(state: SubagentState, input: { runId: string; mode: "single" | "parallel" | "chain"; cwd: string; sessionId: string | null; index: number; result: SingleResult; events: IntercomEventBus }): void {
+function updateRememberedForegroundChild(state: SubagentState, input: { runId: string; mode: "single" | "parallel" | "chain"; cwd: string; sessionId: string | null; index: number; result: SingleResult; events: IntercomEventBus; notify?: boolean }): void {
 	state.foregroundRuns ??= new Map();
 	const updatedAt = Date.now();
 	let run = state.foregroundRuns.get(input.runId);
@@ -536,7 +543,7 @@ function updateRememberedForegroundChild(state: SubagentState, input: { runId: s
 		: output || input.result.error || "Detached child exited without final output.";
 	// A detached callback may outlive its extension runtime. Stale sessions are
 	// intentionally dropped rather than routed through a replacement runtime.
-	if (!input.sessionId || input.sessionId !== state.currentSessionId) return;
+	if (input.notify === false || !input.sessionId || input.sessionId !== state.currentSessionId) return;
 	input.events.emit(SUBAGENT_FOREGROUND_COMPLETE_EVENT, {
 		id: `${input.runId}:${input.index}`,
 		runId: input.runId,
@@ -560,7 +567,7 @@ function updateRememberedForegroundChild(state: SubagentState, input: { runId: s
 	});
 }
 
-function resolveForegroundResumeTarget(params: SubagentParamsLike, state: SubagentState): { runId: string; mode: "single" | "parallel" | "chain"; state: "complete"; agent: string; index: number; cwd: string; sessionFile: string; model?: string; thinking?: string; launchContractDigest?: string; capabilityCeiling?: ResolvedSubagentCapabilityCeiling } | undefined {
+function resolveForegroundResumeTarget(params: SubagentParamsLike, state: SubagentState): { runId: string; mode: SubagentRunMode; state: "complete"; agent: string; index: number; cwd: string; sessionFile: string; model?: string; thinking?: string; launchContractDigest?: string; capabilityCeiling?: ResolvedSubagentCapabilityCeiling } | undefined {
 	const requested = (params.id ?? params.runId)?.trim();
 	if (!requested || !state.foregroundRuns?.size || !state.currentSessionId) return undefined;
 	const sessionRuns = [...state.foregroundRuns.values()].filter((run) => run.sessionId === state.currentSessionId);
@@ -2217,6 +2224,8 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 			usageBudget: data.usageBudget,
 			configToolBudget: data.configToolBudget,
 			capabilityCeiling: data.capabilityCeiling,
+			parentWorkflowRunId: params.workflowParentRunId,
+			workflowKey: params.workflowKey,
 		});
 	}
 
@@ -3334,7 +3343,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			onDetachedExit: (result) => {
 				try {
 					try {
-						updateRememberedForegroundChild(deps.state, { runId, mode: "single", cwd: effectiveCwd, sessionId: data.parentSessionId, index: 0, result, events: deps.pi.events });
+						updateRememberedForegroundChild(deps.state, { runId, mode: "single", cwd: effectiveCwd, sessionId: data.parentSessionId, index: 0, result, events: deps.pi.events, notify: params.workflowParentRunId === undefined });
 					} catch {
 						// Remembered foreground state is best-effort; run history and cleanup must still complete.
 					}
@@ -3543,12 +3552,130 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			if (invalidMode) {
 				return { content: [{ type: "text", text: "workflowScript is its own execution mode; do not combine it with action, agent, tasks, or chain." }], isError: true, details: { mode: "workflow", results: [] } };
 			}
-			if (requestParams.async === true || requestParams.clarify === true) {
-				return { content: [{ type: "text", text: "workflowScript currently runs in the foreground only; detached durability and clarify UI are deferred." }], isError: true, details: { mode: "workflow", results: [] } };
+			if (requestParams.clarify === true) {
+				return { content: [{ type: "text", text: "workflowScript does not support clarify UI." }], isError: true, details: { mode: "workflow", results: [] } };
 			}
 			const timeout = requestParams.timeoutMs ?? requestParams.maxRuntimeMs ?? DEFAULT_FOREGROUND_TIMEOUT_MS;
 			const workflowUsageBudget = validateUsageBudgetConfig(requestParams.usageBudget ?? deps.config.usageBudget, requestParams.usageBudget ? "usageBudget" : "config.usageBudget");
 			if (workflowUsageBudget.error) return buildRequestedModeError(requestParams, workflowUsageBudget.error);
+			if (requestParams.async !== false) {
+				const workflowRunId = _id;
+				const asyncDir = path.join(DIRS.async, workflowRunId);
+				const resultPath = path.join(DIRS.results, `${workflowRunId}.json`);
+				const statusPath = path.join(asyncDir, "status.json");
+				const eventsPath = path.join(asyncDir, "events.jsonl");
+				const startedAt = Date.now();
+				const currentSessionId = resolveCurrentSessionId(ctx.sessionManager);
+				fs.mkdirSync(asyncDir, { recursive: true });
+				fs.mkdirSync(DIRS.results, { recursive: true });
+				const controller = new AbortController();
+				deps.state.workflowControllers ??= new Map();
+				deps.state.workflowControllers.set(workflowRunId, controller);
+				let status: AsyncStatus = {
+					runId: workflowRunId,
+					sessionId: currentSessionId ?? undefined,
+					mode: "workflow",
+					state: "running",
+					startedAt,
+					lastUpdate: startedAt,
+					deadlineAt: startedAt + timeout,
+					timeoutMs: timeout,
+					cwd: ctx.cwd,
+					pid: process.pid,
+					steps: [],
+					workflow: { trace: [], emits: [], console: [] },
+				};
+				const appendWorkflowEvent = (event: Record<string, unknown>) => fs.appendFileSync(eventsPath, `${JSON.stringify({ ts: Date.now(), runId: workflowRunId, ...event })}\n`, "utf-8");
+				const persist = () => {
+					status.lastUpdate = Date.now();
+					writeAtomicJson(statusPath, status);
+					const job = deps.state.asyncJobs.get(workflowRunId);
+					if (job) {
+						job.status = status.state;
+						job.updatedAt = status.lastUpdate;
+						job.steps = status.steps?.map((step, index) => ({ ...step, index }));
+						job.agents = status.steps?.map((step) => step.agent);
+						job.workflow = status.workflow;
+					}
+				};
+				const workflowJob: AsyncJobState = { asyncId: workflowRunId, asyncDir, cwd: ctx.cwd, status: "running", sessionId: currentSessionId ?? undefined, mode: "workflow", agents: [], steps: [], startedAt, updatedAt: startedAt, timeoutMs: timeout, deadlineAt: startedAt + timeout, workflow: status.workflow };
+				deps.state.asyncJobs.set(workflowRunId, workflowJob);
+				deps.state.fleetJobs ??= new Map();
+				deps.state.fleetJobs.set(workflowRunId, workflowJob);
+				persist();
+				appendWorkflowEvent({ type: "subagent.workflow.started" });
+				const { workflowScript, async: _workflowAsync, ...workflowRequest } = requestParams;
+				void Promise.resolve().then(async () => {
+					const workflowResults: SingleResult[] = [];
+					const { action: _action, agent: _agent, task: _task, tasks: _tasks, chain: _chain, concurrency: _concurrency, foregroundOnly: _foregroundOnly, clarify: _clarify, timeoutMs: _timeoutMs, maxRuntimeMs: _maxRuntimeMs, usageBudget: _usageBudget, ...workflowChildDefaults } = workflowRequest;
+					const updateTrace = (trace: NonNullable<Details["workflow"]>["trace"]) => {
+						status.workflow = { ...(status.workflow ?? { emits: [], console: [] }), trace };
+						for (const entry of trace.filter((candidate) => candidate.operation === "run")) {
+							const existing = status.steps?.find((step) => step.workflowKey === entry.key);
+							if (entry.state === "reused" && existing) continue;
+							const mapped = entry.state === "started" || entry.state === "reused" ? "running" : entry.state === "completed" ? "completed" : "failed";
+							if (existing) {
+								existing.status = mapped;
+								existing.error = entry.error;
+								existing.durationMs = entry.durationMs;
+							} else {
+								status.steps?.push({ agent: entry.key, label: entry.key, workflowKey: entry.key, parentWorkflowRunId: workflowRunId, status: mapped });
+							}
+						}
+						persist();
+						appendWorkflowEvent({ type: "subagent.workflow.trace", trace });
+					};
+					try {
+						const workflow = await runWorkflowScript({
+							script: workflowScript,
+							timeoutMs: timeout,
+							signal: controller.signal,
+							onTrace: updateTrace,
+							onEmit: (emits) => {
+								// Each emit is validated at the host boundary in runWorkflowScript before onEmit fires.
+								status.workflow = { ...(status.workflow ?? { trace: [], console: [] }), emits };
+								persist();
+								appendWorkflowEvent({ type: "subagent.workflow.emit", value: emits.at(-1) });
+							},
+							launch: async (key, childParams, workflowSignal) => {
+								if (workflowUsageBudget.budget && childParams.async === true) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, "workflow usageBudget does not support async runs.run launches."));
+								const budgetState = usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults));
+								if (budgetState?.exhausted) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, usageBudgetExceededMessage(budgetState)));
+								const result = await execute(randomUUID(), { ...workflowChildDefaults, ...childParams, workflowParentRunId: workflowRunId, workflowKey: key } as SubagentParamsLike, workflowSignal, undefined, ctx);
+								workflowResults.push(...result.details.results);
+								const child = workflowChildResult(key, result);
+								if (result.details.asyncId) {
+									const childJob = deps.state.asyncJobs.get(result.details.asyncId);
+									if (childJob) { childJob.parentWorkflowRunId = workflowRunId; childJob.workflowKey = key; }
+								}
+								return child;
+							},
+							status: async (keyOrRunId, workflowSignal) => workflowChildResult(keyOrRunId, await execute(randomUUID(), { action: "status", id: keyOrRunId }, workflowSignal, undefined, ctx)),
+						});
+						const returnPreview = formatWorkflowValue(workflow.value).slice(0, 1_000);
+						const emitPreview = workflow.emits.length > 0 ? ` Emitted: ${workflow.emits.map(formatWorkflowValue).join(", ").slice(0, 1_000)}` : "";
+						const summary = `Workflow completed with ${workflow.children.length} child run(s). Return: ${returnPreview}${emitPreview} Trace: ${workflow.trace.length} event(s).`;
+						const workflowUsage = sumResultsUsage(workflowResults);
+						status = { ...status, state: "complete", endedAt: Date.now(), workflow: { value: workflow.value, trace: workflow.trace, emits: workflow.emits, console: workflow.console }, totalTokens: { input: workflowUsage.input, output: workflowUsage.output, total: workflowUsage.input + workflowUsage.output }, totalCost: sumResultsCost(workflowResults) };
+						persist();
+						appendWorkflowEvent({ type: "subagent.workflow.completed", state: "complete" });
+						writeAtomicJson(resultPath, { id: workflowRunId, runId: workflowRunId, agent: "workflow", mode: "workflow", success: true, state: "complete", summary, output: summary, results: workflow.children.map((child) => ({ agent: child.key, output: child.output, outputState: child.output.trim() || child.structuredOutput !== undefined ? "present" : "absent", structuredOutput: child.structuredOutput, success: child.ok, ...(child.artifactPaths[0] ? { artifactPaths: { outputPath: child.artifactPaths[0] } } : {}) })), workflow: status.workflow, asyncDir, cwd: ctx.cwd, sessionId: currentSessionId, timestamp: Date.now(), durationMs: Date.now() - startedAt });
+					} catch (error) {
+						const partial = error instanceof WorkflowScriptError ? error.partial : { trace: [], emits: [], console: [], children: [] };
+						const stopped = controller.signal.aborted;
+						status = { ...status, state: stopped ? "stopped" : "failed", stopped: stopped || undefined, error: error instanceof Error ? error.message : String(error), endedAt: Date.now(), workflow: { trace: partial.trace, emits: partial.emits, console: partial.console } };
+						persist();
+						appendWorkflowEvent({ type: "subagent.workflow.completed", state: status.state, error: status.error });
+						writeAtomicJson(resultPath, { id: workflowRunId, runId: workflowRunId, agent: "workflow", mode: "workflow", success: false, state: status.state, summary: status.error, error: status.error, stopped: status.stopped, results: partial.children.map((child) => ({ agent: child.key, output: child.output, outputState: child.output.trim() || child.structuredOutput !== undefined ? "present" : "absent", structuredOutput: child.structuredOutput, success: child.ok, ...(child.artifactPaths[0] ? { artifactPaths: { outputPath: child.artifactPaths[0] } } : {}) })), workflow: status.workflow, asyncDir, cwd: ctx.cwd, sessionId: currentSessionId, timestamp: Date.now(), durationMs: Date.now() - startedAt });
+					} finally {
+						deps.state.workflowControllers?.delete(workflowRunId);
+					}
+				});
+				return {
+					content: [{ type: "text", text: formatAsyncStartedMessage(`Async workflow [${workflowRunId}]`, ctx.hasUI === true) }],
+					details: { mode: "workflow", runId: workflowRunId, asyncId: workflowRunId, asyncDir, results: [] },
+				};
+			}
 			const { workflowScript: _workflowScript, action: _action, agent: _agent, task: _task, tasks: _tasks, chain: _chain, concurrency: _concurrency, async: _async, foregroundOnly: _foregroundOnly, clarify: _clarify, timeoutMs: _timeoutMs, maxRuntimeMs: _maxRuntimeMs, usageBudget: _usageBudget, ...workflowChildDefaults } = requestParams;
 			const workflowResults: SingleResult[] = [];
 			try {
@@ -3560,7 +3687,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						if (workflowUsageBudget.budget && childParams.async === true) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, "workflow usageBudget does not support async runs.run launches."));
 						const budgetState = usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults));
 						if (budgetState?.exhausted) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, usageBudgetExceededMessage(budgetState)));
-						const result = await execute(randomUUID(), { ...workflowChildDefaults, ...childParams } as SubagentParamsLike, workflowSignal, undefined, ctx);
+						const result = await execute(randomUUID(), { ...workflowChildDefaults, ...childParams, workflowParentRunId: _id, workflowKey: key } as SubagentParamsLike, workflowSignal, undefined, ctx);
 						workflowResults.push(...result.details.results);
 						return workflowChildResult(key, result);
 					},
@@ -3885,6 +4012,11 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			}
 			if (action === "stop") {
 				const targetRunId = paramsWithResolvedCwd.runId ?? paramsWithResolvedCwd.id;
+				const workflowController = targetRunId ? deps.state.workflowControllers?.get(targetRunId) : undefined;
+				if (workflowController) {
+					workflowController.abort(new Error("Workflow stopped by user."));
+					return { content: [{ type: "text", text: `Stop requested for async workflow ${targetRunId}.` }], details: { mode: "management", results: [] } };
+				}
 				let resolved: ResolvedSubagentRunId | undefined;
 				if (paramsWithResolvedCwd.dir) {
 					try {
@@ -3904,6 +4036,12 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 				}
 				if (resolved?.kind === "nested") return { content: [{ type: "text", text: "action='stop' supports current-session top-level async runs only." }], isError: true, details: { mode: "management", results: [] } };
 				if (resolved?.kind === "foreground") return { content: [{ type: "text", text: "action='stop' supports async runs only. Use action='interrupt' for foreground runs." }], isError: true, details: { mode: "management", results: [] } };
+				if (resolved?.kind === "async") {
+					const existingStatus = readStatus(resolved.location.asyncDir ?? "");
+					if (existingStatus?.mode === "workflow" && existingStatus.state === "running") {
+						return { content: [{ type: "text", text: `Workflow ${resolved.id} is not controlled by this extension runtime; reload recovery cannot stop it safely.` }], isError: true, details: { mode: "management", results: [] } };
+					}
+				}
 				const stopResult = stopAsyncRun(
 					deps.state,
 					resolved?.kind === "async" ? resolved.id : targetRunId,

@@ -168,6 +168,8 @@ interface SubagentRunConfig {
 	launchResolvedExtensions?: LaunchResolvedChildExtensionsV1;
 	mode?: SubagentRunMode;
 	runnerProcessInstanceId?: string;
+	parentWorkflowRunId?: string;
+	workflowKey?: string;
 }
 
 interface StepResult {
@@ -1991,6 +1993,8 @@ async function runSubagent(
 		...(config.launchContractDigest ? { launchContractDigest: config.launchContractDigest } : {}),
 		...(config.launchResolvedExtensions ? { launchResolvedExtensions: config.launchResolvedExtensions } : {}),
 		...(config.capabilityCeiling ? { capabilityCeiling: config.capabilityCeiling } : {}),
+		...(config.parentWorkflowRunId ? { parentWorkflowRunId: config.parentWorkflowRunId } : {}),
+		...(config.workflowKey ? { workflowKey: config.workflowKey } : {}),
 		...(config.runnerProcessInstanceId ? { processTerminal: { version: 1 as const, state: "pending" as const, runId: id, runnerProcessInstanceId: config.runnerProcessInstanceId } } : {}),
 		steps: initialStatusSteps,
 		artifactsDir,
@@ -4340,6 +4344,8 @@ async function runSubagent(
 			parallelHandoff: statusPayload.parallelHandoff,
 			capabilityCeiling: statusPayload.capabilityCeiling,
 			capabilityAudit: statusPayload.capabilityAudit,
+			...(config.parentWorkflowRunId ? { parentWorkflowRunId: config.parentWorkflowRunId } : {}),
+			...(config.workflowKey ? { workflowKey: config.workflowKey } : {}),
 			exitCode: checkpointRejected || stopped || timedOut || turnBudgetExceeded || usageBudgetExceeded ? 1 : interrupted || results.every((r) => r.success) ? 0 : 1,
 			timestamp: runEndedAt,
 			durationMs: runEndedAt - overallStartTime,

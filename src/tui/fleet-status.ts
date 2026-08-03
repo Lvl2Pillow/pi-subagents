@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type EditorComponent, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { formatModelThinking } from "../shared/formatters.ts";
 import type { AsyncJobStep, FleetViewPlacement, SubagentState } from "../shared/types.ts";
+import { formatWorkflowJsonPreview } from "../workflows/scripted-workflow.ts";
 
 export const FLEET_STATUS_WIDGET_KEY = "subagent-fleet-status";
 
@@ -93,6 +94,17 @@ export function collectFleetStatusEntries(state: SubagentState): FleetStatusEntr
 	for (const job of state.asyncJobs.values()) {
 		if (!isActiveState(job.status)) continue;
 		const startedAt = job.startedAt ?? job.updatedAt ?? Date.now();
+		if (job.mode === "workflow") {
+			const latestEmit = job.workflow?.emits?.length ? formatWorkflowJsonPreview(job.workflow.emits.at(-1), 120) : undefined;
+			entries.push({
+				key: `async:${job.asyncId}`,
+				agent: "workflow",
+				description: latestEmit !== undefined ? `latest emit: ${latestEmit}` : job.description,
+				startedAt,
+				tokens: job.totalTokens?.total ?? 0,
+			});
+			continue;
+		}
 		const steps: AsyncJobStep[] | undefined = job.steps?.length
 			? job.steps
 			: job.agents?.map((agent, index) => {

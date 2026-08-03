@@ -205,6 +205,8 @@ interface AsyncSingleParams {
 	configToolBudget?: ResolvedToolBudget;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
 	allowZeroToolBudget?: boolean;
+	parentWorkflowRunId?: string;
+	workflowKey?: string;
 }
 
 interface AsyncExecutionResult {
@@ -1356,6 +1358,8 @@ export function executeAsyncSingle(
 				resultMode: "single",
 				launchContractDigest,
 				launchResolvedExtensions,
+				...(params.parentWorkflowRunId ? { parentWorkflowRunId: params.parentWorkflowRunId } : {}),
+				...(params.workflowKey ? { workflowKey: params.workflowKey } : {}),
 				...(params.revivalLease ? { revivalLease: params.revivalLease } : {}),
 				nestedRoute: nestedRoute ?? inheritedNestedRoute,
 				nestedSelf: inheritedNestedRoute && nestedAddress ? {
@@ -1425,6 +1429,8 @@ export function executeAsyncSingle(
 			asyncDir,
 			launchContractDigest,
 			launchResolvedExtensions,
+			...(params.parentWorkflowRunId ? { parentWorkflowRunId: params.parentWorkflowRunId } : {}),
+			...(params.workflowKey ? { workflowKey: params.workflowKey } : {}),
 			...(timeoutMs !== undefined ? { timeoutMs, deadlineAt } : {}),
 			...(initialTurnBudget ? { turnBudget: initialTurnBudget } : {}),
 			...(initialUsageBudget ? { usageBudget: initialUsageBudget } : {}),

@@ -90,7 +90,7 @@ export interface ChainCheckpointState {
 
 export interface WorkflowGraphSnapshot {
 	runId: string;
-	mode: "chain" | "parallel" | "single";
+	mode: SubagentRunMode;
 	phases: Array<{ title: string; nodeIds: string[] }>;
 	nodes: WorkflowGraphNode[];
 	currentNodeId?: string;
@@ -254,8 +254,8 @@ export interface ControlEvent {
 export type SubagentResultStatus =
 	"completed" | "failed" | "paused" | "stopped" | "detached";
 export type SubagentOutputState = "present" | "absent" | "unknown";
-export type SubagentRunMode = "single" | "parallel" | "chain";
-export type SubagentResultMode = SubagentRunMode | "workflow";
+export type SubagentRunMode = "single" | "parallel" | "chain" | "workflow";
+export type SubagentResultMode = SubagentRunMode;
 
 export interface ParallelHandoffPatch {
 	path: string;
@@ -1050,6 +1050,7 @@ export interface Details {
 	/** Original launch contract whose persisted session is being revived. */
 	sourceLaunchContractDigest?: string;
 	workflow?: {
+		value?: unknown;
 		trace: Array<{
 			operation: "run" | "status";
 			key: string;
@@ -1287,6 +1288,9 @@ export interface AsyncStatus {
 	launchResolvedExtensions?: LaunchResolvedChildExtensionsV1;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
 	capabilityAudit?: SubagentCapabilityAudit;
+	workflow?: Details["workflow"];
+	parentWorkflowRunId?: string;
+	workflowKey?: string;
 	steps?: Array<{
 		agent: string;
 		/** Resolved launch context for this child step. */
@@ -1295,6 +1299,8 @@ export interface AsyncStatus {
 		description?: string;
 		phase?: string;
 		label?: string;
+		workflowKey?: string;
+		parentWorkflowRunId?: string;
 		outputName?: string;
 		structured?: boolean;
 		checkpoint?: ChainCheckpointState;
@@ -1429,6 +1435,9 @@ export interface AsyncJobState {
 	controlEventCursor?: number;
 	nestedRoute?: NestedRouteInfo;
 	nestedChildren?: NestedRunSummary[];
+	parentWorkflowRunId?: string;
+	workflowKey?: string;
+	workflow?: Details["workflow"];
 }
 
 export interface ForegroundResumeChild {
@@ -1575,6 +1584,8 @@ export interface SubagentState {
 	};
 	/** Persistent-chat registry: long-lived subagents plus the current input target. */
 	persistent?: PersistentChatStore;
+	/** Live in-process workflow controllers. Durable status remains on disk after settlement. */
+	workflowControllers?: Map<string, AbortController>;
 }
 
 // ============================================================================

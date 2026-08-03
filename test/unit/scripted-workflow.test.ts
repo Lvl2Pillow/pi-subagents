@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { runWorkflowScript, WorkflowScriptError } from "../../src/workflows/scripted-workflow.ts";
+import { formatWorkflowJsonPreview, runWorkflowScript, WorkflowScriptError } from "../../src/workflows/scripted-workflow.ts";
 
 describe("scripted workflow runtime", () => {
-	it("runs keyed children, captures output, and exposes no host capabilities", async () => {
+	it("runs keyed children, streams progress, and exposes no host capabilities", async () => {
 		const launches: Array<{ key: string; params: Record<string, unknown> }> = [];
+		const traceSnapshots: number[] = [];
+		const emitSnapshots: number[] = [];
 		const result = await runWorkflowScript({
+			onTrace: (trace) => traceSnapshots.push(trace.length),
+			onEmit: (emits) => emitSnapshots.push(emits.length),
 			script: `
 				if (typeof process !== "undefined" || typeof require !== "undefined") throw new Error("host globals leaked");
 				const scan = await runs.run("scan", { agent: "scout", task: "find targets" });
@@ -19,7 +23,7 @@ describe("scripted workflow runtime", () => {
 				launches.push({ key, params });
 				return key === "scan"
 					? { key, ok: true, runId: "run-scan", output: "targets", structuredOutput: { items: ["a", "b"] }, artifactPaths: ["/tmp/scan.json"], results: [] }
-					: { key, ok: true, runId: `run-${key}`, output: `reviewed ${params.task}`, artifactPaths: [`/tmp/${key}.md`], results: [] };
+					: { key, ok: true, runId: `run-${key}-complete`, output: `reviewed ${params.task}`, artifactPaths: [`/tmp/${key}.md`], results: [] };
 			},
 			async status(keyOrRunId) {
 				return { key: keyOrRunId, ok: true, output: "complete", artifactPaths: [] };
@@ -30,8 +34,10 @@ describe("scripted workflow runtime", () => {
 		assert.equal(launches.every(({ params }) => params.async === false), true);
 		assert.deepEqual(result.emits, [{ count: 2 }]);
 		assert.deepEqual(result.console, [{ level: "log", text: "reviewed 2" }]);
-		assert.match(JSON.stringify(result.value), /run review-a; id=run-review-a; artifacts=\/tmp\/review-a\.md/);
+		assert.match(JSON.stringify(result.value), /run review-a; id=run-review-a-complete; artifacts=\/tmp\/review-a\.md/);
 		assert.equal(result.trace.filter((entry) => entry.state === "completed").length, 3);
+		assert.ok(traceSnapshots.length >= 6);
+		assert.deepEqual(emitSnapshots, [1]);
 	});
 
 	it("rejects a duplicate key with incompatible params", async () => {
@@ -64,6 +70,95 @@ describe("scripted workflow runtime", () => {
 		});
 		assert.equal(result.value, "done");
 		assert.equal(childAborted, true);
+	});
+
+	it("rejects non-JSON-safe emitted values without persisting them", async () => {
+		const invalidScripts = [
+			`emit(undefined);`,
+			`emit(NaN);`,
+			`emit(Infinity);`,
+			`emit(new Map([["a", 1]]));`,
+			`emit(new Set([1]));`,
+			`emit(new (class Value { constructor() { this.ok = true; } })());`,
+			`emit(new (class Object { constructor() { this.ok = true; } })());`,
+			`emit(() => true);`,
+			`emit(Symbol("value"));`,
+			`const value = {}; value.self = value; emit(value);`,
+			`emit(1n);`,
+		];
+		for (const script of invalidScripts) {
+			await assert.rejects(
+				runWorkflowScript({
+					script,
+					timeoutMs: 2_000,
+					async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [], results: [] }; },
+					async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+				}),
+				(error: unknown) => error instanceof WorkflowScriptError && error.partial.emits.length === 0,
+			);
+		}
+	});
+
+	it("rejects non-JSON-safe workflow return values", async () => {
+		const invalidScripts = [
+			`return new Map([["a", 1]]);`,
+			`return NaN;`,
+			`return 1n;`,
+			`return new (class Object { constructor() { this.ok = true; } })();`,
+			`const value = {}; value.self = value; return value;`,
+			`return () => true;`,
+			`return Symbol("value");`,
+		];
+		for (const script of invalidScripts) {
+			await assert.rejects(
+				runWorkflowScript({
+					script,
+					timeoutMs: 2_000,
+					async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [], results: [] }; },
+					async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+				}),
+				(error: unknown) => error instanceof WorkflowScriptError && /return/.test(error.message),
+			);
+		}
+	});
+
+	it("normalizes omitted and explicit undefined workflow returns to null", async () => {
+		for (const script of [`await Promise.resolve();`, `return undefined;`]) {
+			const result = await runWorkflowScript({
+				script,
+				timeoutMs: 2_000,
+				async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [], results: [] }; },
+				async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			});
+			assert.equal(result.value, null);
+		}
+	});
+
+	it("accepts a JSON-safe workflow return value", async () => {
+		const result = await runWorkflowScript({
+			script: `return { ok: true, values: [1, "two", null] };`,
+			timeoutMs: 2_000,
+			async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [], results: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		assert.deepEqual(result.value, { ok: true, values: [1, "two", null] });
+	});
+
+	it("formats persisted JSON values without assuming stringify returns a string", () => {
+		assert.equal(formatWorkflowJsonPreview(undefined, 120), undefined);
+		assert.equal(formatWorkflowJsonPreview(NaN, 120), undefined);
+		assert.equal(formatWorkflowJsonPreview(new Map(), 120), undefined);
+		assert.equal(formatWorkflowJsonPreview({ stage: ["review", 2] }, 120), '{"stage":["review",2]}');
+	});
+
+	it("accepts JSON-safe object and array emits", async () => {
+		const result = await runWorkflowScript({
+			script: `emit({ ok: true, values: [1, "two", null] }); return "done";`,
+			timeoutMs: 2_000,
+			async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [], results: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		assert.deepEqual(result.emits, [{ ok: true, values: [1, "two", null] }]);
 	});
 
 	it("terminates scripts and aborts an in-flight child at the controller timeout", async () => {
