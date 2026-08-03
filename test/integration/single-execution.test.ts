@@ -4847,7 +4847,7 @@ describe(
 			assert.match(result.finalOutput ?? "", /final wrapped output/);
 		});
 
-		it("defers a foreground hard turn limit through active tool work and aborts at the next assistant boundary", async () => {
+		it("preserves a clean foreground completion after turn-budget work defers", async () => {
 			mockPi.onCall({
 				steps: [
 					{
@@ -4874,7 +4874,6 @@ describe(
 				currentTool?: string;
 				status?: string;
 			}> = [];
-
 			const result = await runSync(
 				tempDir,
 				agents,
@@ -4922,8 +4921,9 @@ describe(
 			assert.equal(duringTool.turnBudgetExceeded, undefined);
 			assert.equal(duringTool.error, undefined);
 			assert.equal(duringTool.status, "running");
-			assert.equal(result.turnBudgetExceeded, true);
-			assert.equal(result.turnBudget?.outcome, "exceeded");
+			assert.equal(result.exitCode, 0);
+			assert.equal(result.turnBudgetExceeded, undefined);
+			assert.equal(result.turnBudget?.outcome, "wrap-up-requested");
 			assert.equal(result.turnBudget?.turnCount, 2);
 			assert.match(result.finalOutput ?? "", /safe assistant boundary reached/);
 			assert.ok(
