@@ -8,15 +8,16 @@ export interface SubagentControlMessageDetails {
 	event: ControlEvent;
 	source?: "foreground" | "async";
 	asyncDir?: string;
+	childIntercomTarget?: string;
 	noticeText?: string;
+}
+
+export function controlNoticeTarget(details: SubagentControlMessageDetails): string | undefined {
+	return details.childIntercomTarget;
 }
 
 export function formatSubagentControlNotice(details: SubagentControlMessageDetails, content?: string): string {
 	return details.noticeText ?? content ?? formatControlNoticeMessage(details.event);
-}
-
-function noticeTimerKey(details: SubagentControlMessageDetails): string {
-	return `${details.event.runId}:${controlNotificationKey(details.event)}`;
 }
 
 export function clearPendingForegroundControlNotices(state: SubagentState, runId?: string): void {
@@ -34,6 +35,7 @@ function deliverControlNotice(input: {
 	visibleControlNotices: Set<string>;
 	details: SubagentControlMessageDetails;
 }): void {
+	const childIntercomTarget = controlNoticeTarget(input.details);
 	const key = controlNotificationKey(input.details.event);
 	if (input.visibleControlNotices.has(key)) return;
 	input.visibleControlNotices.add(key);
@@ -43,18 +45,10 @@ function deliverControlNotice(input: {
 			customType: SUBAGENT_CONTROL_MESSAGE_TYPE,
 			content: noticeText,
 			display: true,
-			details: { ...input.details, noticeText },
+			details: { ...input.details, childIntercomTarget, noticeText },
 		},
 		{ triggerTurn: input.details.source !== "foreground" },
 	);
-}
-
-function isForegroundNoticeStillActionable(state: SubagentState, details: SubagentControlMessageDetails): boolean {
-	const control = state.foregroundControls.get(details.event.runId);
-	if (!control) return false;
-	if (control.currentAgent && control.currentAgent !== details.event.agent) return false;
-	if (details.event.index !== undefined && control.currentIndex !== details.event.index) return false;
-	return control.currentActivityState === "needs_attention";
 }
 
 export function handleSubagentControlNotice(input: {
@@ -62,24 +56,13 @@ export function handleSubagentControlNotice(input: {
 	state: SubagentState;
 	visibleControlNotices: Set<string>;
 	details: SubagentControlMessageDetails;
-	foregroundDelayMs?: number;
 }): void {
 	if (!input.details?.event || input.details.event.type === "active_long_running") return;
-	if (input.details.source !== "foreground") {
-		deliverControlNotice(input);
+	if (input.details.source === "foreground") {
+		// A foreground tool blocks Pi from displaying this message. The run can
+		// finish before Pi flushes it, and queued messages cannot be withdrawn.
+		// Foreground control remains available through the live tool and fleet state.
 		return;
 	}
-
-	const pending = input.state.pendingForegroundControlNotices ?? new Map<string, ReturnType<typeof setTimeout>>();
-	input.state.pendingForegroundControlNotices = pending;
-	const timerKey = noticeTimerKey(input.details);
-	const existing = pending.get(timerKey);
-	if (existing) clearTimeout(existing);
-	const timer = setTimeout(() => {
-		pending.delete(timerKey);
-		if (!isForegroundNoticeStillActionable(input.state, input.details)) return;
-		deliverControlNotice(input);
-	}, input.foregroundDelayMs ?? 1000);
-	timer.unref?.();
-	pending.set(timerKey, timer);
+	deliverControlNotice(input);
 }
