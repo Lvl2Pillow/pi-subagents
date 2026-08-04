@@ -41,6 +41,31 @@ describe("scripted workflow runtime", () => {
 		assert.deepEqual(emitSnapshots, [1]);
 	});
 
+	it("omits undefined child result fields before a script returns them", async () => {
+		const result = await runWorkflowScript({
+			script: `return await runs.run("artifact-only", { agent: "worker", task: "write output" });`,
+			timeoutMs: 2_000,
+			async launch(key) {
+				return {
+					key,
+					ok: true,
+					output: "Saved output.",
+					artifactPaths: ["/tmp/output.md"],
+					results: [{ messages: undefined, savedOutputPath: "/tmp/output.md" }],
+				};
+			},
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+
+		assert.deepEqual(result.value, {
+			key: "artifact-only",
+			ok: true,
+			output: "Saved output.",
+			artifactPaths: ["/tmp/output.md"],
+			results: [{ savedOutputPath: "/tmp/output.md" }],
+		});
+	});
+
 	it("passes per-child worktree controls through runs.run and runs.all", async () => {
 		const launches: Array<{ key: string; worktree: unknown }> = [];
 		await runWorkflowScript({

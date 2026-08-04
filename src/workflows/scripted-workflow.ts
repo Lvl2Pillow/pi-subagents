@@ -152,6 +152,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function omitUndefinedWorkflowValues(value: unknown, seen = new Set<object>()): unknown {
+	if (value === null || typeof value !== "object") return value;
+	if (seen.has(value)) return value;
+	seen.add(value);
+	const normalized = Array.isArray(value)
+		? value.map((entry) => entry === undefined ? null : omitUndefinedWorkflowValues(entry, seen))
+		: isRecord(value)
+			? Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => entry === undefined ? [] : [[key, omitUndefinedWorkflowValues(entry, seen)]]))
+			: value;
+	seen.delete(value);
+	return normalized;
+}
+
 export function assertWorkflowJsonValue(value: unknown, path = "value", seen = new Set<object>()): void {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return;
 	if (typeof value === "number") {
@@ -276,7 +289,7 @@ export async function runWorkflowScript(options: RunWorkflowScriptOptions): Prom
 
 			const respond = (promise: Promise<WorkflowScriptChildResult>) => {
 				void promise.then(
-					(value) => worker.postMessage({ type: "response", callId: message.callId, ok: true, value }),
+					(value) => worker.postMessage({ type: "response", callId: message.callId, ok: true, value: omitUndefinedWorkflowValues(value) }),
 					(error: unknown) => worker.postMessage({ type: "response", callId: message.callId, ok: false, error: error instanceof Error ? error.message : String(error) }),
 				);
 			};
