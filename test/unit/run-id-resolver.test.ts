@@ -21,7 +21,6 @@ function stateWithForeground(id: string): SubagentState {
 		foregroundRuns: new Map(),
 		foregroundControls: new Map([[id, { runId: id, mode: "single", startedAt: 1, updatedAt: 1 }]]),
 		lastForegroundControlId: id,
-		pendingForegroundControlNotices: new Map(),
 		cleanupTimers: new Map(),
 		lastUiContext: null,
 		poller: null,

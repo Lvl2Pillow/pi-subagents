@@ -20,16 +20,6 @@ export function formatSubagentControlNotice(details: SubagentControlMessageDetai
 	return details.noticeText ?? content ?? formatControlNoticeMessage(details.event);
 }
 
-export function clearPendingForegroundControlNotices(state: SubagentState, runId?: string): void {
-	const pending = state.pendingForegroundControlNotices;
-	if (!pending) return;
-	for (const [key, timer] of pending) {
-		if (runId !== undefined && !key.startsWith(`${runId}:`)) continue;
-		clearTimeout(timer);
-		pending.delete(key);
-	}
-}
-
 function deliverControlNotice(input: {
 	pi: Pick<ExtensionAPI, "sendMessage">;
 	visibleControlNotices: Set<string>;
