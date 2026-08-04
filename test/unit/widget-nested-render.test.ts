@@ -63,9 +63,26 @@ describe("nested widget rendering", () => {
 		});
 		const collapsed = buildWidgetLines([job(root)], theme as any, 160, false).join("\n");
 		assert.match(collapsed, /parallel-owner · running/);
-		assert.match(collapsed, /one · complete · gpt-5.6-luna · thinking medium/);
-		assert.match(collapsed, /four · running/);
+		for (const [agent, state] of [["one", "complete"], ["two", "running"], ["three", "running"], ["four", "running"]] as const) {
+			const line = collapsed.split("\n").find((candidate) => candidate.includes(` ${agent} ·`));
+			assert.ok(line);
+			assert.match(line!, /\[\d{2}:\d{2}:\d{2}\] /);
+			assert.match(line!, /gpt-5.6-luna/);
+			assert.match(line!, /thinking medium/);
+			assert.match(line!, new RegExp(state));
+		}
 		assert.doesNotMatch(collapsed, /five · running/);
+
+		const chain = nested("chain-owner", "root-run", "running", {
+			mode: "chain",
+			steps: ["first", "second"].map((agent) => ({ agent, status: "running" as const })),
+		});
+		const chainCollapsed = buildWidgetLines([job(chain)], theme as any, 160, false).join("\n");
+		for (const agent of ["first", "second"]) {
+			const line = chainCollapsed.split("\n").find((candidate) => candidate.includes(` ${agent} ·`));
+			assert.ok(line);
+			assert.match(line!, /\[\d{2}:\d{2}:\d{2}\] /);
+		}
 		assert.match(collapsed, /\+1 more nested leaves/);
 		assert.equal((collapsed.match(/thinking medium/g) ?? []).length, 4);
 	});

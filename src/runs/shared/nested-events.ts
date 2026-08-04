@@ -390,6 +390,36 @@ function terminal(state: NestedRunState): boolean {
 	return state === "complete" || state === "failed" || state === "paused" || state === "stopped";
 }
 
+function mergeBoundedChildren(existing: NestedRunSummary[] | undefined, incoming: NestedRunSummary[] | undefined): NestedRunSummary[] | undefined {
+	if (incoming === undefined) return existing?.slice(0, MAX_CHILDREN);
+	const incomingById = new Map(incoming.map((child) => [child.id, child]));
+	const merged = (existing ?? []).map((child) => incomingById.get(child.id) ?? child);
+	for (const child of incoming) {
+		if (!existing?.some((prior) => prior.id === child.id)) merged.push(child);
+	}
+	return merged.slice(0, MAX_CHILDREN);
+}
+
+function mergeStepSummary(existing: NestedStepSummary | undefined, incoming: NestedStepSummary): NestedStepSummary {
+	if (!existing || existing.agent !== incoming.agent) return { ...incoming, ...(incoming.children ? { children: incoming.children.slice(0, MAX_CHILDREN) } : {}) };
+	const metadata = { ...existing } as Partial<NestedStepSummary>;
+	delete metadata.status;
+	delete metadata.activityState;
+	delete metadata.lastActivityAt;
+	delete metadata.currentTool;
+	delete metadata.currentToolStartedAt;
+	delete metadata.currentPath;
+	delete metadata.turnCount;
+	delete metadata.toolCount;
+	delete metadata.children;
+	const children = mergeBoundedChildren(existing.children, incoming.children);
+	return {
+		...metadata,
+		...incoming,
+		...(children ? { children } : {}),
+	};
+}
+
 function mergeSummary(existing: NestedRunSummary | undefined, event: NestedEventRecord): NestedRunSummary {
 	const incomingState = event.type === "subagent.nested.completed" && event.child.state === "running" ? "complete" : event.child.state;
 	const incoming = { ...event.child, state: incomingState, lastUpdate: event.child.lastUpdate ?? event.ts };
@@ -399,7 +429,21 @@ function mergeSummary(existing: NestedRunSummary | undefined, event: NestedEvent
 	if (incomingUpdate < existingUpdate) return existing;
 	if (terminal(existing.state) && !terminal(incoming.state)) return existing;
 	if (terminal(existing.state) && terminal(incoming.state) && incomingUpdate === existingUpdate) return existing;
-	return { ...existing, ...incoming, state: incoming.state, lastUpdate: Math.max(existingUpdate, incomingUpdate) };
+	const existingSteps = existing.steps ?? [];
+	const incomingSteps = incoming.steps;
+	const steps = incomingSteps === undefined
+		? existing.steps
+		: Array.from({ length: Math.min(MAX_STEPS, Math.max(existingSteps.length, incomingSteps.length)) }, (_, index) =>
+			incomingSteps[index] ? mergeStepSummary(existingSteps[index], incomingSteps[index]!) : existingSteps[index]!).filter((step): step is NestedStepSummary => Boolean(step));
+	const children = mergeBoundedChildren(existing.children, incoming.children);
+	return {
+		...existing,
+		...incoming,
+		...(steps ? { steps } : {}),
+		...(children ? { children } : {}),
+		state: incoming.state,
+		lastUpdate: Math.max(existingUpdate, incomingUpdate),
+	};
 }
 
 function attachChild(children: NestedRunSummary[], event: NestedEventRecord): NestedRunSummary[] {

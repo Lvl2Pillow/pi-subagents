@@ -138,8 +138,7 @@ describe("renderSubagentResult fork indicator", () => {
 				}],
 			},
 		}, { expanded: false }, theme).render(160).join("\n");
-		assert.match(compact, /↳ \[\d{2}:\d{2}:\d{2}\] \+1 nested run \(1 complete\)/);
-		assert.doesNotMatch(compact, /compact-terminal-child · complete/);
+		assert.match(compact, /↳ └─ \[\d{2}:\d{2}:\d{2}\] . compact-terminal-child · complete · Done/);
 	});
 	it("collapses multiline structured management output to a first-line summary", () => {
 		const output = `\n${"Managed agents: ".padEnd(220, "x")}\n- reviewer\n- writer`;
@@ -251,7 +250,7 @@ describe("renderSubagentResult fork indicator", () => {
 		}, { expanded: false }, theme);
 
 		const text = widget.render(120).join("\n");
-		assert.match(text, /↳ \[\d{2}:\d{2}:\d{2}\] \+1 nested run \(1 running\)/);
+		assert.match(text, /↳ └─ \[\d{2}:\d{2}:\d{2}\] . implement · running · bash/);
 	});
 
 	it("shows [fresh] and [fork] on single-result headers", () => {

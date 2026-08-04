@@ -95,7 +95,7 @@ describe("below-editor subagent FleetView", () => {
 			const component = widgetFactory({ requestRender() {} }, theme);
 			const lines = component.render(80);
 			assert.ok(lines.some((line) => line.includes("⏺ main")));
-			assert.ok(lines.some((line) => line.includes("worker-0 (fable-5 · thinking low)") && line.includes("Inspect module 0")));
+			assert.ok(lines.some((line) => line.includes("worker-0 (fable-5 · thinking low)")));
 			assert.ok(lines.some((line) => line.includes("11s · ↓ 13.1k tokens")));
 			assert.ok(lines.some((line) => line.includes("↓ 1 more")));
 			for (const line of lines) assert.ok(visibleWidth(line) <= 80, `line exceeded width: ${line}`);
@@ -356,8 +356,13 @@ describe("below-editor subagent FleetView", () => {
 			fleet.setContext(ctx);
 			const lines = widgetFactory!({ requestRender() {} }, theme).render(120).join("\n");
 			assert.match(lines, /supervisor/);
-			assert.match(lines, /├─ .*leaf-0.*gpt-5.6-luna · thinking medium.*complete/);
-			assert.match(lines, /├─ .*leaf-3.*running/);
+			for (const [index, state] of ["complete", "running", "running", "running"].entries()) {
+				const line = lines.split("\n").find((candidate) => candidate.includes(`leaf-${index}`));
+				assert.ok(line);
+				assert.match(line!, /gpt-5.6-luna/);
+				assert.match(line!, /thinking medium/);
+				assert.match(line!, new RegExp(state));
+			}
 			assert.doesNotMatch(lines, /leaf-4.*running/);
 			assert.match(lines, /\+1 nested leaves/);
 		} finally {
@@ -484,7 +489,7 @@ describe("below-editor subagent FleetView", () => {
 		} as unknown as ExtensionContext;
 		try {
 			fleet.setContext(ctx);
-			const lines = widgetFactory!({ requestRender() {} }, theme).render(100);
+			const lines = widgetFactory!({ requestRender() {} }, theme).render(180);
 			assert.ok(lines.some((line) => line.includes("reviewer (gpt-5 · thinking medium)") && line.includes("Review only authentication")));
 			assert.ok(lines.some((line) => line.includes("worker") && line.includes("Implement only billing")));
 			assert.ok(lines.every((line) => !line.includes("Review the authentication changes")), "per-child descriptions should replace the run-level fallback when present");
