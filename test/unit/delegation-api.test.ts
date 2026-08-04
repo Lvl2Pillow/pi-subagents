@@ -280,6 +280,171 @@ describe("public subagent delegation contract", () => {
 		bridge.dispose();
 	});
 
+	it("keys concurrent structured attempts and retransmissions by the full identity tuple", async () => {
+		const events = new FakeEvents();
+		const releases = new Map<string, () => void>();
+		const responses: SubagentDelegationResponse[] = [];
+		let executeCalls = 0;
+		events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => responses.push(payload as SubagentDelegationResponse));
+		const bridge = registerPromptTemplateDelegationBridge({
+			events,
+			getContext: () => ({ cwd: "/repo" }),
+			execute: async () => { throw new Error("legacy executor must remain separate"); },
+			executeStructured: async (_id, params) => {
+				executeCalls++;
+				if (typeof params.task !== "string") throw new Error("expected a single delegated task");
+				const task = params.task;
+				await new Promise<void>((resolve) => releases.set(task, resolve));
+				return {
+					details: {
+						mode: "single",
+						results: [{
+							agent: params.agent,
+							exitCode: 0,
+							finalOutput: task,
+							usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 1 },
+						}],
+					},
+				};
+			},
+		});
+		const first = { ...request, requestId: "shared-attempt", task: "first", result: { kind: "text" as const } };
+		const second = { ...first, ownerRunId: "owner-2", nodeId: "node-2", task: "second" };
+		events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, first);
+		events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, second);
+		events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, first);
+		for (let index = 0; index < 5 && releases.size < 2; index++) await tick();
+		assert.equal(releases.size, 2);
+		assert.equal(executeCalls, 2);
+		releases.get("first")?.();
+		releases.get("second")?.();
+		while (responses.length < 2) await tick();
+		assert.deepEqual(responses.map(({ ownerRunId, nodeId, status }) => ({ ownerRunId, nodeId, status })).sort((a, b) => a.ownerRunId.localeCompare(b.ownerRunId)), [
+			{ ownerRunId: "owner-1", nodeId: "node-1", status: "completed" },
+			{ ownerRunId: "owner-2", nodeId: "node-2", status: "completed" },
+		]);
+		events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, first);
+		await tick();
+		assert.equal(executeCalls, 2);
+		assert.equal(responses.length, 2);
+		bridge.dispose();
+	});
+
+	it("fails closed instead of evicting structured identity state", async () => {
+		const events = new FakeEvents();
+		const responses: SubagentDelegationResponse[] = [];
+		let executeCalls = 0;
+		events.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => responses.push(payload as SubagentDelegationResponse));
+		const bridge = registerPromptTemplateDelegationBridge({
+			events,
+			getContext: () => ({ cwd: "/repo" }),
+			execute: async () => { throw new Error("legacy executor must remain separate"); },
+			executeStructured: async (requestId) => {
+				executeCalls++;
+				return {
+					details: {
+						mode: "single",
+						results: [{
+							agent: "reviewer",
+							exitCode: 0,
+							finalOutput: requestId,
+							usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 1 },
+						}],
+					},
+				};
+			},
+		});
+
+		for (let index = 0; index < 8_192; index++) {
+			events.emit(SUBAGENT_DELEGATION_CANCEL_EVENT, {
+				requestId: `cancelled-${index}`,
+				ownerRunId: "saturated-owner",
+				nodeId: `cancelled-node-${index}`,
+			});
+		}
+		events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, {
+			...request,
+			requestId: "cancelled-0",
+			ownerRunId: "saturated-owner",
+			nodeId: "cancelled-node-0",
+			result: { kind: "text" },
+		});
+		while (!responses.some((entry) => entry.requestId === "cancelled-0")) await tick();
+		assert.equal(responses.at(-1)?.status, "cancelled");
+
+		events.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, {
+			...request,
+			requestId: "cancel-overflow",
+			ownerRunId: "saturated-owner",
+			nodeId: "cancel-overflow-node",
+			result: { kind: "text" },
+		});
+		while (!responses.some((entry) => entry.requestId === "cancel-overflow")) await tick();
+		assert.equal(responses.at(-1)?.status, "unavailable_context");
+		assert.match(responses.at(-1)?.error ?? "", /identity capacity/i);
+		assert.equal(executeCalls, 0);
+		bridge.dispose();
+
+		const settledEvents = new FakeEvents();
+		const settledResponses: SubagentDelegationResponse[] = [];
+		let settledExecuteCalls = 0;
+		settledEvents.on(SUBAGENT_DELEGATION_RESPONSE_EVENT, (payload) => settledResponses.push(payload as SubagentDelegationResponse));
+		const settledBridge = registerPromptTemplateDelegationBridge({
+			events: settledEvents,
+			getContext: () => ({ cwd: "/repo" }),
+			execute: async () => { throw new Error("legacy executor must remain separate"); },
+			executeStructured: async (requestId) => {
+				settledExecuteCalls++;
+				return {
+					details: {
+						mode: "single",
+						results: [{
+							agent: "reviewer",
+							exitCode: 0,
+							finalOutput: requestId,
+							usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 1 },
+						}],
+					},
+				};
+			},
+		});
+		for (let index = 0; index < 8_192; index++) {
+			settledEvents.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, {
+				...request,
+				requestId: `settled-${index}`,
+				ownerRunId: "settled-owner",
+				nodeId: `settled-node-${index}`,
+				result: { kind: "text" },
+			});
+		}
+		for (let attempt = 0; settledResponses.length < 8_192 && attempt < 100; attempt++) await tick();
+		assert.equal(settledResponses.length, 8_192);
+		assert.equal(settledExecuteCalls, 8_192);
+
+		settledEvents.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, {
+			...request,
+			requestId: "settled-overflow",
+			ownerRunId: "settled-owner",
+			nodeId: "settled-overflow-node",
+			result: { kind: "text" },
+		});
+		await tick();
+		assert.equal(settledResponses.at(-1)?.status, "unavailable_context");
+		assert.equal(settledExecuteCalls, 8_192);
+
+		settledEvents.emit(SUBAGENT_DELEGATION_REQUEST_EVENT, {
+			...request,
+			requestId: "settled-0",
+			ownerRunId: "settled-owner",
+			nodeId: "settled-node-0",
+			result: { kind: "text" },
+		});
+		await tick();
+		assert.equal(settledResponses.length, 8_193);
+		assert.equal(settledExecuteCalls, 8_192);
+		settledBridge.dispose();
+	});
+
 	it("retains the unversioned prompt-template bridge as legacy fallback", async () => {
 		const events = new FakeEvents();
 		let structuredCalls = 0;
