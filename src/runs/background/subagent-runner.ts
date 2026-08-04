@@ -7,7 +7,7 @@ import type { Message } from "@earendil-works/pi-ai";
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { createChildTranscriptWriter, type ChildTranscriptWriter } from "../../shared/child-transcript.ts";
 import { closeSteerInbox, consumeInterruptRequest, consumeSteerRequests, deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest, enqueueStepSteer, steerAcksDir, steerCapabilityPath, stepSteerInboxDir, watchAsyncControlInbox, type SteerAck, type SteerCapability, type SteerRequest } from "./control-channel.ts";
-import { appendJsonl as appendRawJsonl, formatOutputArtifactContent, getArtifactPaths } from "../../shared/artifacts.ts";
+import { appendJsonl as appendRawJsonl, formatOutputArtifactContent, getArtifactPaths, writeArtifact, writeMetadata } from "../../shared/artifacts.ts";
 import { PI_CODING_AGENT_PACKAGE, getPiSpawnCommand, resolveInstalledPiPackageRoot } from "../shared/pi-spawn.ts";
 import { captureSingleOutputSnapshot, extractChildWrittenOutput, finalizeSingleOutput, formatSavedOutputReference, injectOutputPathSystemPrompt, injectSingleOutputInstruction, resolveSingleOutput, type SingleOutputSnapshot } from "../shared/single-output.ts";
 import {
@@ -197,6 +197,8 @@ interface StepResult {
 	modelAttempts?: ModelAttempt[];
 	totalCost?: CostSummary;
 	artifactPaths?: ArtifactPaths;
+	outputSaveError?: string;
+	metadataSaveError?: string;
 	truncated?: boolean;
 	transcriptPath?: string;
 	transcriptError?: string;
@@ -212,6 +214,30 @@ interface StepResult {
 	watchdog?: import("../../shared/types.ts").ChildWatchdogProgress;
 	writerProcesses?: Array<{ processInstanceId: string; kind: "pi-writer"; attempt: number; closeObservedAt: number; exitCode: number | null; signal: string | null }>;
 	writerAttemptCount?: number;
+}
+
+function persistStepArtifacts(input: {
+	artifactPaths: ArtifactPaths;
+	artifactConfig?: Partial<ArtifactConfig>;
+	output: string;
+	metadata: object;
+}): { outputSaveError?: string; metadataSaveError?: string } {
+	const errors: { outputSaveError?: string; metadataSaveError?: string } = {};
+	if (input.artifactConfig?.includeOutput !== false) {
+		try {
+			writeArtifact(input.artifactPaths.outputPath, input.output);
+		} catch (error) {
+			errors.outputSaveError = `Artifact output post-processing failed: ${error instanceof Error ? error.message : String(error)}`;
+		}
+	}
+	if (input.artifactConfig?.includeMetadata !== false) {
+		try {
+			writeMetadata(input.artifactPaths.metadataPath, input.metadata);
+		} catch (error) {
+			errors.metadataSaveError = error instanceof Error ? error.message : String(error);
+		}
+	}
+	return errors;
 }
 
 const ASYNC_INTERRUPT_SIGNAL: NodeJS.Signals = process.platform === "win32" ? "SIGBREAK" : "SIGUSR2";
@@ -1538,40 +1564,59 @@ async function runSingleStep(
 					? (finalResult?.error ? `${finalResult.error}\n${acceptanceFailure}` : acceptanceFailure)
 					: finalResult?.error;
 
-	if (artifactPaths && ctx.artifactConfig?.enabled !== false) {
-		if (ctx.artifactConfig?.includeOutput !== false) {
-			fs.writeFileSync(artifactPaths.outputPath, formatOutputArtifactContent({
+	const artifactErrors = artifactPaths && ctx.artifactConfig?.enabled !== false
+		? persistStepArtifacts({
+			artifactPaths,
+			artifactConfig: ctx.artifactConfig,
+			output: formatOutputArtifactContent(omitUndefinedProperties({
 				output,
 				error: effectiveFinalError,
 				transcriptPath: transcriptWriter ? artifactPaths.transcriptPath : undefined,
 				metadataPath: ctx.artifactConfig?.includeMetadata === false ? undefined : artifactPaths.metadataPath,
-			}), "utf-8");
-		}
-		if (ctx.artifactConfig?.includeMetadata !== false) {
-			fs.writeFileSync(
-				artifactPaths.metadataPath,
-				JSON.stringify({
-					runId: ctx.id,
-					agent: step.agent,
-					task,
-					exitCode: effectiveFinalExitCode,
-					model: finalResult?.model,
-					attemptedModels: attemptedModels.length > 0 ? attemptedModels : undefined,
-					modelAttempts,
-					error: effectiveFinalError,
-					acceptance: effectiveAcceptance,
-					...(capabilityAudit ? { capabilityCeiling: capabilityAudit.ceiling, capabilityAudit } : {}),
-					launchContractDigest: actualLaunchContractDigest,
-					launchResolvedExtensions,
-					...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
-					transcriptError: transcriptWriter?.getError(),
-					skills: step.skills,
-					timestamp: Date.now(),
-				}, null, 2),
-				"utf-8",
-			);
-		}
-	}
+			})),
+			metadata: {
+				runId: ctx.id,
+				agent: step.agent,
+				task,
+				exitCode: effectiveFinalExitCode,
+				model: finalResult?.model,
+				attemptedModels: attemptedModels.length > 0 ? attemptedModels : undefined,
+				modelAttempts,
+				error: effectiveFinalError,
+				acceptance: effectiveAcceptance,
+				...(capabilityAudit ? { capabilityCeiling: capabilityAudit.ceiling, capabilityAudit } : {}),
+				launchContractDigest: actualLaunchContractDigest,
+				launchResolvedExtensions,
+				...((finalResult as (RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }) | undefined)?.runtimeAcknowledgedExtensions ? { runtimeAcknowledgedExtensions: (finalResult as RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }).runtimeAcknowledgedExtensions } : {}),
+				...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
+				transcriptError: transcriptWriter?.getError(),
+				skills: step.skills,
+				timestamp: Date.now(),
+			},
+		})
+		: {};
+			})),
+			metadata: {
+				runId: ctx.id,
+				agent: step.agent,
+				task,
+				exitCode: effectiveFinalExitCode,
+				model: finalResult?.model,
+				attemptedModels: attemptedModels.length > 0 ? attemptedModels : undefined,
+				modelAttempts,
+				error: effectiveFinalError,
+				acceptance: effectiveAcceptance,
+				...(capabilityAudit ? { capabilityCeiling: capabilityAudit.ceiling, capabilityAudit } : {}),
+				launchContractDigest: actualLaunchContractDigest,
+				launchResolvedExtensions,
+				...((finalResult as (RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }) | undefined)?.runtimeAcknowledgedExtensions ? { runtimeAcknowledgedExtensions: (finalResult as RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }).runtimeAcknowledgedExtensions } : {}),
+				...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
+				transcriptError: transcriptWriter?.getError(),
+				skills: step.skills,
+				timestamp: Date.now(),
+			},
+		})
+		: {};
 
 	const result = {
 		agent: step.agent,
@@ -1588,6 +1633,8 @@ async function runSingleStep(
 		modelAttempts,
 		totalCost: costSummaryFromAttempts(modelAttempts),
 		artifactPaths,
+		outputSaveError: artifactErrors.outputSaveError,
+		metadataSaveError: artifactErrors.metadataSaveError,
 		transcriptPath: transcriptWriter ? artifactPaths?.transcriptPath : undefined,
 		transcriptError: transcriptWriter?.getError(),
 		interrupted: timedOutAfterAcceptance || stoppedAfterAcceptance || turnBudgetExceeded ? false : finalResult?.interrupted,
@@ -4271,6 +4318,8 @@ async function runSubagent(
 				modelAttempts: r.modelAttempts,
 				totalCost: r.totalCost,
 				artifactPaths: r.artifactPaths,
+				outputSaveError: r.outputSaveError,
+				metadataSaveError: r.metadataSaveError,
 				truncated: r.truncated,
 				transcriptPath: r.transcriptPath,
 				transcriptError: r.transcriptError,
