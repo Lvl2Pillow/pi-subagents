@@ -32,6 +32,10 @@ interface SubagentParamsSchema {
 			minLength?: number;
 			description?: string;
 		};
+		worktree?: {
+			type?: string;
+			description?: string;
+		};
 		timeoutMs?: {
 			minimum?: number;
 			description?: string;
@@ -182,11 +186,15 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(workflowScript?.type, "string");
 		assert.equal(workflowScript?.minLength, 1);
 		assert.match(String(workflowScript?.description ?? ""), /runs\.run/);
+		assert.match(String(workflowScript?.description ?? ""), /worktree:true/i);
 		assert.match(String(workflowScript?.description ?? ""), /no filesystem, shell, Pi tools, or host globals/i);
+		const worktree = SubagentParams?.properties?.worktree;
+		assert.equal(worktree?.type, "boolean");
+		assert.match(String(worktree?.description ?? ""), /workflow-only default/i);
 	});
 
 	it("removes legacy top-level orchestration parameters", () => {
-		for (const name of ["tasks", "chain", "concurrency", "worktree", "chainDir"]) {
+		for (const name of ["tasks", "chain", "concurrency", "chainDir"]) {
 			assert.equal((SubagentParams?.properties as Record<string, unknown> | undefined)?.[name], undefined, `${name} should not be public`);
 		}
 		const stepSchema = (SubagentParams?.properties as Record<string, JsonSchemaNode> | undefined)?.step;

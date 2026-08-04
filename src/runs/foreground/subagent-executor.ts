@@ -2134,6 +2134,8 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 			configToolBudget: data.configToolBudget,
 			capabilityCeiling: data.capabilityCeiling,
 			globalConcurrencyLimit: deps.config.globalConcurrencyLimit,
+			parentWorkflowRunId: params.workflowParentRunId,
+			workflowKey: params.workflowKey,
 		});
 	}
 
@@ -2175,6 +2177,8 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 			configToolBudget: data.configToolBudget,
 			capabilityCeiling: data.capabilityCeiling,
 			globalConcurrencyLimit: deps.config.globalConcurrencyLimit,
+			parentWorkflowRunId: params.workflowParentRunId,
+			workflowKey: params.workflowKey,
 		});
 	}
 
@@ -3483,6 +3487,7 @@ function workflowChildResult(key: string, result: AgentToolResult<Details>): Wor
 	const output = result.content.map((part) => part.type === "text" ? part.text : "").filter(Boolean).join("\n");
 	const artifactPaths = new Set<string>();
 	if (result.details.asyncDir) artifactPaths.add(result.details.asyncDir);
+	if (result.details.parallelHandoff?.path) artifactPaths.add(result.details.parallelHandoff.path);
 	for (const child of result.details.results) {
 		if (child.savedOutputPath) artifactPaths.add(child.savedOutputPath);
 		if (child.outputReference?.path) artifactPaths.add(child.outputReference.path);
@@ -3497,6 +3502,39 @@ function workflowChildResult(key: string, result: AgentToolResult<Details>): Wor
 		...(structured.length === 1 ? { structuredOutput: structured[0] } : structured.length > 1 ? { structuredOutput: structured } : {}),
 		artifactPaths: [...artifactPaths],
 		results: result.details.results,
+	};
+}
+
+function prepareWorkflowChildParams(params: SubagentParamsLike): SubagentParamsLike {
+	if (params.worktree !== true || !params.agent) return params;
+	const {
+		agent,
+		task = "",
+		model,
+		skill,
+		output,
+		outputMode,
+		outputSchema,
+		acceptance,
+		agentContract,
+		toolBudget,
+		...runParams
+	} = params;
+	return {
+		...runParams,
+		worktree: true,
+		tasks: [{
+			agent,
+			task,
+			...(model !== undefined ? { model } : {}),
+			...(skill !== undefined ? { skill } : {}),
+			...(output !== undefined ? { output } : {}),
+			...(outputMode !== undefined ? { outputMode } : {}),
+			...(outputSchema !== undefined ? { outputSchema } : {}),
+			...(acceptance !== undefined ? { acceptance } : {}),
+			...(agentContract !== undefined ? { agentContract } : {}),
+			...(toolBudget !== undefined ? { toolBudget } : {}),
+		}],
 	};
 }
 
@@ -3656,7 +3694,8 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 								if (workflowUsageBudget.budget && childParams.async === true) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, "workflow usageBudget does not support async runs.run launches."));
 								const budgetState = usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults));
 								if (budgetState?.exhausted) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, usageBudgetExceededMessage(budgetState)));
-								const result = await execute(randomUUID(), { ...workflowChildDefaults, ...childParams, workflowParentRunId: workflowRunId, workflowKey: key } as SubagentParamsLike, workflowSignal, undefined, ctx);
+								const childRequest = prepareWorkflowChildParams({ ...workflowChildDefaults, ...childParams, workflowParentRunId: workflowRunId, workflowKey: key } as SubagentParamsLike);
+								const result = await execute(randomUUID(), childRequest, workflowSignal, undefined, ctx);
 								workflowResults.push(...result.details.results);
 								const child = workflowChildResult(key, result);
 								if (result.details.asyncId) {
@@ -3702,7 +3741,8 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						if (workflowUsageBudget.budget && childParams.async === true) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, "workflow usageBudget does not support async runs.run launches."));
 						const budgetState = usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults));
 						if (budgetState?.exhausted) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, usageBudgetExceededMessage(budgetState)));
-						const result = await execute(randomUUID(), { ...workflowChildDefaults, ...childParams, workflowParentRunId: _id, workflowKey: key } as SubagentParamsLike, workflowSignal, undefined, ctx);
+						const childRequest = prepareWorkflowChildParams({ ...workflowChildDefaults, ...childParams, workflowParentRunId: _id, workflowKey: key } as SubagentParamsLike);
+						const result = await execute(randomUUID(), childRequest, workflowSignal, undefined, ctx);
 						workflowResults.push(...result.details.results);
 						return workflowChildResult(key, result);
 					},
@@ -3731,6 +3771,9 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 					details: { mode: "workflow", results: partial.children.flatMap((child) => (child.results ?? []) as SingleResult[]), totalChildUsage: sumResultsUsage(workflowResults), totalCost: sumResultsCost(workflowResults), usageBudget: usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults)), workflow: { trace: partial.trace, emits: partial.emits, console: partial.console } },
 				};
 			}
+		}
+		if (requestParams.worktree === true && requestParams.agent && !requestParams.tasks?.length && !requestParams.chain?.length) {
+			return { content: [{ type: "text", text: "worktree is a workflow child control; use it on workflowScript or a runs.run/runs.all child." }], isError: true, details: { mode: "single", results: [] } };
 		}
 		const requestCwd = resolveRequestedCwd(ctx.cwd, requestParams.cwd);
 		const paramsWithResolvedCwd = requestParams.cwd === undefined ? requestParams : { ...requestParams, cwd: requestCwd };
