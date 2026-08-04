@@ -370,6 +370,63 @@ describe("below-editor subagent FleetView", () => {
 		}
 	});
 
+	it("counts hidden nested leaves across multiple parallel children", () => {
+		const state = stateForTest();
+		state.asyncJobs.set("supervisor", {
+			asyncId: "supervisor",
+			asyncDir: "/tmp/supervisor",
+			status: "running",
+			mode: "single",
+			startedAt: 10,
+			updatedAt: 20,
+			steps: [{ agent: "supervisor", index: 0, status: "running" }],
+			nestedChildren: [
+				{
+					id: "nested-a",
+					parentRunId: "supervisor",
+					parentStepIndex: 0,
+					depth: 1,
+					path: [{ runId: "supervisor", stepIndex: 0 }],
+					state: "running",
+					mode: "parallel",
+					steps: [0, 1, 2, 3].map((index) => ({ agent: `child-a-${index}`, index, status: "running" as const })),
+				},
+				{
+					id: "nested-b",
+					parentRunId: "supervisor",
+					parentStepIndex: 0,
+					depth: 1,
+					path: [{ runId: "supervisor", stepIndex: 0 }],
+					state: "running",
+					mode: "parallel",
+					steps: [0, 1].map((index) => ({ agent: `child-b-${index}`, index, status: "running" as const })),
+				},
+			],
+		});
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
+		const ctx = {
+			hasUI: true,
+			ui: {
+				setWidget(_key: string, content: typeof widgetFactory | undefined) { if (content) widgetFactory = content; },
+				onTerminalInput() { return () => {}; },
+				getEditorText() { return ""; },
+				requestRender() {},
+				notify() {},
+				theme,
+			},
+		} as unknown as ExtensionContext;
+		const fleet = new SubagentFleetStatus(state, () => {}, { refreshMs: 60_000 });
+		try {
+			fleet.setContext(ctx);
+			const lines = widgetFactory!({ requestRender() {} }, theme).render(120).join("\n");
+			for (const index of [0, 1, 2, 3]) assert.match(lines, new RegExp(`child-a-${index}`));
+			assert.doesNotMatch(lines, /child-b-[01]/);
+			assert.match(lines, /\+2 nested leaves/);
+		} finally {
+			fleet.dispose();
+		}
+	});
+
 	it("shows only the current sequential chain step while retaining active parallel siblings", () => {
 		const state = stateForTest();
 		state.asyncJobs.set("sequential", {
