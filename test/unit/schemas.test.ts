@@ -32,6 +32,11 @@ interface SubagentParamsSchema {
 			minLength?: number;
 			description?: string;
 		};
+		chatProgress?: {
+			type?: string;
+			enum?: string[];
+			description?: string;
+		};
 		worktree?: {
 			type?: string;
 			description?: string;
@@ -188,6 +193,10 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.match(String(workflowScript?.description ?? ""), /runs\.run/);
 		assert.match(String(workflowScript?.description ?? ""), /worktree:true/i);
 		assert.match(String(workflowScript?.description ?? ""), /no filesystem, shell, Pi tools, or host globals/i);
+		const chatProgress = SubagentParams?.properties?.chatProgress;
+		assert.equal(chatProgress?.type, "string");
+		assert.deepEqual(chatProgress?.enum, ["auto", "off", "terminal", "milestones", "live-card"]);
+		assert.match(String(chatProgress?.description ?? ""), /same Git repository/i);
 		const worktree = SubagentParams?.properties?.worktree;
 		assert.equal(worktree?.type, "boolean");
 		assert.match(String(worktree?.description ?? ""), /workflow-only default/i);
