@@ -20,6 +20,7 @@
 - Added optional `thinking` and `fallbackModels` fields to `/subagents` profile agent overrides, so a saved profile can pin reasoning effort and fallbacks (not just the model) — important for reasoning-sensitive models where the thinking level is load-bearing. Thanks to @dt-benedict for #741.
 
 ### Changed
+- Replaced the separate version-numbered extension delegation contracts with one structured owned-leaf delegation API, while keeping the unversioned prompt-template bridge as a temporary legacy fallback.
 - Removed the public top-level `tasks[]`, `chain[]`, static parallel controls, and `/chain`, `/parallel`, and `/run-chain` commands; `workflowScript` is now the sole public multi-agent orchestration surface. `append-step` now accepts a control-only `step` object.
 - Scripted workflows now start asynchronously by default as first-class status/fleet runs, stream trace and emitted progress, support stop by workflow id, preserve async child parentage, and present single + workflow as the public authoring surface.
 - `runs.ref()` now returns concise `[run <key>; id=<short-id>]` references; callers that need artifact, session, or handoff paths should read the child result `artifactPaths` or the corresponding status artifacts.
