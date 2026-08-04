@@ -38,17 +38,36 @@ function job(child: NestedRunSummary): AsyncJobState {
 }
 
 describe("nested widget rendering", () => {
-	it("uses aggregate lines when collapsed and full child rows when expanded", () => {
-		const child = nested("nested-reviewer", "root-run", "running", { currentTool: "read" });
+	it("renders a bounded collapsed tree and full child rows when expanded", () => {
+		const child = nested("nested-reviewer", "root-run", "running", { currentTool: "read", model: "gpt-5.6-luna:medium", thinking: "medium" });
 		const collapsed = buildWidgetLines([job(child)], theme as any, 120, false).join("\n");
-		assert.match(collapsed, /↳ \[\d{2}:\d{2}:\d{2}\] \+1 nested run \(1 running\)/);
-		assert.doesNotMatch(collapsed, /nested-reviewer · running/);
+		assert.match(collapsed, /↳ └─ \[\d{2}:\d{2}:\d{2}\] . nested-reviewer · running · gpt-5.6-luna · thinking medium · read/);
+		assert.equal((collapsed.match(/thinking medium/g) ?? []).length, 1);
 
 		const expanded = buildWidgetLines([job(child)], theme as any, 120, true).join("\n");
-		assert.match(expanded, /↳ \[\d{2}:\d{2}:\d{2}\] . nested-reviewer · running · read/);
+		assert.match(expanded, /↳ \[\d{2}:\d{2}:\d{2}\] . nested-reviewer · running · gpt-5.6-luna · thinking medium · read/);
 
 		const epoch = buildWidgetLines([job(nested("epoch", "root-run", "running", { lastUpdate: 0, startedAt: 0 }))], theme as any, 120, false).join("\n");
-		assert.match(epoch, /↳ \[\d{2}:\d{2}:\d{2}\] \+1 nested run/);
+		assert.match(epoch, /↳ └─ \[\d{2}:\d{2}:\d{2}\] . epoch · running/);
+	});
+
+	it("shows four direct leaves and one overflow row while retaining completed siblings", () => {
+		const root = nested("parallel-owner", "root-run", "running", {
+			mode: "parallel",
+			steps: ["one", "two", "three", "four", "five"].map((agent, index) => ({
+				agent,
+				status: index === 0 ? "complete" as const : "running" as const,
+				model: index === 0 ? "gpt-5.6-luna:medium" : "gpt-5.6-luna",
+				thinking: "medium",
+			})),
+		});
+		const collapsed = buildWidgetLines([job(root)], theme as any, 160, false).join("\n");
+		assert.match(collapsed, /parallel-owner · running/);
+		assert.match(collapsed, /one · complete · gpt-5.6-luna · thinking medium/);
+		assert.match(collapsed, /four · running/);
+		assert.doesNotMatch(collapsed, /five · running/);
+		assert.match(collapsed, /\+1 more nested leaves/);
+		assert.equal((collapsed.match(/thinking medium/g) ?? []).length, 4);
 	});
 
 	it("collapses descendants beyond the nested depth budget", () => {

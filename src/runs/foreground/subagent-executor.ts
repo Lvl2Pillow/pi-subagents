@@ -4503,6 +4503,16 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 				: hasChain && effectiveParams.chain
 					? effectiveParams.chain.flatMap((step) => isParallelStep(step) ? step.parallel.map((task) => task.agent) : [(step as SequentialStep).agent])
 					: effectiveParams.agent ? [effectiveParams.agent] : [];
+			const declaredModels = hasTasks && effectiveParams.tasks
+				? effectiveParams.tasks.map((task) => task.model)
+				: hasChain && effectiveParams.chain
+					? effectiveParams.chain.flatMap((step) => isParallelStep(step)
+						? step.parallel.map((task) => task.model)
+						: isDynamicParallelStep(step)
+							? [step.parallel.model]
+							: [(step as SequentialStep).model])
+					: [effectiveParams.model];
+			const declaredThinking = typeof effectiveParams.thinking === "string" ? effectiveParams.thinking : undefined;
 			try {
 				writeNestedEvent(inheritedNestedRoute, {
 					type,
@@ -4520,17 +4530,30 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						state,
 						agent: agentsForSummary[0],
 						agents: agentsForSummary,
+						...(agentsForSummary.length === 1 && (type === "subagent.nested.started" ? declaredModels[0] : details?.results[0]?.model) ? { model: type === "subagent.nested.started" ? declaredModels[0] : details?.results[0]?.model } : {}),
+						...(agentsForSummary.length === 1 && (type === "subagent.nested.started" ? declaredThinking : details?.results[0]?.thinking) ? { thinking: type === "subagent.nested.started" ? declaredThinking : details?.results[0]?.thinking } : {}),
 						startedAt: foregroundControl?.startedAt ?? now,
 						...(state !== "running" ? { endedAt: now } : {}),
 						lastUpdate: now,
 						...(details?.totalCost ? { totalCost: details.totalCost } : {}),
 						...(errorText ? { error: errorText } : {}),
-						...(details?.results.length ? { steps: details.results.map((child) => ({
-							agent: child.agent,
-							status: child.interrupted || child.detached ? "paused" : child.exitCode === 0 ? "complete" : "failed",
-							...(child.sessionFile ? { sessionFile: child.sessionFile } : {}),
-							...(child.error ? { error: child.error } : {}),
-						})) } : {}),
+						...(type === "subagent.nested.started"
+							? { steps: agentsForSummary.map((agent, index) => ({
+								agent,
+								status: "running" as const,
+								...(declaredModels[index] ? { model: declaredModels[index] } : {}),
+								...(declaredThinking ? { thinking: declaredThinking } : {}),
+							})) }
+							: details?.results.length
+								? { steps: details.results.map((child) => ({
+									agent: child.agent,
+									status: child.interrupted || child.detached ? "paused" as const : child.exitCode === 0 ? "complete" as const : "failed" as const,
+									...(child.model ? { model: child.model } : {}),
+									...(child.thinking ? { thinking: child.thinking } : {}),
+									...(child.sessionFile ? { sessionFile: child.sessionFile } : {}),
+									...(child.error ? { error: child.error } : {}),
+								})) }
+								: {}),
 					},
 				});
 			} catch (error) {

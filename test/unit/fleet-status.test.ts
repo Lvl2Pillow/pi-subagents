@@ -97,7 +97,7 @@ describe("below-editor subagent FleetView", () => {
 			assert.ok(lines.some((line) => line.includes("⏺ main")));
 			assert.ok(lines.some((line) => line.includes("worker-0 (fable-5 · thinking low)") && line.includes("Inspect module 0")));
 			assert.ok(lines.some((line) => line.includes("11s · ↓ 13.1k tokens")));
-			assert.ok(lines.some((line) => line.includes("↓ 2 more")));
+			assert.ok(lines.some((line) => line.includes("↓ 1 more")));
 			for (const line of lines) assert.ok(visibleWidth(line) <= 80, `line exceeded width: ${line}`);
 		} finally {
 			fleet.dispose();
@@ -310,6 +310,56 @@ describe("below-editor subagent FleetView", () => {
 			state.fleetInspectorOpen = false;
 			fleet.refresh();
 			assert.deepEqual(registrations, ["shown", "hidden", "shown"]);
+		} finally {
+			fleet.dispose();
+		}
+	});
+
+	it("renders retained nested terminal siblings under an active owner with bounded leaves", () => {
+		const state = stateForTest();
+		state.asyncJobs.set("supervisor", {
+			asyncId: "supervisor",
+			asyncDir: "/tmp/supervisor",
+			status: "running",
+			mode: "single",
+			startedAt: 10,
+			updatedAt: 20,
+			steps: [{ agent: "supervisor", index: 0, status: "running" }],
+			nestedChildren: [0, 1, 2, 3, 4].map((index) => ({
+				id: `nested-${index}`,
+				parentRunId: "supervisor",
+				parentStepIndex: 0,
+				depth: 1,
+				path: [{ runId: "supervisor", stepIndex: 0 }],
+				state: index === 0 ? "complete" as const : "running" as const,
+				agent: `leaf-${index}`,
+				model: index === 0 ? "provider/gpt-5.6-luna:medium" : "provider/gpt-5.6-luna",
+				thinking: "medium",
+				startedAt: 10,
+				lastUpdate: 20,
+			})),
+		});
+		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		const ctx = {
+			hasUI: true,
+			ui: {
+				setWidget(_key: string, content: typeof widgetFactory | undefined) { if (content) widgetFactory = content; },
+				onTerminalInput() { return () => {}; },
+				getEditorText() { return ""; },
+				requestRender() {},
+				notify() {},
+				theme,
+			},
+		} as unknown as ExtensionContext;
+		const fleet = new SubagentFleetStatus(state, () => {}, { refreshMs: 60_000 });
+		try {
+			fleet.setContext(ctx);
+			const lines = widgetFactory!({ requestRender() {} }, theme).render(120).join("\n");
+			assert.match(lines, /supervisor/);
+			assert.match(lines, /├─ .*leaf-0.*gpt-5.6-luna · thinking medium.*complete/);
+			assert.match(lines, /├─ .*leaf-3.*running/);
+			assert.doesNotMatch(lines, /leaf-4.*running/);
+			assert.match(lines, /\+1 nested leaves/);
 		} finally {
 			fleet.dispose();
 		}

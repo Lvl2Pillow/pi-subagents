@@ -28,6 +28,7 @@ import {
 } from "./pi-args.ts";
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { sanitizeProcessTerminal } from "../background/process-terminal.ts";
+import { THINKING_LEVELS } from "../../shared/model-info.ts";
 
 export const NESTED_EVENTS_DIR = path.join(TEMP_ROOT_DIR, "nested-subagent-events");
 const ROUTE_FILE = "route.json";
@@ -254,9 +255,13 @@ function sanitizeStep(input: unknown, depth: number): NestedStepSummary | undefi
 	const status = raw.status === "pending" || raw.status === "running" || raw.status === "complete" || raw.status === "completed" || raw.status === "failed" || raw.status === "paused" || raw.status === "stopped"
 		? raw.status
 		: "pending";
+	const model = stringValue(raw.model);
+	const thinking = THINKING_LEVELS.find((level) => level === raw.thinking);
 	return {
 		agent,
 		status,
+		...(model ? { model } : {}),
+		...(thinking ? { thinking } : {}),
 		...(stringValue(raw.sessionFile, 2048) ? { sessionFile: stringValue(raw.sessionFile, 2048) } : {}),
 		...(raw.activityState === "active_long_running" || raw.activityState === "needs_attention" ? { activityState: raw.activityState } : {}),
 		...(clampNumber(raw.lastActivityAt) !== undefined ? { lastActivityAt: clampNumber(raw.lastActivityAt) } : {}),
@@ -296,6 +301,8 @@ export function sanitizeSummary(input: unknown, depth = 0): NestedRunSummary | u
 		depth: Math.min(Math.max(0, clampNumber(raw.depth) ?? 0), MAX_DEPTH),
 		path: pathParts,
 		state: sanitizeState(raw.state, "running"),
+		...(stringValue(raw.model) ? { model: stringValue(raw.model) } : {}),
+		...(THINKING_LEVELS.find((level) => level === raw.thinking) ? { thinking: THINKING_LEVELS.find((level) => level === raw.thinking) } : {}),
 		...(stringValue(raw.asyncDir, 2048) ? { asyncDir: stringValue(raw.asyncDir, 2048) } : {}),
 		...(clampNumber(raw.pid) !== undefined && clampNumber(raw.pid)! > 0 && Number.isInteger(clampNumber(raw.pid)) ? { pid: clampNumber(raw.pid) } : {}),
 		...(stringValue(raw.sessionId, 256) ? { sessionId: stringValue(raw.sessionId, 256) } : {}),
@@ -901,6 +908,8 @@ export function nestedSummaryFromAsyncStatus(status: AsyncStatus, asyncDir: stri
 		...(status.pid ? { pid: status.pid } : {}),
 		...(status.sessionId ? { sessionId: status.sessionId } : {}),
 		mode: status.mode ?? fallback.mode,
+		...(status.steps?.length === 1 && status.steps[0]?.model ? { model: status.steps[0].model } : {}),
+		...(status.steps?.length === 1 && status.steps[0]?.thinking ? { thinking: status.steps[0].thinking } : {}),
 		...(status.processTerminal ? { processTerminal: sanitizeProcessTerminal(status.processTerminal, { runId: status.runId || fallback.id, runnerProcessInstanceId: status.processTerminal.runnerProcessInstanceId }, `${asyncDir}/status.json`) } : {}),
 		...(status.launchResolvedExtensions ? { launchResolvedExtensions: status.launchResolvedExtensions } : {}),
 		...(status.capabilityCeiling ? { capabilityCeiling: status.capabilityCeiling } : {}),
@@ -931,6 +940,8 @@ export function nestedSummaryFromAsyncStatus(status: AsyncStatus, asyncDir: stri
 		...(status.steps?.length ? { steps: status.steps.map((step, index) => ({
 			agent: step.agent,
 			status: step.status,
+			...(step.model ? { model: step.model } : {}),
+			...(step.thinking ? { thinking: step.thinking } : {}),
 			...(step.sessionFile ? { sessionFile: step.sessionFile } : {}),
 			...(step.activityState ? { activityState: step.activityState } : {}),
 			...(step.lastActivityAt !== undefined ? { lastActivityAt: step.lastActivityAt } : {}),

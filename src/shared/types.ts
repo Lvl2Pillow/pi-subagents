@@ -536,25 +536,7 @@ export interface SteeringRecoveryDescriptor {
 
 export type PublicNestedStepSummary = Pick<
 	NestedStepSummary,
-	| "agent"
-	| "status"
-	| "sessionFile"
-	| "transcriptPath"
-	| "transcriptError"
-	| "activityState"
-	| "lastActivityAt"
-	| "currentTool"
-	| "currentToolStartedAt"
-	| "currentPath"
-	| "turnCount"
-	| "toolCount"
-	| "toolBudget"
-	| "toolBudgetBlocked"
-	| "startedAt"
-	| "endedAt"
-	| "error"
-	| "timedOut"
-	| "stopped"
+	"agent" | "status" | "model" | "thinking" | "sessionFile" | "transcriptPath" | "transcriptError" | "activityState" | "lastActivityAt" | "currentTool" | "currentToolStartedAt" | "currentPath" | "turnCount" | "toolCount" | "toolBudget" | "toolBudgetBlocked" | "startedAt" | "endedAt" | "error" | "timedOut" | "stopped"
 > & {
 	children?: PublicNestedRunSummary[];
 };
@@ -567,45 +549,7 @@ export type CostSummary = {
 
 export type PublicNestedRunSummary = Pick<
 	NestedRunSummary,
-	| "id"
-	| "parentRunId"
-	| "parentStepIndex"
-	| "parentAgent"
-	| "depth"
-	| "path"
-	| "asyncDir"
-	| "sessionId"
-	| "sessionFile"
-	| "ownerState"
-	| "mode"
-	| "state"
-	| "agent"
-	| "agents"
-	| "currentStep"
-	| "chainStepCount"
-	| "parallelGroups"
-	| "activityState"
-	| "lastActivityAt"
-	| "currentTool"
-	| "currentToolStartedAt"
-	| "currentPath"
-	| "turnCount"
-	| "toolCount"
-	| "toolBudget"
-	| "toolBudgetBlocked"
-	| "totalTokens"
-	| "totalCost"
-	| "startedAt"
-	| "endedAt"
-	| "lastUpdate"
-	| "error"
-	| "timeoutMs"
-	| "deadlineAt"
-	| "timedOut"
-	| "stopped"
-	| "turnBudget"
-	| "turnBudgetExceeded"
-	| "wrapUpRequested"
+	"id" | "parentRunId" | "parentStepIndex" | "parentAgent" | "depth" | "path" | "asyncDir" | "sessionId" | "sessionFile" | "ownerState" | "mode" | "state" | "agent" | "agents" | "model" | "thinking" | "currentStep" | "chainStepCount" | "parallelGroups" | "activityState" | "lastActivityAt" | "currentTool" | "currentToolStartedAt" | "currentPath" | "turnCount" | "toolCount" | "toolBudget" | "toolBudgetBlocked" | "totalTokens" | "totalCost" | "startedAt" | "endedAt" | "lastUpdate" | "error" | "timeoutMs" | "deadlineAt" | "timedOut" | "stopped" | "turnBudget" | "turnBudgetExceeded" | "wrapUpRequested"
 > & {
 	steps?: PublicNestedStepSummary[];
 	children?: PublicNestedRunSummary[];
@@ -1127,15 +1071,9 @@ export interface NestedRunAddress {
 
 export interface NestedStepSummary {
 	agent: string;
-	status:
-		| "pending"
-		| "running"
-		| "complete"
-		| "completed"
-		| "failed"
-		| "paused"
-		| "stopped"
-		| "rejected";
+	status: "pending" | "running" | "complete" | "completed" | "failed" | "paused" | "stopped" | "rejected";
+	model?: string;
+	thinking?: string;
 	sessionFile?: string;
 	transcriptPath?: string;
 	transcriptError?: string;
@@ -1180,6 +1118,8 @@ export interface NestedRunSummary extends NestedRunAddress {
 	state: NestedRunState;
 	agent?: string;
 	agents?: string[];
+	model?: string;
+	thinking?: string;
 	currentStep?: number;
 	chainStepCount?: number;
 	parallelGroups?: AsyncParallelGroupStatus[];

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
-import type { AsyncJobState, SubagentState } from "../../src/shared/types.ts";
+import type { AsyncJobState } from "../../src/shared/types.ts";
 import {
 	buildNestedRouteIndex,
 	createNestedRoute,
@@ -14,7 +14,6 @@ import {
 	resolveNestedParentAddressFromEnv,
 	resolveNestedRouteFromEnv,
 	updateAsyncJobNestedProjection,
-	updateForegroundNestedProjection,
 	writeNestedEvent,
 } from "../../src/runs/shared/nested-events.ts";
 import {
@@ -152,7 +151,7 @@ describe("nested event parsing and projection", () => {
 			ts: 100,
 			parentRunId: "root-run",
 			parentStepIndex: 1,
-			child: child("nested-a", "running", 100),
+			child: { ...child("nested-a", "running", 100), model: "provider/gpt-5.6-luna:medium", thinking: "medium", steps: [{ agent: "leaf", status: "running", model: "provider/leaf", thinking: "low" }] },
 		});
 		writeNestedEvent(route, {
 			type: "subagent.nested.updated",
@@ -174,30 +173,8 @@ describe("nested event parsing and projection", () => {
 		assert.equal(registry.children[0]?.id, "nested-a");
 		assert.equal(registry.children[0]?.state, "complete");
 		assert.equal(registry.children[0]?.steps?.[0]?.agent, "leaf");
-
-		const job: AsyncJobState = {
-			asyncId: "root-run",
-			asyncDir: "/tmp/root-run",
-			status: "running",
-			nestedRoute: route,
-			steps: [
-				{ agent: "owner-0", status: "running", index: 0 },
-				{ agent: "owner-1", status: "running", index: 1 },
-			],
-		};
-		updateAsyncJobNestedProjection(job);
-		assert.equal(job.nestedChildren?.[0]?.id, "nested-a");
-		assert.equal(job.steps?.[1]?.children?.[0]?.id, "nested-a");
-
-		const control: SubagentState["foregroundControls"] extends Map<string, infer T> ? T : never = {
-			runId: "root-run",
-			mode: "single",
-			startedAt: 1,
-			updatedAt: 1,
-			nestedRoute: route,
-		};
-		updateForegroundNestedProjection(control);
-		assert.equal(control.nestedChildren?.[0]?.id, "nested-a");
+		assert.equal(registry.children[0]?.model, "provider/gpt-5.6-luna:medium");
+		assert.equal(registry.children[0]?.thinking, "medium");
 	});
 
 	it("attaches root children to visible step slices by original step index", () => {
@@ -330,6 +307,43 @@ describe("nested event parsing and projection", () => {
 		assert.equal(records[0]?.child.id, "jsonl-good");
 	});
 
+
+	it("sanitizes nested model bounds and thinking levels", () => {
+		const route = trackRoute();
+		writeNestedEvent(route, {
+			type: "subagent.nested.updated",
+			ts: 100,
+			parentRunId: "root-run",
+			parentStepIndex: 1,
+			child: {
+				...child("nested-model-bounds", "running", 100),
+				model: "m".repeat(600),
+				thinking: "turbo",
+				steps: [{ agent: "leaf", status: "running", model: "worker", thinking: "xhigh" }],
+			},
+		});
+		const summary = projectNestedEvents(route).children[0]!;
+		assert.equal(summary.model?.length, 512);
+		assert.equal(summary.thinking, undefined);
+		assert.equal(summary.steps?.[0]?.thinking, "xhigh");
+	});
+
+	it("projects effective model and thinking from async status, including a single-step run", () => {
+		const summary = nestedSummaryFromAsyncStatus({
+			runId: "child-run",
+			mode: "single",
+			state: "running",
+			startedAt: 1,
+			steps: [
+				{ agent: "worker", status: "running", model: "provider/worker", thinking: "high" },
+			],
+		}, "/tmp/child-run", { id: "child-run", parentRunId: "parent-run", depth: 1, mode: "single", ts: 2 });
+
+		assert.equal(summary.model, "provider/worker");
+		assert.equal(summary.thinking, "high");
+		assert.equal(summary.steps?.[0]?.model, "provider/worker");
+		assert.equal(summary.steps?.[0]?.thinking, "high");
+	});
 
 	it("sanitizes malformed process-terminal proofs in nested status summaries", () => {
 		const summary = nestedSummaryFromAsyncStatus({
