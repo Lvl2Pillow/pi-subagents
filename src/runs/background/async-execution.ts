@@ -56,8 +56,9 @@ import type { ImportedAsyncRoot } from "./chain-root-attachment.ts";
 import type { SessionLeaseRequest } from "../shared/session-lease.ts";
 import { finalizeProcessTerminal, readProcessTerminal } from "./process-terminal.ts";
 import { SUBAGENT_PROCESS_TERMINAL_EVENT } from "../../shared/types.ts";
-import { decodeSubagentCapabilityCeiling, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV, type ResolvedSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
+import { assertAgentAllowedByCapabilityCeiling, decodeSubagentCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV, type ResolvedSubagentCapabilityCeiling } from "../shared/capability-ceiling.ts";
 import { agentDefinitionDigest, launchBindingDigest } from "../../shared/launch-contract.ts";
+import { resolvePermissionRules, type PermissionConfig } from "../shared/permissions.ts";
 
 const require = createRequire(import.meta.url);
 const piPackageRoot = resolvePiPackageRoot();
@@ -114,6 +115,7 @@ interface AsyncExecutionContext {
 	currentSessionId: string;
 	/** Parent session id used by permission-system ask forwarding. */
 	parentSessionId?: string;
+	permissions?: PermissionConfig;
 	currentModelProvider?: string;
 	currentModel?: ParentModel;
 	/** Optional model-scope enforcement resolved from subagent settings. */
@@ -701,8 +703,10 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 			inheritedCapabilityCeiling: decodeSubagentCapabilityCeiling(process.env[SUBAGENT_CAPABILITY_CEILING_ENV]),
 		});
 		const launchResolvedExtensions = projectLaunchResolvedChildExtensions(toolPlan);
+		const permissionRules = resolvePermissionRules(ctx.permissions, a.permissions);
 		return {
 			parentSessionId: ctx.parentSessionId ?? ctx.currentSessionId,
+			permissionRules,
 			...(params.capabilityCeiling ? { capabilityCeiling: params.capabilityCeiling } : {}),
 			agent: s.agent,
 			task,
@@ -1140,7 +1144,13 @@ export function executeAsyncSingle(
 		nestedRoute,
 	} = params;
 	const task = params.task ?? "";
-	const capabilityCeiling = params.capabilityCeiling ?? resolveCurrentSubagentCapabilityCeiling(ctx.currentSessionId);
+	const permissionRules = resolvePermissionRules(ctx.permissions, agentConfig.permissions);
+	const capabilityCeiling = intersectSubagentCapabilityCeilings(params.capabilityCeiling ?? resolveCurrentSubagentCapabilityCeiling(ctx.currentSessionId), decodeSubagentCapabilityCeiling(process.env[SUBAGENT_CAPABILITY_CEILING_ENV]));
+	try {
+		assertAgentAllowedByCapabilityCeiling(agentConfig.name, capabilityCeiling);
+	} catch (error) {
+		return formatAsyncStartError("single", error instanceof Error ? error.message : String(error));
+	}
 	const runnerCwd = resolveChildCwd(ctx.cwd, cwd);
 	const skillNames = params.skills ?? agentConfig.skills ?? [];
 	const availableModels = params.availableModels;
@@ -1299,6 +1309,7 @@ export function executeAsyncSingle(
 				steps: [
 					{
 						parentSessionId: ctx.parentSessionId ?? ctx.currentSessionId,
+						permissionRules,
 						...(capabilityCeiling ? { capabilityCeiling } : {}),
 						agent,
 						task: taskWithOutputInstruction,

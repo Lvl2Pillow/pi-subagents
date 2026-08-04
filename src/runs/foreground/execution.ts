@@ -54,6 +54,7 @@ import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
+import { resolvePermissionRules } from "../shared/permissions.ts";
 import { applyThinkingSuffix, buildPiArgs, cleanupTempDir, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/pi-args.ts";
 import { decodeSubagentCapabilityCeiling, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV } from "../shared/capability-ceiling.ts";
 import { resolveEffectiveThinking } from "../../shared/model-info.ts";
@@ -299,6 +300,10 @@ async function runSingleAttempt(
 			childIndex: options.index ?? 0,
 		})
 		: undefined;
+	const permissionRules = resolvePermissionRules(options.permissions, agent.permissions);
+	const permissionAuditPath = permissionRules && options.artifactsDir
+		? path.join(options.artifactsDir, "permission-audit", `${options.runId}-${options.index ?? 0}.jsonl`)
+		: undefined;
 	const { args, env: sharedEnv, tempDir, toolDiagnosticPath, capabilityAudit } = buildPiArgs({
 		baseArgs: ["--mode", "json", "-p"],
 		task,
@@ -329,6 +334,8 @@ async function runSingleAttempt(
 		structuredOutput: options.structuredOutput,
 		toolBudget: options.toolBudget,
 		allowZeroToolBudget: options.allowZeroToolBudget,
+		permissionRules,
+		permissionAuditPath,
 		childWatchdog,
 		waitToolEnabled: options.waitToolEnabled,
 		capabilityCeiling: options.capabilityCeiling,

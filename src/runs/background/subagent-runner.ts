@@ -1270,6 +1270,10 @@ async function runSingleStep(
 			steerAckDir: ctx.steerAckDir,
 			structuredOutput: effectiveStructuredOutput,
 			toolBudget: step.toolBudget,
+			permissionRules: step.permissionRules,
+			permissionAuditPath: step.permissionRules && ctx.artifactsDir
+				? path.join(ctx.artifactsDir, "permission-audit", `${ctx.id}-${ctx.flatIndex}.jsonl`)
+				: undefined,
 			childWatchdog,
 			waitToolEnabled: step.waitToolEnabled,
 		});

@@ -44,6 +44,7 @@ import {
 import { buildChainSummary } from "../../shared/formatters.ts";
 import { compactForegroundDetails, getSingleResultOutput, mapConcurrent, resolveChildCwd, sumResultsCost, sumResultsUsage } from "../../shared/utils.ts";
 import { DEFAULT_GLOBAL_CONCURRENCY_LIMIT, Semaphore } from "../shared/parallel-utils.ts";
+import type { PermissionConfig } from "../shared/permissions.ts";
 import { formatParallelHandoffError, formatParallelHandoffReference, parallelHandoffPath, writeParallelHandoffGroup } from "../shared/parallel-handoff.ts";
 import { recordRun } from "../shared/run-history.ts";
 import {
@@ -162,6 +163,7 @@ interface ParallelChainRunInput {
 	configToolBudget?: ToolBudgetConfig;
 	globalSemaphore?: Semaphore;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
+	permissions?: PermissionConfig;
 	dynamic?: boolean;
 }
 
@@ -378,6 +380,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			let result!: SingleResult;
 			try {
 				result = await runSync(input.ctx.cwd, input.agents, task.agent, taskStr, {
+				permissions: input.permissions,
 				parentSessionId: input.ctx.sessionManager.getSessionId() ?? undefined,
 				capabilityCeiling: input.capabilityCeiling,
 				context: input.contextForAgent?.(task.agent),
@@ -522,6 +525,7 @@ interface ChainExecutionParams {
 	toolBudget?: ResolvedToolBudget;
 	usageBudget?: UsageBudgetConfig;
 	configToolBudget?: ToolBudgetConfig;
+	permissions?: PermissionConfig;
 	/** Global cap on simultaneously-running tasks within this chain. Defaults to DEFAULT_GLOBAL_CONCURRENCY_LIMIT. */
 	globalConcurrencyLimit?: number;
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
@@ -843,6 +847,7 @@ ${step.message}` : ""}` }],
 					toolBudget: params.toolBudget,
 					configToolBudget: params.configToolBudget,
 					globalSemaphore,
+					permissions: params.permissions,
 				});
 				globalTaskIndex += step.parallel.length;
 
@@ -1099,6 +1104,7 @@ ${step.message}` : ""}` }],
 				toolBudget: params.toolBudget,
 				configToolBudget: params.configToolBudget,
 				globalSemaphore,
+				permissions: params.permissions,
 				dynamic: true,
 			});
 			globalTaskIndex = dynamicStartIndex + reservedDynamicItems;
@@ -1327,6 +1333,7 @@ ${step.message}` : ""}` }],
 					dynamicGroupStatuses,
 				});
 				r = await runSync(ctx.cwd, agents, seqStep.agent, stepTask, {
+				permissions: params.permissions,
 				parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
 				capabilityCeiling: params.capabilityCeiling,
 				context: params.contextForAgent?.(seqStep.agent),

@@ -31,6 +31,7 @@ export {
 } from "./identity.ts";
 import { resolveTurnBudgetConfig } from "../runs/shared/turn-budget.ts";
 import { validateAcceptanceInput } from "../runs/shared/acceptance.ts";
+import { validatePermissionRules, type PermissionRules } from "../runs/shared/permissions.ts";
 
 export type AgentScope = "user" | "project" | "both";
 
@@ -138,6 +139,7 @@ export interface AgentConfig {
 	maxSubagentDepth?: number;
 	completionGuard?: boolean;
 	toolBudget?: ToolBudgetConfig;
+	permissions?: PermissionRules;
 	disabled?: boolean;
 	extraFields?: Record<string, string>;
 	override?: AgentOverrideInfo;
@@ -1713,25 +1715,15 @@ function isLegacyAgentSkillPath(rootDir: string, filePath: string): boolean {
 	);
 }
 
-function parseAgentAcceptanceFrontmatter(
-	raw: string | undefined,
-	agentName: string,
-): AcceptanceInput | undefined {
+function parseAgentAcceptanceFrontmatter(raw: string | undefined, agentName: string): AcceptanceInput | undefined {
 	if (raw === undefined || !raw.trim()) return undefined;
 	let parsed: unknown;
 	try {
 		parsed = parseYaml(raw);
 	} catch (error) {
-		throw new Error(
-			`Agent '${agentName}' has invalid acceptance frontmatter: ${error instanceof Error ? error.message : String(error)}`,
-			{ cause: error },
-		);
+		throw new Error(`Agent '${agentName}' has invalid acceptance frontmatter: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
 	}
-	const errors = validateAcceptanceInput(
-		parsed,
-		`Agent '${agentName}' acceptance frontmatter`,
-	);
-	if (errors.length > 0) throw new Error(errors.join(" "));
+	const errors = validateAcceptanceInput(parsed, `Agent '${agentName}' acceptance frontmatter`);	if (errors.length > 0) throw new Error(errors.join(" "));
 	return parsed as AcceptanceInput;
 }
 
@@ -1865,6 +1857,13 @@ function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 		}
 
 		const parsedMaxSubagentDepth = Number(frontmatter.maxSubagentDepth);
+		if (frontmatter.permission !== undefined && frontmatter.permissions !== undefined) {
+			throw new Error(`Agent '${localName}' cannot declare both permission and permissions frontmatter.`);
+		}
+		const permissionSource = frontmatter.permissions ?? frontmatter.permission;
+		const permissions = permissionSource?.trim()
+			? validatePermissionRules(parseYaml(permissionSource), `Agent '${localName}' permissions`)
+			: undefined;
 		let toolBudget: ToolBudgetConfig | undefined;
 		if (frontmatter.toolBudget !== undefined && frontmatter.toolBudget.trim()) {
 			const parsed = JSON.parse(frontmatter.toolBudget) as unknown;
@@ -1923,9 +1922,8 @@ function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 					: undefined,
 			completionGuard,
 			toolBudget,
-			extraFields:
-				Object.keys(extraFields).length > 0 ? extraFields : undefined,
-		};
+			permissions,
+			extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,		};
 		agentFrontmatterFields.set(agent, new Set(Object.keys(frontmatter)));
 		agents.push(agent);
 	}

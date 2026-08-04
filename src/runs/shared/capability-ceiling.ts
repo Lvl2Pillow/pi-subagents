@@ -11,6 +11,7 @@ export type SubagentCapabilityCeiling =
 export interface ResolvedSubagentCapabilityCeiling {
 	version: typeof SUBAGENT_CAPABILITY_CEILING_VERSION;
 	allowedTools?: string[];
+	allowedAgents?: string[];
 	denyExtensions: boolean;
 	sources: string[];
 }
@@ -155,6 +156,26 @@ export function resolveSubagentCapabilityCeiling(sessionId: string | undefined, 
 
 export function resolveCurrentSubagentCapabilityCeiling(sessionId: string | undefined): ResolvedSubagentCapabilityCeiling | undefined {
 	return resolveSubagentCapabilityCeiling(sessionId, decodeSubagentCapabilityCeiling(process.env[SUBAGENT_CAPABILITY_CEILING_ENV]));
+}
+
+export function isAgentAllowedByCapabilityCeiling(agentName: string, ceiling: ResolvedSubagentCapabilityCeiling | undefined): boolean {
+	return ceiling?.allowedAgents === undefined || ceiling.allowedAgents.includes(agentName);
+}
+
+export function capabilityCeilingAgentRestrictionMessage(agentName: string, ceiling: ResolvedSubagentCapabilityCeiling | undefined): string | undefined {
+	if (isAgentAllowedByCapabilityCeiling(agentName, ceiling)) return undefined;
+	const sources = ceiling?.sources.length ? ceiling.sources.join(", ") : "unknown source";
+	const allowed = ceiling?.allowedAgents?.length ? ceiling.allowedAgents.join(", ") : "(none)";
+	return `Capability ceiling from ${sources} does not allow agent '${agentName}'. Allowed agents: ${allowed}.`;
+}
+
+export function assertAgentAllowedByCapabilityCeiling(agentName: string, ceiling: ResolvedSubagentCapabilityCeiling | undefined): void {
+	const message = capabilityCeilingAgentRestrictionMessage(agentName, ceiling);
+	if (message) throw new Error(message);
+}
+
+export function capabilityCeilingAgentRestrictionSources(ceiling: ResolvedSubagentCapabilityCeiling | undefined): string[] | undefined {
+	return ceiling?.allowedAgents === undefined ? undefined : [...ceiling.sources];
 }
 
 export function encodeSubagentCapabilityCeiling(ceiling: ResolvedSubagentCapabilityCeiling | undefined): string | undefined {

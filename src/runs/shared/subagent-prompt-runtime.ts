@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { registerNativeSupervisorClient } from "../../intercom/native-supervisor-channel.ts";
+import { decodePermissionRules, permissionDecision, PERMISSION_AUDIT_PATH_ENV, PERMISSION_POLICY_ENV } from "./permissions.ts";
 import { consumeSteerRequestsFromDir, steerAckPathFromDir, writeSteerAckAt, writeSteerCapabilityAt, writeSteerRequestToDir, type SteerRequest } from "../background/control-channel.ts";
 import { SUBAGENT_CHILD_AGENT_ENV, SUBAGENT_CHILD_INDEX_ENV, SUBAGENT_FANOUT_CHILD_ENV, SUBAGENT_STEER_ACK_DIR_ENV, SUBAGENT_STEER_CAPABILITY_ENV, SUBAGENT_STEER_INBOX_ENV } from "./pi-args.ts";
 import { createStructuredOutputToolParameters, STRUCTURED_OUTPUT_CAPTURE_ENV, STRUCTURED_OUTPUT_SCHEMA_ENV, validateStructuredOutputValue } from "./structured-output.ts";
@@ -17,6 +18,8 @@ import type { JsonSchemaObject, ResolvedToolBudget, SubagentState } from "../../
 import { resolveCurrentSessionId } from "../../shared/session-identity.ts";
 import { resolveWatchPath } from "../../shared/utils.ts";
 import { registerChildWatchdog } from "../../watchdog/register-child.ts";
+import { CHILD_WATCHDOG_CONFIG_ENV } from "../../watchdog/child-status.ts";
+import { requestWatchdogPermission, type WatchdogPermissionRequest, type WatchdogPermissionResult } from "../../watchdog/permission-arbiter.ts";
 import { SUBAGENT_WATCHDOG_WARNING_TYPE } from "../../watchdog/types.ts";
 import { resolveWaitToolConfig } from "../background/wait-config.ts";
 import { registerWaitTool } from "../background/wait-tool.ts";
@@ -211,6 +214,31 @@ export function formatSteerMessage(request: SteerRequest): string {
 	].join("\n");
 }
 
+export function registerPermissionGate(
+	pi: ExtensionAPI,
+	requestPermission: (request: WatchdogPermissionRequest) => Promise<WatchdogPermissionResult> = requestWatchdogPermission,
+): void {
+	const rules = decodePermissionRules(process.env[PERMISSION_POLICY_ENV]);
+	if (!rules) return;
+	const onRuntimeEvent = pi.on as unknown as (event: string, handler: (event: { toolName?: string; input?: unknown }, ctx: ExtensionContext) => unknown) => void;
+	onRuntimeEvent("tool_call", async (event, ctx) => {
+		const toolName = typeof event.toolName === "string" ? event.toolName : "tool";
+		const decision = permissionDecision(rules, toolName);
+		if (decision === "allow") return undefined;
+		if (decision === "deny") return { block: true, reason: `Blocked by pi-subagents permission rule: '${toolName}' is denied.` };
+		const result = await requestPermission({
+			ctx,
+			toolName,
+			args: event.input ?? {},
+			rawWatchdogConfig: process.env[CHILD_WATCHDOG_CONFIG_ENV],
+			auditPath: process.env[PERMISSION_AUDIT_PATH_ENV],
+			...(ctx.signal ? { signal: ctx.signal } : {}),
+		});
+		if (result.approved) return undefined;
+		return { block: true, reason: `Blocked by pi-subagents permission rule: ${result.reason}` };
+	});
+}
+
 function registerToolBudget(pi: ExtensionAPI, budget: ResolvedToolBudget | undefined): void {
 	if (!budget) return;
 	let toolCount = 0;
@@ -346,6 +374,7 @@ export function registerSteeringInbox(
 
 export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 	registerSteeringInbox(pi);
+	registerPermissionGate(pi);
 	registerToolBudget(pi, decodeToolBudgetEnv(process.env[TOOL_BUDGET_ENV], { allowZero: process.env[TOOL_BUDGET_ZERO_AUTH_ENV] === "1" }));
 	registerChildWatchdog(pi);
 	const waitToolEnabled = resolveWaitToolConfig().enabled;

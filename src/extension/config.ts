@@ -5,6 +5,7 @@ import type {
 	ExtensionConfig,
 } from "../shared/types.ts";
 import { getAgentDir } from "../shared/utils.ts";
+import { validatePermissionConfig } from "../runs/shared/permissions.ts";
 
 const ARTIFACT_DIR_PREFERENCES = new Set<ArtifactDirPreference>([
 	"project",
@@ -31,44 +32,7 @@ function readConfigForUpdate(configPath = getConfigPath()): ExtensionConfig {
 			`config.artifactDir must be "project", "session", or "temp"`,
 		);
 	}
-	const pc = config.persistentChat;
-	if (pc !== undefined) {
-		if (!pc || typeof pc !== "object" || Array.isArray(pc)) {
-			throw new Error(`config.persistentChat must be a JSON object`);
-		}
-		const shortcut = (pc as Record<string, unknown>).switchShortcut;
-		if (
-			shortcut !== undefined &&
-			(typeof shortcut !== "string" || !shortcut.trim())
-		) {
-			throw new Error(
-				`config.persistentChat.switchShortcut must be a non-empty string`,
-			);
-		}
-		const maxCollapsedLines = (pc as Record<string, unknown>).maxCollapsedLines;
-		if (
-			maxCollapsedLines !== undefined &&
-			(typeof maxCollapsedLines !== "number" ||
-				!Number.isInteger(maxCollapsedLines) ||
-				maxCollapsedLines < 1)
-		) {
-			throw new Error(
-				`config.persistentChat.maxCollapsedLines must be a positive integer`,
-			);
-		}
-		const slotCount = (pc as Record<string, unknown>).slotCount;
-		if (
-			slotCount !== undefined &&
-			(typeof slotCount !== "number" ||
-				!Number.isInteger(slotCount) ||
-				slotCount < 1 ||
-				slotCount > 8)
-		) {
-			throw new Error(
-				`config.persistentChat.slotCount must be an integer between 1 and 8`,
-			);
-		}
-	}
+	validatePermissionConfig(config.permissions);
 	return parsed;
 }
 
