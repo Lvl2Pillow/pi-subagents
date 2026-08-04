@@ -3129,6 +3129,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 
 		if (foregroundControl) updateForegroundNestedProjection(foregroundControl);
 
+
 		const worktreeSuffix = handoff?.suffix ?? "";
 		const ok = results.filter((result) => result.exitCode === 0).length;
 		const downgradeNote = backgroundRequestedWhileClarifying ? " (background requested, but clarify kept this run foreground)" : "";
