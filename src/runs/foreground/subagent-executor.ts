@@ -1944,6 +1944,87 @@ function collectChainThinkingOverrides(
 	return thinkingOverrides;
 }
 
+type StaticLaunchSummary = { agent: string; model?: string; thinking?: string };
+
+function resolveStaticLaunchSummary(input: {
+	agent: string;
+	index: number;
+	explicitModel?: string;
+	agents: AgentConfig[];
+	parentModel?: ParentModel;
+	availableModels: ModelInfo[];
+	currentProvider?: string;
+	modelScope?: ModelScopeConfig;
+	thinkingOverrideForTask: ForkThinkingOverrideForTask;
+}): StaticLaunchSummary {
+	const agentConfig = input.agents.find((agent) => agent.name === input.agent);
+	const model = resolveEffectiveSubagentModel(
+		input.explicitModel,
+		agentConfig?.model,
+		input.parentModel,
+		input.availableModels,
+		input.currentProvider,
+		input.modelScope === undefined ? {} : { scope: input.modelScope },
+	);
+	const thinkingOverride = input.thinkingOverrideForTask(input.agent, input.index, model);
+	const thinking = resolveEffectiveThinking(model, thinkingOverride ?? agentConfig?.thinking);
+	return {
+		agent: input.agent,
+		...(model ? { model } : {}),
+		...(thinking ? { thinking } : {}),
+	};
+}
+
+function collectStaticLaunchSummaries(input: {
+	params: SubagentParamsLike;
+	agents: AgentConfig[];
+	parentModel?: ParentModel;
+	availableModels: ModelInfo[];
+	currentProvider?: string;
+	modelScope?: ModelScopeConfig;
+	thinkingOverrideForTask: ForkThinkingOverrideForTask;
+	dynamicFanoutMaxItems?: number;
+}): StaticLaunchSummary[] {
+	const summary = (agent: string, index: number, explicitModel?: string) => resolveStaticLaunchSummary({
+		agent,
+		index,
+		explicitModel,
+		agents: input.agents,
+		parentModel: input.parentModel,
+		availableModels: input.availableModels,
+		currentProvider: input.currentProvider,
+		modelScope: input.modelScope,
+		thinkingOverrideForTask: input.thinkingOverrideForTask,
+	});
+	if (input.params.tasks) return input.params.tasks.map((task, index) => summary(task.agent, index, task.model));
+	if (input.params.chain?.length) {
+		const launches: StaticLaunchSummary[] = [];
+		let flatIndex = 0;
+		for (const step of input.params.chain) {
+			if (isParallelStep(step)) {
+				for (const task of step.parallel) {
+					launches.push(summary(task.agent, flatIndex, task.model));
+					flatIndex++;
+				}
+				continue;
+			}
+			if (isDynamicParallelStep(step)) {
+				const maxItems = step.expand.maxItems ?? input.dynamicFanoutMaxItems ?? 0;
+				for (let itemIndex = 0; itemIndex < maxItems; itemIndex++) {
+					launches.push(summary(step.parallel.agent, flatIndex, step.parallel.model));
+					flatIndex++;
+				}
+				continue;
+			}
+			const sequential = step as SequentialStep;
+			launches.push(summary(sequential.agent, flatIndex, sequential.model));
+			flatIndex++;
+		}
+		return launches;
+	}
+	return input.params.agent ? [summary(input.params.agent, 0, input.params.model as string | undefined)] : [];
+}
+
 function firstChainAgent(chain: ChainStep[]): string | undefined {
 	const first = chain[0];
 	if (!first) return undefined;
@@ -4521,21 +4602,24 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			const errorText = result?.isError
 				? result.content.find((item) => item.type === "text")?.text
 				: undefined;
-			const agentsForSummary = hasTasks && effectiveParams.tasks
-				? effectiveParams.tasks.map((task) => task.agent)
-				: hasChain && effectiveParams.chain
-					? effectiveParams.chain.flatMap((step) => isParallelStep(step) ? step.parallel.map((task) => task.agent) : [(step as SequentialStep).agent])
-					: effectiveParams.agent ? [effectiveParams.agent] : [];
-			const declaredModels = hasTasks && effectiveParams.tasks
-				? effectiveParams.tasks.map((task) => task.model)
-				: hasChain && effectiveParams.chain
-					? effectiveParams.chain.flatMap((step) => isParallelStep(step)
-						? step.parallel.map((task) => task.model)
-						: isDynamicParallelStep(step)
-							? [step.parallel.model]
-							: [(step as SequentialStep).model])
-					: [effectiveParams.model];
-			const declaredThinking = typeof effectiveParams.thinking === "string" ? effectiveParams.thinking : undefined;
+			let startedLaunches: StaticLaunchSummary[] = [];
+			let agentsForSummary: string[] = [];
+			try {
+				startedLaunches = collectStaticLaunchSummaries({
+					params: effectiveParams,
+					agents,
+					parentModel: requestParentModel,
+					availableModels: ctx.modelRegistry.getAvailable().map(toModelInfo),
+					currentProvider: requestParentModel?.provider,
+					modelScope,
+					thinkingOverrideForTask: forkThinkingOverrideForTask,
+					dynamicFanoutMaxItems: deps.config.chain?.dynamicFanout?.maxItems,
+				});
+				agentsForSummary = startedLaunches.map((launch) => launch.agent);
+			} catch {
+				// Model resolution is best-effort metadata; a throwing registry must not suppress nested failure events.
+				agentsForSummary = effectiveParams.agent ? [effectiveParams.agent] : [];
+			}
 			try {
 				writeNestedEvent(inheritedNestedRoute, {
 					type,
@@ -4553,19 +4637,19 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						state,
 						agent: agentsForSummary[0],
 						agents: agentsForSummary,
-						...(agentsForSummary.length === 1 && (type === "subagent.nested.started" ? declaredModels[0] : details?.results[0]?.model) ? { model: type === "subagent.nested.started" ? declaredModels[0] : details?.results[0]?.model } : {}),
-						...(agentsForSummary.length === 1 && (type === "subagent.nested.started" ? declaredThinking : details?.results[0]?.thinking) ? { thinking: type === "subagent.nested.started" ? declaredThinking : details?.results[0]?.thinking } : {}),
+						...(agentsForSummary.length === 1 && (type === "subagent.nested.started" ? startedLaunches[0]?.model : details?.results[0]?.model) ? { model: type === "subagent.nested.started" ? startedLaunches[0]?.model : details?.results[0]?.model } : {}),
+						...(agentsForSummary.length === 1 && (type === "subagent.nested.started" ? startedLaunches[0]?.thinking : details?.results[0]?.thinking) ? { thinking: type === "subagent.nested.started" ? startedLaunches[0]?.thinking : details?.results[0]?.thinking } : {}),
 						startedAt: foregroundControl?.startedAt ?? now,
 						...(state !== "running" ? { endedAt: now } : {}),
 						lastUpdate: now,
 						...(details?.totalCost ? { totalCost: details.totalCost } : {}),
 						...(errorText ? { error: errorText } : {}),
 						...(type === "subagent.nested.started"
-							? { steps: agentsForSummary.map((agent, index) => ({
-								agent,
+							? { steps: startedLaunches.map((launch) => ({
+								agent: launch.agent,
 								status: "running" as const,
-								...(declaredModels[index] ? { model: declaredModels[index] } : {}),
-								...(declaredThinking ? { thinking: declaredThinking } : {}),
+								...(launch.model ? { model: launch.model } : {}),
+								...(launch.thinking ? { thinking: launch.thinking } : {}),
 							})) }
 							: details?.results.length
 								? { steps: details.results.map((child) => ({

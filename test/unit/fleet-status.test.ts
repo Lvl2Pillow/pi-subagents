@@ -403,7 +403,7 @@ describe("below-editor subagent FleetView", () => {
 				},
 			],
 		});
-		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
