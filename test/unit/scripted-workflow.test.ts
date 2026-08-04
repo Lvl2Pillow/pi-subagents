@@ -66,6 +66,20 @@ describe("scripted workflow runtime", () => {
 		});
 	});
 
+	it("rejects non-plain child result values", async () => {
+		await assert.rejects(
+			runWorkflowScript({
+				script: `return await runs.run("non-plain", { agent: "worker", task: "write output" });`,
+				timeoutMs: 2_000,
+				async launch(key) {
+					return { key, ok: true, output: "Saved output.", artifactPaths: [], results: [{ metadata: new Map([["source", "worker"]]) }] };
+				},
+				async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			}),
+			(error: unknown) => error instanceof WorkflowScriptError && /return.*plain JSON objects/i.test(error.message),
+		);
+	});
+
 	it("passes per-child worktree controls through runs.run and runs.all", async () => {
 		const launches: Array<{ key: string; worktree: unknown }> = [];
 		await runWorkflowScript({

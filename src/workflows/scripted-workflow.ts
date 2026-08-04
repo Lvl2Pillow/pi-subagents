@@ -152,13 +152,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
+	if (!isRecord(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === null || prototype === Object.prototype;
+}
+
 function omitUndefinedWorkflowValues(value: unknown, seen = new Set<object>()): unknown {
 	if (value === null || typeof value !== "object") return value;
 	if (seen.has(value)) return value;
 	seen.add(value);
 	const normalized = Array.isArray(value)
 		? value.map((entry) => entry === undefined ? null : omitUndefinedWorkflowValues(entry, seen))
-		: isRecord(value)
+		: isPlainJsonObject(value)
 			? Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => entry === undefined ? [] : [[key, omitUndefinedWorkflowValues(entry, seen)]]))
 			: value;
 	seen.delete(value);
