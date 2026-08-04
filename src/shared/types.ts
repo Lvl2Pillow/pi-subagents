@@ -1496,6 +1496,17 @@ export interface ForegroundRunControl {
 	detach?: () => boolean;
 }
 
+export interface WaitSubscriptionRecord {
+	version: 1;
+	token: string;
+	sessionId: string;
+	targetKind: "async" | "foreground";
+	runId: string;
+	requestedId: string;
+	createdAt: number;
+	expiresAt: number;
+}
+
 export interface SubagentState {
 	baseCwd: string;
 	currentSessionId: string | null;
@@ -1532,6 +1543,8 @@ export interface SubagentState {
 	};
 	/** Persistent-chat registry: long-lived subagents plus the current input target. */
 	persistent?: PersistentChatStore;
+	/** Current-session durable non-blocking wait registrations. */
+	waitSubscriptions?: Map<string, WaitSubscriptionRecord>;
 	/** Live in-process workflow controllers. Durable status remains on disk after settlement. */
 	workflowControllers?: Map<string, AbortController>;
 }

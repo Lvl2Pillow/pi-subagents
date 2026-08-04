@@ -10,6 +10,7 @@ import { DIRS, type AsyncStatus, type Details, type ForegroundResumeRun, type Ne
 import { formatWorkflowJsonPreview } from "../../workflows/scripted-workflow.ts";
 import { isUnexplainedProcessSignal } from "../shared/process-signal.ts";
 import { readProcessTerminal, sanitizeProcessTerminal } from "./process-terminal.ts";
+import { formatWaitSubscriptions } from "./wait-subscriptions.ts";
 import { resolveAsyncRunLocation } from "./async-resume.ts";
 import { resolveSubagentRunId } from "./run-id-resolver.ts";
 import { flatToLogicalStepIndex, normalizeParallelGroups } from "./parallel-groups.ts";
@@ -261,8 +262,9 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 					details: { mode: "single", results: [] },
 				};
 			}
+			const waitSubscriptions = deps.state ? formatWaitSubscriptions(deps.state, deps.now?.() ?? Date.now()) : undefined;
 			return {
-				content: [{ type: "text", text: formatAsyncRunList(runs) }],
+				content: [{ type: "text", text: [formatAsyncRunList(runs), waitSubscriptions].filter(Boolean).join("\n\n") }],
 				details: { mode: "single", results: [] },
 			};
 		} catch (error) {

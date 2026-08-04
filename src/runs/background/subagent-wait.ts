@@ -70,6 +70,8 @@ const DEFAULT_POLL_INTERVAL_MS = 1000;
 export interface SubagentWaitParams {
 	/** Optional run id/prefix to wait for. When omitted, waits across every active run in this session. */
 	id?: string;
+	/** Arm a durable exact-run wake subscription and return immediately. Requires id. */
+	nonBlocking?: boolean;
 	/**
 	 * When true, block until EVERY active run in this session (or matching `id`)
 	 * is terminal. Default false: return as soon as the first run finishes, so a
@@ -103,6 +105,8 @@ export interface SubagentWaitDeps {
 	stopOnAttention?: boolean;
 	/** Internal auto-drain mode surfaces failed terminal subagent runs as errors. */
 	failOnFailedRuns?: boolean;
+	/** Arm a durable exact-target wait subscription in a long-lived interactive runtime. */
+	subscribe?: (input: { targetKind: "async" | "foreground"; runId: string; requestedId: string; timeoutMs: number }) => { token: string; expiresAt: number };
 	/** Injectable provider protocol surfaces for deterministic tests. */
 	backgroundWork?: {
 		snapshot(sessionId: string, nowMs: number): BackgroundWorkSnapshot;
@@ -460,6 +464,12 @@ export async function waitForSubagents(
 	const timeoutMs = params.timeoutMs !== undefined && params.timeoutMs > 0 ? params.timeoutMs : DEFAULT_TIMEOUT_MS;
 	const startedAt = now();
 	const waitForAll = params.id ? true : params.all === true;
+	if (params.nonBlocking && !params.id) {
+		return result("Non-blocking wait subscriptions require id so the registration can bind one exact run identity.", true);
+	}
+	if (params.nonBlocking && params.all) {
+		return result("nonBlocking cannot be combined with all; subscribe to one exact run id.", true);
+	}
 
 	let active: AsyncRunSummary[];
 	let foreground: ForegroundResumeRun[];
@@ -483,6 +493,17 @@ export async function waitForSubagents(
 			return result(`Ambiguous subagent run id prefix "${params.id}" matched ${matches.length} active runs: ${matches.map((candidate) => candidate.id).join(", ")}. Pass a longer id.`, true);
 		}
 		const selected = matches[0];
+		if (selected && params.nonBlocking) {
+			if (!deps.subscribe) {
+				return result("Non-blocking wait subscriptions require a long-lived interactive subagent runtime; this runtime can only use blocking subagent_wait calls.", true);
+			}
+			try {
+				const registration = deps.subscribe({ targetKind: selected.kind, runId: selected.id, requestedId: params.id, timeoutMs });
+				return result(`Armed wait subscription ${registration.token} for exact ${selected.kind} run ${selected.id}. Returning immediately; this session will be woken on completion, failure, attention, reconciliation failure, or timeout. Inspect armed subscriptions with subagent({ action: "status" }).`);
+			} catch (error) {
+				return result(error instanceof Error ? error.message : String(error), true);
+			}
+		}
 		if (selected?.kind === "foreground") {
 			return waitForDetachedForegroundRun(selected.run, signal, deps, startedAt, now, pollIntervalMs, timeoutMs);
 		}

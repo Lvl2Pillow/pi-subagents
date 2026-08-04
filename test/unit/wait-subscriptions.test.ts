@@ -1,0 +1,169 @@
+import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { describe, it } from "node:test";
+import { waitForSubagents } from "../../src/runs/background/subagent-wait.ts";
+import { createWaitSubscriptionManager } from "../../src/runs/background/wait-subscriptions.ts";
+import { inspectSubagentStatus } from "../../src/runs/background/run-status.ts";
+import { SUBAGENT_ASYNC_COMPLETE_EVENT, type IntercomEventBus, type SubagentState } from "../../src/shared/types.ts";
+
+function writeStatus(asyncRoot: string, runId: string, state: string, extra: object = {}): void {
+	const dir = path.join(asyncRoot, runId);
+	fs.mkdirSync(dir, { recursive: true });
+	const now = Date.now();
+	fs.writeFileSync(path.join(dir, "status.json"), JSON.stringify({
+		runId,
+		mode: "single",
+		state,
+		startedAt: now,
+		lastUpdate: now,
+		steps: [{ agent: "worker", status: state }],
+		...extra,
+	}), "utf-8");
+}
+
+function makeState(sessionId = "session-a"): SubagentState {
+	return {
+		baseCwd: "",
+		currentSessionId: sessionId,
+		asyncJobs: new Map(),
+		foregroundControls: new Map(),
+		lastForegroundControlId: null,
+		cleanupTimers: new Map(),
+		lastUiContext: null,
+		poller: null,
+		completionSeen: new Map(),
+		watcher: null,
+		watcherRestartTimer: null,
+		resultFileCoalescer: { schedule: () => false, clear: () => {} },
+	} as SubagentState;
+}
+
+class TestBus implements IntercomEventBus {
+	private handlers = new Map<string, Set<(data: unknown) => void>>();
+
+	on(channel: string, handler: (data: unknown) => void): () => void {
+		const handlers = this.handlers.get(channel) ?? new Set();
+		handlers.add(handler);
+		this.handlers.set(channel, handlers);
+		return () => handlers.delete(handler);
+	}
+
+	emit(channel: string, data: unknown): void {
+		for (const handler of this.handlers.get(channel) ?? []) handler(data);
+	}
+}
+
+function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
+	return result.content.map((entry) => entry.text ?? "").join("");
+}
+
+describe("non-blocking wait subscriptions", () => {
+	it("returns immediately and binds an id prefix to one exact run", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-arm-"));
+		try {
+			const asyncRoot = path.join(root, "runs");
+			writeStatus(asyncRoot, "run-alpha", "running", { sessionId: "session-a", pid: 999_999 });
+			let armed: { targetKind: "async" | "foreground"; runId: string; requestedId: string; timeoutMs: number } | undefined;
+			const result = await waitForSubagents({ id: "run-al", nonBlocking: true, timeoutMs: 5_000 }, undefined, {
+				state: makeState(),
+				asyncDirRoot: asyncRoot,
+				resultsDir: path.join(root, "results"),
+				kill: () => true,
+				sleep: async () => { throw new Error("non-blocking wait must not sleep"); },
+				subscribe: (input) => {
+					armed = input;
+					return { token: "wait-token", expiresAt: 6_000 };
+				},
+			});
+
+			assert.equal(result.isError, undefined);
+			assert.match(textOf(result), /Armed wait subscription wait-token/);
+			assert.deepEqual(armed, { targetKind: "async", runId: "run-alpha", requestedId: "run-al", timeoutMs: 5_000 });
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("restores durable registrations and wakes on exact completion", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-restore-"));
+		const asyncRoot = path.join(root, "runs");
+		const resultsDir = path.join(root, "results");
+		const subscriptionsDir = path.join(root, "subscriptions");
+		const bus = new TestBus();
+		const sent: Array<{ message: { content?: unknown }; options?: { triggerTurn?: boolean } }> = [];
+		const pi = {
+			events: bus,
+			sendMessage(message: { content?: unknown }, options?: { triggerTurn?: boolean }) { sent.push({ message, options }); },
+		};
+		try {
+			writeStatus(asyncRoot, "run-exact", "running", { sessionId: "session-a", pid: 999_999 });
+			const firstState = makeState();
+			const first = createWaitSubscriptionManager(pi as never, firstState, { asyncDirRoot: asyncRoot, resultsDir, subscriptionsDir, pollIntervalMs: 60_000, kill: () => true });
+			const registration = first.arm({ targetKind: "async", runId: "run-exact", requestedId: "run-ex", timeoutMs: 30_000 });
+			assert.equal(fs.existsSync(path.join(subscriptionsDir, `${registration.token}.json`)), true);
+			first.dispose();
+
+			const restoredState = makeState();
+			const restored = createWaitSubscriptionManager(pi as never, restoredState, { asyncDirRoot: asyncRoot, resultsDir, subscriptionsDir, pollIntervalMs: 60_000, kill: () => true });
+			restored.restore();
+			assert.equal(restoredState.waitSubscriptions?.has(registration.token), true);
+			const status = inspectSubagentStatus({}, { state: restoredState, asyncDirRoot: asyncRoot, resultsDir, kill: () => true });
+			assert.match(textOf(status), new RegExp(`Armed wait subscriptions.*${registration.token}`, "s"));
+
+			writeStatus(asyncRoot, "unrelated-run", "complete", { sessionId: "session-a" });
+			restored.reconcile();
+			assert.equal(sent.length, 0, "an unrelated exact run must not satisfy the subscription");
+
+			writeStatus(asyncRoot, "run-exact", "complete", { sessionId: "session-a" });
+			bus.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, { runId: "run-exact" });
+			assert.equal(sent.length, 1);
+			assert.match(String(sent[0]?.message.content), /run run-exact: completed/);
+			assert.equal(sent[0]?.options?.triggerTurn, true);
+			assert.equal(restoredState.waitSubscriptions?.has(registration.token), false);
+			assert.equal(fs.existsSync(path.join(subscriptionsDir, `${registration.token}.json`)), false);
+			restored.dispose();
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("wakes for attention and timeout without treating subscriptions as child work", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-outcomes-"));
+		const asyncRoot = path.join(root, "runs");
+		const resultsDir = path.join(root, "results");
+		const subscriptionsDir = path.join(root, "subscriptions");
+		const bus = new TestBus();
+		const sent: string[] = [];
+		let now = 1_000;
+		const state = makeState();
+		const manager = createWaitSubscriptionManager({
+			events: bus,
+			sendMessage(message: { content?: unknown }) { sent.push(String(message.content)); },
+		} as never, state, { asyncDirRoot: asyncRoot, resultsDir, subscriptionsDir, pollIntervalMs: 60_000, now: () => now, kill: () => true });
+		try {
+			writeStatus(asyncRoot, "run-attention", "running", { sessionId: "session-a", pid: 999_999 });
+			manager.arm({ targetKind: "async", runId: "run-attention", requestedId: "run-attention", timeoutMs: 5_000 });
+			writeStatus(asyncRoot, "run-attention", "running", {
+				sessionId: "session-a",
+				pid: 999_999,
+				activityState: "needs_attention",
+				steps: [{ agent: "worker", status: "running", activityState: "needs_attention" }],
+			});
+			manager.reconcile();
+			assert.match(sent.shift() ?? "", /needs attention/);
+
+			writeStatus(asyncRoot, "run-timeout", "running", { sessionId: "session-a", pid: 999_998 });
+			manager.arm({ targetKind: "async", runId: "run-timeout", requestedId: "run-timeout", timeoutMs: 100 });
+			now = 1_101;
+			manager.reconcile();
+			assert.match(sent.shift() ?? "", /timed out/);
+			assert.equal(state.asyncJobs.size, 0);
+			assert.equal(state.waitSubscriptions?.size, 0);
+		} finally {
+			manager.dispose();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+});

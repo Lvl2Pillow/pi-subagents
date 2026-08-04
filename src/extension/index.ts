@@ -79,6 +79,7 @@ import {
 import { restorePersistentRunSnapshots } from "../persistent/run-message.ts";
 import { resolveWaitToolConfig } from "../runs/background/subagent-wait.ts";
 import { registerWaitTool } from "../runs/background/wait-tool.ts";
+import { createWaitSubscriptionManager } from "../runs/background/wait-subscriptions.ts";
 import { drainOutstandingWork } from "../runs/background/auto-drain.ts";
 import registerSubagentNotify, {
 	parseSubagentNotifyContent,
@@ -314,6 +315,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	const supervisorChannel = createNativeSupervisorChannel(pi, state);
+	const waitSubscriptionManager = createWaitSubscriptionManager(pi, state);
 	const mainWatchdog = registerMainWatchdog(pi);
 	const completionNotifier = registerSubagentNotify(pi, state, {
 		batchConfig: config.completionBatch,
@@ -337,6 +339,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		mainWatchdog.dispose();
 		scheduledRunManager.stop();
 		supervisorChannel.dispose();
+		waitSubscriptionManager.dispose();
 		fleetStatus?.dispose();
 		persistentChat?.dispose();
 		if (state.poller) {
@@ -591,7 +594,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool(tool);
 
-	registerWaitTool(pi, state, waitToolConfig.enabled);
+	registerWaitTool(pi, state, waitToolConfig.enabled, waitSubscriptionManager);
 
 	pi.on("agent_end", async (_event, ctx) => {
 		if (ctx.hasUI) return;
@@ -720,6 +723,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		scheduledRunManager.bindSession(ctx);
 		restoreSlashFinalSnapshots(ctx.sessionManager.getEntries());
 		restorePersistentRunSnapshots(ctx.sessionManager.getEntries());
+		waitSubscriptionManager.restore();
 		startResultWatcher();
 		primeExistingResults({ triggerTurn: !recovering });
 		fleetStatus?.setContext(ctx);
@@ -768,6 +772,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			reason: (event as { reason?: string } | undefined)?.reason,
 		});
 		stopResultWatcher();
+		waitSubscriptionManager.dispose();
 		state.currentSessionId = null;
 		state.parentSessionFile = null;
 		completionNotifier.dispose();
