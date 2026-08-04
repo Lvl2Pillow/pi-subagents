@@ -59,6 +59,10 @@ test("published extension APIs use supported package entrypoints", async () => {
 		"./capability-ceiling": "./src/api/capability-ceiling.ts",
 		"./delegation": "./src/api/delegation.ts",
 		"./preflight": "./src/api/preflight.ts",
+		"./control-channel": "./src/api/control-channel.ts",
+		"./intercom-bridge": "./src/api/intercom-bridge.ts",
+		"./pi-args": "./src/api/pi-args.ts",
+		"./shared-types": "./src/api/shared-types.ts",
 	});
 	const backgroundWork = await import("pi-subagents/background-work");
 	assert.equal(backgroundWork.BACKGROUND_WORK_PROTOCOL_VERSION, 1);
@@ -71,6 +75,17 @@ test("published extension APIs use supported package entrypoints", async () => {
 	const preflight = await import("pi-subagents/preflight");
 	assert.equal(preflight.SUBAGENT_LAUNCH_CONTRACT_VERSION, 2);
 	assert.equal(typeof preflight.resolveSubagentLaunchContract, "function");
+	const controlChannel = await import("pi-subagents/control-channel");
+	assert.equal(typeof controlChannel.requestAsyncStop, "function");
+	const intercomBridge = await import("pi-subagents/intercom-bridge");
+	assert.equal(typeof intercomBridge.resolveIntercomSessionTarget, "function");
+	const piArgs = await import("pi-subagents/pi-args");
+	assert.equal(typeof piArgs.resolvePiLaunchToolPlan, "function");
+	assert.equal("buildPiArgs" in piArgs, false);
+	const sharedTypes = await import("pi-subagents/shared-types");
+	assert.equal(typeof sharedTypes.wrapForkTask, "function");
+	assert.equal(typeof sharedTypes.DEFAULT_FORK_PREAMBLE, "string");
+	assert.equal("TEMP_ROOT_DIR" in sharedTypes, false);
 });
 
 test("direct @earendil-works runtime imports are declared for CI installs", () => {
@@ -85,7 +100,7 @@ test("direct @earendil-works runtime imports are declared for CI installs", () =
 	for (const file of [...collectSourceFiles(path.join(projectRoot, "src")), ...collectSourceFiles(path.join(projectRoot, "test"))]) {
 		const source = fs.readFileSync(file, "utf-8");
 		for (const match of source.matchAll(sourceImportPattern)) {
-			const specifier = match[1] ?? match[2];
+			const specifier = match[1] ?? match[2]!;
 			imported.add(specifier.split("/").slice(0, 2).join("/"));
 		}
 	}

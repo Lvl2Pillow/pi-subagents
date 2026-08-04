@@ -10,7 +10,11 @@
     "./background-work": "./src/api/background-work.ts",
     "./delegation": "./src/api/delegation.ts",
     "./capability-ceiling": "./src/api/capability-ceiling.ts",
-    "./preflight": "./src/api/preflight.ts"
+    "./preflight": "./src/api/preflight.ts",
+    "./control-channel": "./src/api/control-channel.ts",
+    "./intercom-bridge": "./src/api/intercom-bridge.ts",
+    "./pi-args": "./src/api/pi-args.ts",
+    "./shared-types": "./src/api/shared-types.ts"
   },
   "repository": {
     "type": "git",
