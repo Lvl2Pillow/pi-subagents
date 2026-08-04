@@ -500,6 +500,45 @@ Do work
 		const worker = result.agents.find((agent) => agent.name === "worker");
 		assert.equal(worker?.defaultContext, "fork");
 	});
+
+	it("loads packaged planner, worker, and oracle with fork defaultContext and advisor alias", () =>
+		withTempHome(() => {
+			const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-builtin-default-context-"));
+			tempDirs.push(dir);
+			const packageRoot = path.join(dir, ".pi", "vendor", "workflow");
+			writeJson(path.join(dir, ".pi", "settings.json"), {
+				packages: [{ source: "file:./vendor/workflow" }],
+			});
+			writeJson(path.join(packageRoot, "package.json"), {
+				name: "packaged-agents",
+				pi: { subagents: { agents: ["./agents"] } },
+			});
+			for (const [name, extra] of [
+				["planner", "description: Plan the work.\n"],
+				["worker", "description: Do the work.\n"],
+				["oracle", "description: Decide.\naliases: advisor\n"],
+			] as const) {
+				writeAgent(
+					path.join(packageRoot, "agents", `${name}.md`),
+					`---
+name: ${name}
+package: packaged-agents
+defaultContext: fork
+${extra}---
+
+Work as ${name}.
+`,
+				);
+			}
+			const agents = discoverAgentsAll(dir).package;
+
+			for (const name of ["packaged-agents.planner", "packaged-agents.worker", "packaged-agents.oracle"]) {
+				const agent = agents.find((candidate) => candidate.name === name);
+				assert.equal(agent?.defaultContext, "fork", `${name} should default to fork context`);
+			}
+			const oracle = agents.find((candidate) => candidate.name === "packaged-agents.oracle");
+			assert.deepEqual(oracle?.aliases, ["advisor"]);
+		}));
 });
 
 describe("agent frontmatter launch defaults", () => {
