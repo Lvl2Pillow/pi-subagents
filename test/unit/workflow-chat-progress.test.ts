@@ -6,8 +6,8 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 import { isSameGitRepository, resolveWorkflowChatProgress } from "../../src/workflows/chat-progress.ts";
 import { renderSubagentResult } from "../../src/tui/render.ts";
-import { createSubagentExecutor } from "../../src/runs/foreground/subagent-executor.ts";
-import type { Details, SubagentState } from "../../src/shared/types.ts";
+import { createSubagentExecutor, foregroundResultIntercomStatus, shouldSuppressRoutineResultIntercom } from "../../src/runs/foreground/subagent-executor.ts";
+import type { Details, SingleResult, SubagentState } from "../../src/shared/types.ts";
 
 const theme = {
 	fg(_name: string, text: string): string { return text; },
@@ -154,6 +154,23 @@ describe("workflow chat progress rendering", () => {
 		assert.match(text, /complete\s+scout Found renderer seam/);
 		assert.match(text, /running\s+tests focused integration suite/);
 		assert.match(text, /failed\s+review fresh-context UX review .* needs fixes/);
+	});
+
+	it("suppresses only successful routine child result intercom for live-card workflows", () => {
+		const completed = { agent: "delegate", exitCode: 0, outputState: "present" } as SingleResult;
+		const failed = { agent: "delegate", exitCode: 1, outputState: "present" } as SingleResult;
+		const rejected = { agent: "delegate", exitCode: 0, acceptance: { status: "rejected" }, outputState: "present" } as SingleResult;
+
+		assert.equal(shouldSuppressRoutineResultIntercom({ suppressRoutineResultIntercom: true, results: [completed] }), true);
+		assert.equal(shouldSuppressRoutineResultIntercom({ suppressRoutineResultIntercom: true, results: [failed] }), false);
+		assert.equal(shouldSuppressRoutineResultIntercom({ suppressRoutineResultIntercom: true, results: [rejected] }), false);
+		assert.equal(shouldSuppressRoutineResultIntercom({ suppressRoutineResultIntercom: false, results: [completed] }), false);
+	});
+
+	it("marks acceptance-rejected foreground intercom results as failed", () => {
+		const rejected = { agent: "delegate", exitCode: 0, acceptance: { status: "rejected" }, outputState: "present" } as SingleResult;
+
+		assert.equal(foregroundResultIntercomStatus(rejected), "failed");
 	});
 
 	it("shows final workflow output after live-card progress completes", () => {

@@ -170,6 +170,7 @@ export interface SubagentParamsLike {
 	/** Internal workflow ownership metadata; not part of the public schema. */
 	workflowParentRunId?: string;
 	workflowKey?: string;
+	suppressRoutineResultIntercom?: boolean;
 	/** Internal durable-run compatibility fields. Public callers must use workflowScript. */
 	chain?: ChainStep[];
 	tasks?: TaskParam[];
@@ -1452,6 +1453,26 @@ function createForegroundControlNotifier(data: Pick<ExecutionContextData, "contr
 		});
 	};
 }
+
+export function foregroundResultIntercomStatus(result: SingleResult): ReturnType<typeof resolveSubagentResultStatus> {
+	return resolveSubagentResultStatus({
+		exitCode: result.exitCode,
+		...(result.acceptance?.status === "rejected" ? { success: false } : {}),
+		interrupted: result.interrupted,
+		detached: result.detached,
+		processSignal: result.processSignal,
+		timedOut: result.timedOut,
+		stopped: result.stopped,
+		turnBudgetExceeded: result.turnBudgetExceeded,
+	});
+}
+
+export function shouldSuppressRoutineResultIntercom(input: { suppressRoutineResultIntercom?: boolean; results: SingleResult[] }): boolean {
+	return input.suppressRoutineResultIntercom === true
+		&& input.results.length > 0
+		&& input.results.every((result) => foregroundResultIntercomStatus(result) === "completed");
+}
+
 
 function canonicalizeAgentName(name: string, agents: AgentConfig[]): { name?: string; error?: string } {
 	const resolved = resolveAgentName(name, agents);
@@ -3444,7 +3465,8 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 	});
 	rememberForegroundRun(deps.state, { runId, mode: "single", cwd: effectiveCwd, sessionId: data.parentSessionId, results: details.results });
 
-	if (!r.detached && !r.interrupted) {
+	const suppressRoutineResultIntercom = shouldSuppressRoutineResultIntercom({ suppressRoutineResultIntercom: params.suppressRoutineResultIntercom, results: [r] });
+	if (!r.detached && !r.interrupted && !suppressRoutineResultIntercom) {
 		if (foregroundControl) updateForegroundNestedProjection(foregroundControl);
 	}
 
@@ -3779,7 +3801,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						if (workflowUsageBudget.budget && childParams.async === true) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, "workflow usageBudget does not support async runs.run launches."));
 						const budgetState = usageBudgetState(workflowUsageBudget.budget, sumResultsCost(workflowResults));
 						if (budgetState?.exhausted) return workflowChildResult(key, buildRequestedModeError(childParams as SubagentParamsLike, usageBudgetExceededMessage(budgetState)));
-						const childRequest = prepareWorkflowChildParams({ ...workflowChildDefaults, ...childParams, workflowParentRunId: _id, workflowKey: key } as SubagentParamsLike);
+						const childRequest = prepareWorkflowChildParams({ ...workflowChildDefaults, ...childParams, workflowParentRunId: _id, workflowKey: key, suppressRoutineResultIntercom: chatProgress.mode === "live-card" } as SubagentParamsLike);
 						const result = await execute(randomUUID(), childRequest, workflowSignal, undefined, ctx);
 						workflowResults.push(...result.details.results);
 						return workflowChildResult(key, result);
