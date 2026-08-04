@@ -428,8 +428,13 @@ Windows global agent.
 		fs.mkdirSync(binDir, { recursive: true });
 		fs.writeFileSync(
 			path.join(binDir, "npm"),
-			`#!/bin/sh\ntouch "${marker}"\nprintf '%s\\n' "${fallbackRoot}"\n`,
+			`#!/bin/sh\ntouch "$PI_TEST_NPM_MARKER"\nprintf '%s\\n' "$PI_TEST_FALLBACK_ROOT"\n`,
 			{ encoding: "utf-8", mode: 0o755 },
+		);
+		fs.writeFileSync(
+			path.join(binDir, "npm.cmd"),
+			`@echo off\r\necho called > "%PI_TEST_NPM_MARKER%"\r\necho %PI_TEST_FALLBACK_ROOT%\r\n`,
+			"utf-8",
 		);
 		fs.writeFileSync(
 			path.join(binDir, "cmd.exe"),
@@ -459,11 +464,15 @@ Fallback global agent.
 		const previousAppData = process.env.APPDATA;
 		const previousPath = process.env.PATH;
 		const previousComSpec = process.env.ComSpec;
+		const previousMarkerEnv = process.env.PI_TEST_NPM_MARKER;
+		const previousFallbackRootEnv = process.env.PI_TEST_FALLBACK_ROOT;
 		try {
 			Object.defineProperty(process, "platform", { value: "win32" });
 			process.env.APPDATA = appData;
 			process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
-			process.env.ComSpec = path.join(binDir, "cmd.exe");
+			if (os.platform() !== "win32") process.env.ComSpec = path.join(binDir, "cmd.exe");
+			process.env.PI_TEST_NPM_MARKER = marker;
+			process.env.PI_TEST_FALLBACK_ROOT = fallbackRoot;
 
 			const skills = await importSkillsFresh();
 			assert.ok(skills.discoverAvailableSkills(tempDir).some((skill) => skill.name === "fallback-global-skill"));
@@ -479,6 +488,10 @@ Fallback global agent.
 			else process.env.PATH = previousPath;
 			if (previousComSpec === undefined) delete process.env.ComSpec;
 			else process.env.ComSpec = previousComSpec;
+			if (previousMarkerEnv === undefined) delete process.env.PI_TEST_NPM_MARKER;
+			else process.env.PI_TEST_NPM_MARKER = previousMarkerEnv;
+			if (previousFallbackRootEnv === undefined) delete process.env.PI_TEST_FALLBACK_ROOT;
+			else process.env.PI_TEST_FALLBACK_ROOT = previousFallbackRootEnv;
 		}
 	});
 
