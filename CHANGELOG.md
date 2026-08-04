@@ -27,6 +27,7 @@
 - Scheduled subagent runs are now enabled by default; set `{ "scheduledRuns": { "enabled": false } }` to opt out.
 
 ### Fixed
+- Show current-session async runs in the Fleet inspector even when this Pi process did not start them.
 - Resume the parent session after compaction while async subagent work remains active.
 - Avoid invoking `npm root -g` on Windows when the standard `%APPDATA%\\npm\\node_modules` global root is available, preserving custom terminal tab titles during agent and skill discovery. Thanks to @Suchwert for #767.
 - Preserved nested foreground failure events when resolved launch metadata is unavailable.

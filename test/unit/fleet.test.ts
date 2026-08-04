@@ -900,6 +900,34 @@ describe("native subagent fleet", () => {
 		}
 	});
 
+	it("shows disk-only current-session async runs when the overlay opens", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-overlay-reconcile-"));
+		try {
+			writeAsyncRun(root, { id: "disk-only", agents: ["worker"] });
+			const state = stateForTest();
+			let rendered = "";
+			const ctx = {
+				hasUI: true,
+				ui: {
+					setWidget() {},
+					async custom(factory: (tui: unknown, theme: unknown, keybindings: unknown, done: (result: undefined) => void) => SubagentFleetComponent) {
+						const component = factory({ terminal: { rows: 32 }, requestRender() {} }, theme, undefined, () => {});
+						try {
+							rendered = component.render(100).join("\n");
+						} finally {
+							component.dispose();
+						}
+					},
+				},
+			};
+
+			await openSubagentFleet(ctx as never, state, { asyncDirRoot: root, resultsDir: path.join(root, "results") });
+			assert.match(rendered, /worker/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("suppresses the status widget for the full inspector lifecycle", async () => {
 		const state = stateForTest();
 		let hidden = 0;

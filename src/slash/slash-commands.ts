@@ -1594,7 +1594,7 @@ export function registerSlashCommands(
 		}
 		fleetOpen = true;
 		try {
-			await openSubagentFleet(ctx, state);
+			await openSubagentFleet(ctx, state, { asyncDirRoot: DIRS.async, resultsDir: DIRS.results });
 		} finally {
 			fleetOpen = false;
 		}

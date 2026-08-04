@@ -321,15 +321,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		batchConfig: config.completionBatch,
 	});
 	const fleetStatus = fleetViewEnabled
-		? new SubagentFleetStatus(
-				state,
-				async (itemKey) => {
-					const ctx = state.lastUiContext;
-					if (!ctx?.hasUI) return;
-					await openSubagentFleet(ctx, state, { initialKey: itemKey });
-				},
-				{ placement: fleetViewPlacement },
-			)
+		? new SubagentFleetStatus(state, async (itemKey) => {
+			const ctx = state.lastUiContext;
+			if (!ctx?.hasUI) return;
+			await openSubagentFleet(ctx, state, { initialKey: itemKey, asyncDirRoot: DIRS.async, resultsDir: DIRS.results });
+		}, { placement: fleetViewPlacement })
 		: undefined;
 	const { startResultWatcher, primeExistingResults, stopResultWatcher } =
 		createResultWatcher(pi, state, DIRS.results, 10 * 60 * 1000, {
