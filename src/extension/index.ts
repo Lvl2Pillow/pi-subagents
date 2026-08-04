@@ -752,10 +752,23 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		// subagent run (the queued-input collision behind "alt+n stopped
 		// switching" after compaction). Log it so the window is visible.
 		logSession("compact", {
-			reason: event.reason,
-			fromExtension: event.fromExtension,
-			willRetry: event.willRetry,
+			reason: event?.reason,
+			fromExtension: event?.fromExtension,
+			willRetry: event?.willRetry,
 		});
+	});
+
+	pi.on("session_compact", () => {
+		const hasActiveAsyncWork = [...state.asyncJobs.values()].some((job) => job.status === "queued" || job.status === "running");
+		if (!hasActiveAsyncWork || state.lastUiContext?.hasUI !== true) return;
+		pi.sendMessage(
+			{
+				customType: "subagent-compaction-resume",
+				content: "Compaction is complete. Resume the parent task now; background subagent results will arrive separately when ready.",
+				display: false,
+			},
+			{ triggerTurn: true },
+		);
 	});
 
 	pi.on("session_shutdown", (event) => {
