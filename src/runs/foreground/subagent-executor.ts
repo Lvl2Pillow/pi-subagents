@@ -4602,8 +4602,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			const errorText = result?.isError
 				? result.content.find((item) => item.type === "text")?.text
 				: undefined;
-			let startedLaunches: StaticLaunchSummary[] = [];
-			let agentsForSummary: string[] = [];
+			let startedLaunches: StaticLaunchSummary[];
 			try {
 				startedLaunches = collectStaticLaunchSummaries({
 					params: effectiveParams,
@@ -4615,11 +4614,15 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 					thinkingOverrideForTask: forkThinkingOverrideForTask,
 					dynamicFanoutMaxItems: deps.config.chain?.dynamicFanout?.maxItems,
 				});
-				agentsForSummary = startedLaunches.map((launch) => launch.agent);
-			} catch {
-				// Model resolution is best-effort metadata; a throwing registry must not suppress nested failure events.
-				agentsForSummary = effectiveParams.agent ? [effectiveParams.agent] : [];
+			} catch (error) {
+				console.error("Failed to resolve nested foreground launch metadata:", error);
+				startedLaunches = (hasTasks && effectiveParams.tasks
+					? effectiveParams.tasks.map((task) => task.agent)
+					: hasChain && effectiveParams.chain
+						? effectiveParams.chain.flatMap((step) => isParallelStep(step) ? step.parallel.map((task) => task.agent) : [(step as SequentialStep).agent])
+						: effectiveParams.agent ? [effectiveParams.agent] : []).map((agent) => ({ agent }));
 			}
+			const agentsForSummary = startedLaunches.map((launch) => launch.agent);
 			try {
 				writeNestedEvent(inheritedNestedRoute, {
 					type,

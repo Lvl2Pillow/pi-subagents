@@ -26,6 +26,10 @@
 - Scheduled subagent runs are now enabled by default; set `{ "scheduledRuns": { "enabled": false } }` to opt out.
 
 ### Fixed
+- Avoid invoking `npm root -g` on Windows when the standard `%APPDATA%\\npm\\node_modules` global root is available, preserving custom terminal tab titles during agent and skill discovery. Thanks to @Suchwert for #767.
+- Preserved nested foreground failure events when resolved launch metadata is unavailable.
+- Launch standalone Pi child processes directly instead of prepending the resolved Pi CLI script path. Thanks to @ZacharyQin for #764.
+- Kept foreground `workflowScript` live-card runs from flooding chat with routine successful child-result intercom messages while preserving failure surfacing and final artifact references.
 - Project oversized redundant Pi `turn_end` and `agent_end` child events to bounded lifecycle records instead of failing image-heavy runs with `protocol_output_limit`, while preserving `agent_end.willRetry` drain behavior. Thanks to @barto-sh for #743.
 - Count clear `git add`, `git commit`, and `git push` bash calls as implementation mutation attempts so workers that finalize pre-applied changes do not fail the completion guard.
 - Render structured-output-only children as useful JSON output instead of misleading `(no output)` summaries and empty output artifacts.
