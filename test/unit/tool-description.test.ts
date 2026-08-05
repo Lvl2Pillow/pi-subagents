@@ -42,7 +42,7 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /^Delegate one child with \{ agent, task \} or compose work with \{ workflowScript \}/i);
 		assert.match(description, /workflowScript is the sole public orchestration surface/i);
 		assert.match(description, /runs\.run for one child and runs\.all for parallel children/i);
-		assert.match(description, /repository mutation lanes.*runs\.run\/runs\.all.*worktree:true.*managed isolation.*manual Git worktrees/i);
+		assert.match(description, /repository mutation lanes.*worktree:true.*direct single child.*runs\.run\/runs\.all.*managed isolation.*manual Git worktrees/i);
 		assert.match(description, /Sequential replacement/i);
 		assert.match(description, /Parallel replacement/i);
 		assert.doesNotMatch(description, /Compatibility tasks\[\]|CHAIN EXAMPLES|PARALLEL \(compatibility\)/i);
@@ -57,7 +57,7 @@ describe("registered subagent tool description", () => {
 		assert.equal(description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
 		assert.match(description, /workflowScript is the sole public orchestration surface/i);
 		assert.match(description, /runs\.run for one child and runs\.all for parallel work/i);
-		assert.match(description, /repository mutation lanes.*runs\.run\/runs\.all.*worktree:true.*managed isolation.*manual Git worktrees/i);
+		assert.match(description, /repository mutation lanes.*worktree:true.*direct single child.*runs\.run\/runs\.all.*managed isolation.*manual Git worktrees/i);
 		assert.doesNotMatch(description, /tasks\[\]|chain\[\]/i);
 		assert.match(description, /subagent_wait/i);
 		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length);
