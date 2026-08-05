@@ -121,7 +121,8 @@ export function createWaitSubscriptionManager(
 			return;
 		}
 		if (record.targetKind === "foreground") {
-			const run = state.foregroundRuns?.get(record.runId);
+			if (!state.foregroundRuns) return;
+			const run = state.foregroundRuns.get(record.runId);
 			if (!run || run.sessionId !== record.sessionId) {
 				settle(record, "could not be reconciled", "The remembered foreground run disappeared before completion was confirmed.");
 				return;

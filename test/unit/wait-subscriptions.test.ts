@@ -186,6 +186,56 @@ describe("non-blocking wait subscriptions", () => {
 		}
 	});
 
+	it("waits for foreground run restoration before reconciling a restored subscription", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-foreground-restore-"));
+		const subscriptionsDir = path.join(root, "subscriptions");
+		const bus = new TestBus();
+		const sent: string[] = [];
+		const firstState = makeState();
+		firstState.foregroundRuns = new Map([["run-foreground", {
+			runId: "run-foreground",
+			mode: "single",
+			cwd: root,
+			sessionId: "session-a",
+			updatedAt: Date.now(),
+			children: [{ agent: "worker", index: 0, status: "detached" }],
+		}]]);
+		const pi = {
+			events: bus,
+			sendMessage(message: { content?: unknown }) { sent.push(String(message.content)); },
+		};
+		const first = createWaitSubscriptionManager(pi as never, firstState, { subscriptionsDir, pollIntervalMs: 60_000 });
+		try {
+			const registration = first.arm({ targetKind: "foreground", runId: "run-foreground", requestedId: "run-foreground", timeoutMs: 30_000 });
+			first.dispose();
+
+			const restoredState = makeState();
+			const restored = createWaitSubscriptionManager(pi as never, restoredState, { subscriptionsDir, pollIntervalMs: 60_000 });
+			try {
+				restored.restore();
+				assert.equal(sent.length, 0);
+				assert.equal(restoredState.waitSubscriptions?.has(registration.token), true);
+
+				restoredState.foregroundRuns = new Map([["run-foreground", {
+					runId: "run-foreground",
+					mode: "single",
+					cwd: root,
+					sessionId: "session-a",
+					updatedAt: Date.now(),
+					children: [],
+				}]]);
+				restored.reconcile();
+				assert.match(sent[0] ?? "", /run run-foreground: completed/);
+				assert.equal(restoredState.waitSubscriptions?.has(registration.token), false);
+			} finally {
+				restored.dispose();
+			}
+		} finally {
+			first.dispose();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("wakes when async reconciliation throws", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-reconcile-error-"));
 		const asyncRoot = path.join(root, "not-a-directory");
