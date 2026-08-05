@@ -174,10 +174,12 @@ describe("Fleet inspector structured transcript", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-args-payload-"));
 		try {
 			const safePayload = '{\r\n\t"path": "src/tui/fleet.ts",\r\n\t"lines": [1, 2]\r\n}';
+			const standaloneCarriageReturnPayload = '{\r"safe": true\r}';
 			const unsafePayload = '{\n  "value": "\\u001b"\n}';
 			const protoPayload = '{"nested":{"__proto__":"\\u001b"}}';
 			const transcriptPath = writeTranscript(root, [
 				{ recordType: "tool_start", toolName: "safe", argsPayload: safePayload },
+				{ recordType: "tool_start", toolName: "standalone-cr", argsPayload: standaloneCarriageReturnPayload },
 				{ recordType: "tool_start", toolName: "unsafe", argsPayload: unsafePayload },
 				{ recordType: "tool_start", toolName: "proto", argsPayload: protoPayload },
 			]);
@@ -186,9 +188,11 @@ describe("Fleet inspector structured transcript", () => {
 			assert.equal(tools[0]?.kind, "tool");
 			assert.equal(tools[1]?.kind, "tool");
 			assert.equal(tools[2]?.kind, "tool");
-			if (tools[0]?.kind === "tool") assert.equal(tools[0].argsPayload, safePayload);
-			if (tools[1]?.kind === "tool") assert.equal(tools[1].argsPayload, '{"value":"[U+001B]"}');
-			if (tools[2]?.kind === "tool") assert.equal(tools[2].argsPayload, '{"nested":{"__proto__":"[U+001B]"}}');
+			assert.equal(tools[3]?.kind, "tool");
+			if (tools[0]?.kind === "tool") assert.equal(tools[0].argsPayload, safePayload.replace(/\r\n/g, "\n"));
+			if (tools[1]?.kind === "tool") assert.equal(tools[1].argsPayload, '{[U+000D]"safe": true[U+000D]}');
+			if (tools[2]?.kind === "tool") assert.equal(tools[2].argsPayload, '{"value":"[U+001B]"}');
+			if (tools[3]?.kind === "tool") assert.equal(tools[3].argsPayload, '{"nested":{"__proto__":"[U+001B]"}}');
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

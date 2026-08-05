@@ -85,7 +85,7 @@ function sanitizeJsonDisplayValue(value: unknown): { value: unknown; changed: bo
 function safeToolArgsPayload(payload: string): string {
 	try {
 		const sanitized = sanitizeJsonDisplayValue(JSON.parse(payload));
-		return sanitized.changed ? JSON.stringify(sanitized.value) : payload;
+		return sanitized.changed ? JSON.stringify(sanitized.value) : safeDisplayText(payload);
 	} catch {
 		return safeDisplayText(payload);
 	}
