@@ -164,6 +164,60 @@ function workflowLaneKeys(script: string): string[] {
 		return { end: script.length };
 	};
 
+	const collectRunsAllKeys = (start: number): number => {
+		let index = skipTrivia(start);
+		if (script[index] !== "(") return start;
+		index = skipTrivia(index + 1);
+		if (script[index] !== "[") return start;
+		let arrayDepth = 1;
+		let objectDepth = 0;
+		let directChildObject = false;
+		let expectingElement = true;
+		for (index += 1; index < script.length; index += 1) {
+			index = skipTrivia(index);
+			const literal = readLiteral(index);
+			if (literal) {
+				index = literal.end - 1;
+				continue;
+			}
+			if (script[index] === "[") {
+				arrayDepth += 1;
+				expectingElement = false;
+				continue;
+			}
+			if (script[index] === "]") {
+				arrayDepth -= 1;
+				if (arrayDepth === 0) return index + 1;
+				continue;
+			}
+			if (script[index] === "{") {
+				objectDepth += 1;
+				if (objectDepth === 1) directChildObject = arrayDepth === 1 && expectingElement;
+				expectingElement = false;
+				continue;
+			}
+			if (script[index] === "}") {
+				objectDepth -= 1;
+				if (objectDepth === 0) directChildObject = false;
+				continue;
+			}
+			if (script[index] === "," && arrayDepth === 1 && objectDepth === 0) {
+				expectingElement = true;
+				continue;
+			}
+			if (directChildObject && objectDepth === 1 && !isIdentifier(script[index - 1]) && script.startsWith("key", index) && !isIdentifier(script[index + 3])) {
+				const colon = skipTrivia(index + 3);
+				const key = script[colon] === ":" ? readLiteral(skipTrivia(colon + 1)) : undefined;
+				if (key) {
+					const next = skipTrivia(key.end);
+					if (key.key !== undefined && (script[next] === "," || script[next] === "}")) add(key.key);
+					index = key.end - 1;
+				}
+			}
+		}
+		return index;
+	};
+
 	for (let index = 0; index < script.length;) {
 		index = skipTrivia(index);
 		const literal = readLiteral(index);
@@ -181,22 +235,17 @@ function workflowLaneKeys(script: string): string[] {
 				continue;
 			}
 		}
-		if (!isIdentifier(script[index - 1]) && script.startsWith("key", index) && !isIdentifier(script[index + 3])) {
-			const colon = skipTrivia(index + 3);
-			const key = script[colon] === ":" ? readLiteral(skipTrivia(colon + 1)) : undefined;
-			if (key) {
-				const next = skipTrivia(key.end);
-				if (key.key !== undefined && (script[next] === "," || script[next] === "}")) add(key.key);
-				index = key.end;
-				continue;
-			}
+		if (!isIdentifier(script[index - 1]) && script.startsWith("runs.all", index) && !isIdentifier(script[index + 8])) {
+			index = collectRunsAllKeys(index + 8);
+			continue;
 		}
 		index += 1;
 	}
 	return keys;
 }
 
-function formatWorkflowManifest(script: string, async: unknown): string {
+function formatWorkflowManifest(script: string, async: unknown, clarify: unknown): string {
+	if (clarify === true) return "workflow script · rejected: clarify UI unsupported";
 	const keys = workflowLaneKeys(script);
 	// The workflow executor starts background work unless callers pass async:false.
 	const mode = async === false ? "foreground" : "background";
@@ -654,7 +703,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			}
 			if (args.workflowScript)
 				return new Text(
-					`${theme.fg("toolTitle", theme.bold("subagent "))}${formatWorkflowManifest(args.workflowScript, args.async)}`,
+					`${theme.fg("toolTitle", theme.bold("subagent "))}${formatWorkflowManifest(args.workflowScript, args.async, args.clarify)}`,
 					0,
 					0,
 				);
