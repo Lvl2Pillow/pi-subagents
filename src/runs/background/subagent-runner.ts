@@ -234,7 +234,7 @@ function persistStepArtifacts(input: {
 		try {
 			writeMetadata(input.artifactPaths.metadataPath, input.metadata);
 		} catch (error) {
-			errors.metadataSaveError = error instanceof Error ? error.message : String(error);
+			errors.metadataSaveError = `Artifact metadata post-processing failed: ${error instanceof Error ? error.message : String(error)}`;
 		}
 	}
 	return errors;
