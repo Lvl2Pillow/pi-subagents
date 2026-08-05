@@ -92,17 +92,23 @@ export function createWaitSubscriptionManager(
 	let disposed = false;
 
 	const remove = (record: WaitSubscriptionRecord) => {
-		subscriptions.delete(record.token);
-		unresolvedRestoredForegroundTokens.delete(record.token);
 		try {
 			fs.unlinkSync(subscriptionFile(subscriptionsDir, record.token));
 		} catch (error) {
 			if (!isNotFound(error)) throw error;
 		}
+		subscriptions.delete(record.token);
+		unresolvedRestoredForegroundTokens.delete(record.token);
 	};
 
 	const settle = (record: WaitSubscriptionRecord, outcome: string, detail: string) => {
 		if (disposed || state.currentSessionId !== record.sessionId) return;
+		try {
+			remove(record);
+		} catch (error) {
+			console.error(`Failed to clear wait subscription '${record.token}'; it remains armed:`, error);
+			return;
+		}
 		try {
 			pi.sendMessage({
 				customType: "subagent-wait-subscription",
@@ -110,9 +116,8 @@ export function createWaitSubscriptionManager(
 				display: true,
 				details: { token: record.token, runId: record.runId, outcome },
 			}, { triggerTurn: true });
-			remove(record);
 		} catch (error) {
-			console.error(`Failed to deliver wait subscription '${record.token}'; will retry:`, error);
+			console.error(`Failed to deliver wait subscription '${record.token}' after clearing it:`, error);
 		}
 	};
 

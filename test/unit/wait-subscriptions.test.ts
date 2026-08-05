@@ -99,7 +99,7 @@ describe("non-blocking wait subscriptions", () => {
 				updatedAt: Date.now(),
 				children: [{ agent: "worker", index: 0, status: "detached" }],
 			}]]);
-			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean }> } | undefined;
+			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean }> } | undefined;
 			registerWaitTool({
 				events: new TestBus(),
 				registerTool(value: unknown) { tool = value as typeof tool; },
@@ -250,6 +250,37 @@ describe("non-blocking wait subscriptions", () => {
 			manager.arm({ targetKind: "foreground", runId: "run-missing", requestedId: "run-missing", timeoutMs: 30_000 });
 			manager.reconcile();
 			assert.match(sent[0] ?? "", /could not be reconciled/);
+		} finally {
+			manager.dispose();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps a subscription armed when cleanup fails before delivery", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-cleanup-failure-"));
+		const asyncRoot = path.join(root, "runs");
+		const subscriptionsDir = path.join(root, "subscriptions");
+		const sent: string[] = [];
+		const state = makeState();
+		const manager = createWaitSubscriptionManager({
+			events: new TestBus(),
+			sendMessage(message: { content?: unknown }) { sent.push(String(message.content)); },
+		} as never, state, { asyncDirRoot: asyncRoot, subscriptionsDir, pollIntervalMs: 60_000 });
+		try {
+			const registration = manager.arm({ targetKind: "async", runId: "run-missing", requestedId: "run-missing", timeoutMs: 30_000 });
+			const file = path.join(subscriptionsDir, `${registration.token}.json`);
+			fs.unlinkSync(file);
+			fs.mkdirSync(file);
+
+			manager.reconcile();
+			assert.equal(sent.length, 0);
+			assert.equal(state.waitSubscriptions?.has(registration.token), true);
+
+			fs.rmdirSync(file);
+			manager.reconcile();
+			assert.match(sent[0] ?? "", /could not be reconciled/);
+			assert.equal(sent.length, 1);
+			assert.equal(state.waitSubscriptions?.has(registration.token), false);
 		} finally {
 			manager.dispose();
 			fs.rmSync(root, { recursive: true, force: true });
