@@ -140,9 +140,32 @@ function validateScheduleId(id: string): string {
 	return id;
 }
 
-function scheduleDir(root: string, id: string, create = false): string {
-	const dir = path.join(root, validateScheduleId(id));
+function pathWithin(root: string, candidate: string): boolean {
+	const relative = path.relative(root, candidate);
+	return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function assertScheduleRoot(root: string, projectCwd: string | undefined, create: boolean): void {
+	if (!projectCwd) {
+		if (create) fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+		return;
+	}
+	const projectPath = fs.realpathSync(projectCwd);
+	let existing = root;
+	while (!fs.existsSync(existing)) {
+		const parent = path.dirname(existing);
+		if (parent === existing) break;
+		existing = parent;
+	}
+	if (!pathWithin(projectPath, fs.realpathSync(existing))) throw new Error(`Project schedule root '${root}' resolves outside the real project.`);
+	if (!create) return;
 	fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+	if (!pathWithin(projectPath, fs.realpathSync(root))) throw new Error(`Project schedule root '${root}' resolves outside the real project.`);
+}
+
+function scheduleDir(root: string, id: string, create = false, projectCwd?: string): string {
+	assertScheduleRoot(root, projectCwd, create);
+	const dir = path.join(root, validateScheduleId(id));
 	try {
 		const stat = fs.lstatSync(dir);
 		if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`Schedule path '${dir}' must be a real directory.`);
@@ -185,12 +208,19 @@ function parseSchedule(value: unknown, file: string): ScheduleRecord {
 
 class ScheduleStore {
 	readonly root: string;
+	private readonly projectCwd?: string;
 
-	constructor(root: string) {
+	constructor(root: string, projectCwd?: string) {
 		this.root = root;
+		this.projectCwd = projectCwd;
+	}
+
+	directory(id: string, create = false): string {
+		return scheduleDir(this.root, id, create, this.projectCwd);
 	}
 
 	list(): ScheduleRecord[] {
+		assertScheduleRoot(this.root, this.projectCwd, false);
 		if (!fs.existsSync(this.root)) return [];
 		return fs.readdirSync(this.root, { withFileTypes: true })
 			.filter((entry) => entry.isDirectory() && SCHEDULE_ID.test(entry.name))
@@ -198,21 +228,21 @@ class ScheduleStore {
 	}
 
 	get(id: string): ScheduleRecord {
-		const file = path.join(scheduleDir(this.root, id), "schedule.json");
+		const file = path.join(scheduleDir(this.root, id, false, this.projectCwd), "schedule.json");
 		if (!fs.existsSync(file)) throw new Error(`Schedule '${id}' not found.`);
 		return parseSchedule(readJson(file, "schedule record"), file);
 	}
 
 	write(record: ScheduleRecord): void {
-		writePrivateAtomicJson(path.join(scheduleDir(this.root, record.id, true), "schedule.json"), record);
+		writePrivateAtomicJson(path.join(scheduleDir(this.root, record.id, true, this.projectCwd), "schedule.json"), record);
 	}
 
 	delete(id: string): void {
-		fs.rmSync(scheduleDir(this.root, id), { recursive: true, force: true });
+		fs.rmSync(scheduleDir(this.root, id, false, this.projectCwd), { recursive: true, force: true });
 	}
 
 	history(id: string): ScheduleRunRecord[] {
-		const file = path.join(scheduleDir(this.root, id), "history.json");
+		const file = path.join(scheduleDir(this.root, id, false, this.projectCwd), "history.json");
 		if (!fs.existsSync(file)) return [];
 		const value = readJson(file, "schedule history") as { schemaVersion?: unknown; runs?: unknown };
 		if (value?.schemaVersion !== 1 || !Array.isArray(value.runs)) throw new Error(`Schedule history '${file}' has invalid fields.`);
@@ -220,7 +250,7 @@ class ScheduleStore {
 	}
 
 	writeRun(schedule: ScheduleRecord, run: ScheduleRunRecord, event: string): void {
-		const dir = scheduleDir(this.root, schedule.id, true);
+		const dir = scheduleDir(this.root, schedule.id, true, this.projectCwd);
 		writePrivateAtomicJson(path.join(dir, "runs", `${run.id}.json`), run);
 		const runs = [run, ...this.history(schedule.id).filter((item) => item.id !== run.id)].slice(0, MAX_HISTORY);
 		writePrivateAtomicJson(path.join(dir, "history.json"), { schemaVersion: 1, runs });
@@ -229,7 +259,7 @@ class ScheduleStore {
 	}
 
 	appendEvent(schedule: ScheduleRecord, event: string): void {
-		const dir = scheduleDir(this.root, schedule.id, true);
+		const dir = scheduleDir(this.root, schedule.id, true, this.projectCwd);
 		fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 		fs.appendFileSync(path.join(dir, "events.jsonl"), `${JSON.stringify({ schemaVersion: 1, timestamp: new Date().toISOString(), event, scheduleId: schedule.id })}\n`, { encoding: "utf-8", mode: 0o600 });
 	}
@@ -298,7 +328,7 @@ function executionParams(schedule: ScheduleRecord): SubagentParamsLike {
 }
 
 export function listScheduledRunSummaries(cwd: string, root?: string): ScheduleRecord[] {
-	return new ScheduleStore(scheduledRunStorePath(cwd, undefined, root)).list();
+	return new ScheduleStore(scheduledRunStorePath(cwd, undefined, root), root === undefined ? path.resolve(cwd) : undefined).list();
 }
 
 export class ScheduledRunManager {
@@ -319,10 +349,6 @@ export class ScheduledRunManager {
 	}
 
 	bindSession(ctx: ExtensionContext): void {
-		this.stopTimers();
-		this.stores.clear();
-		this.contexts.clear();
-		this.store = undefined;
 		if (!scheduledRunsEnabled(this.deps.config)) return;
 		this.selectProject(ctx.cwd, ctx);
 	}
@@ -500,7 +526,7 @@ export class ScheduledRunManager {
 				schedule.activeRunId = undefined;
 				schedule.updatedAt = timestamp(this.now());
 				store.write(schedule);
-				fs.rmSync(path.join(scheduleDir(store.root, schedule.id), "active.lock"), { force: true });
+				fs.rmSync(path.join(store.directory(schedule.id), "active.lock"), { force: true });
 			}
 		}
 		if (schedule.paused) return;
@@ -544,7 +570,7 @@ export class ScheduledRunManager {
 			this.arm(schedule, store);
 			return run;
 		}
-		const lockPath = path.join(scheduleDir(store.root, schedule.id), "active.lock");
+		const lockPath = path.join(store.directory(schedule.id, true), "active.lock");
 		fs.mkdirSync(path.dirname(lockPath), { recursive: true, mode: 0o700 });
 		let lock: number;
 		try {
@@ -616,7 +642,7 @@ export class ScheduledRunManager {
 		schedule.activeRunId = undefined;
 		schedule.updatedAt = timestamp(now);
 		store.write(schedule);
-		fs.rmSync(path.join(scheduleDir(store.root, schedule.id), "active.lock"), { force: true });
+		fs.rmSync(path.join(store.directory(schedule.id), "active.lock"), { force: true });
 		store.writeRun(schedule, run, success ? "schedule.run.completed" : "schedule.run.failed");
 		this.arm(schedule, store);
 	}
@@ -639,11 +665,12 @@ export class ScheduledRunManager {
 	}
 
 	private selectProject(cwd: string, ctx: ExtensionContext): void {
-		const root = scheduledRunStorePath(cwd, undefined, this.deps.storeRoot);
-		this.contexts.set(root, ctx);
+		const projectCwd = path.resolve(cwd);
+		const root = scheduledRunStorePath(projectCwd, undefined, this.deps.storeRoot);
+		this.contexts.set(root, path.resolve(ctx.cwd) === projectCwd ? ctx : { ...ctx, cwd: projectCwd });
 		let store = this.stores.get(root);
 		if (!store) {
-			store = new ScheduleStore(root);
+			store = new ScheduleStore(root, this.deps.storeRoot === undefined ? projectCwd : undefined);
 			this.stores.set(root, store);
 			this.restore(store);
 		}

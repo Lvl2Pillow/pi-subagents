@@ -219,6 +219,27 @@ describe("project schedule management", () => {
 		assert.match(text(result), /must be a real directory/);
 		assert.equal(fs.existsSync(path.join(outside, "schedule.json")), false);
 	});
+
+	it("rejects a default project schedule root that escapes through .pi-subagents", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-schedule-root-link-"));
+		roots.push(root);
+		const project = path.join(root, "project");
+		const outside = path.join(root, "outside");
+		fs.mkdirSync(project);
+		fs.mkdirSync(outside);
+		const ctx = context(project);
+		const manager = createScheduledRunManager({
+			config: { scheduledRuns: { enabled: true } },
+			launch: async () => ({ content: [{ type: "text", text: "unused" }], details: { mode: "management", results: [] } }),
+		});
+		manager.bindSession(ctx);
+		fs.symlinkSync(outside, path.join(project, ".pi-subagents"), process.platform === "win32" ? "junction" : "dir");
+
+		const result = await manager.handleToolCall({ action: "schedule.create", id: "escaped-root", every: "1h", agent: "worker" }, ctx);
+		assert.equal(result.isError, true);
+		assert.match(text(result), /resolves outside the real project/);
+		assert.equal(fs.existsSync(path.join(outside, "schedules")), false);
+	});
 });
 
 describe("recurring schedule execution", () => {
@@ -271,15 +292,16 @@ describe("recurring schedule execution", () => {
 		assert.equal(none.launches.length, 0);
 	});
 
-	it("keeps project timers, contexts, and completion ownership when another project is selected", async () => {
+	it("keeps project timers, contexts, and completion ownership across session_start bindings", async () => {
 		const h = harness();
 		await h.manager.handleToolCall({ action: "schedule.create", id: "project-a", every: "1h", agent: "worker" }, h.ctx);
 
 		const projectB = path.join(h.root, "project-b");
 		fs.mkdirSync(projectB);
 		const projectBCtx = context(projectB, "session-b");
+		h.manager.bindSession(projectBCtx);
 		await h.manager.handleToolCall({ action: "schedule.create", id: "project-b", every: "1h", agent: "worker" }, projectBCtx);
-		assert.equal(h.timers.values.size, 2, "both project timers remain armed");
+		assert.equal(h.timers.values.size, 2, "both project timers remain armed after session_start binds project B");
 
 		h.clock.now += 3_600_000;
 		h.timers.fireAll();
@@ -298,6 +320,22 @@ describe("recurring schedule execution", () => {
 		assert.match(text(history), /completed.*async async-a/);
 		const projectARoot = scheduledRunStorePath(h.ctx.cwd, undefined, path.join(h.root, "stores"));
 		assert.equal(fs.existsSync(path.join(projectARoot, "project-a", "active.lock")), false);
+	});
+
+	it("launches an explicit cross-project cwd with a target project context", async () => {
+		const h = harness();
+		const target = path.join(h.root, "explicit-target");
+		fs.mkdirSync(target);
+		await h.manager.handleToolCall({ action: "schedule.create", id: "targeted", cwd: target, every: "1h", agent: "worker" }, h.ctx);
+
+		h.clock.now += 3_600_000;
+		h.timers.fireAll();
+		await flush();
+		assert.equal(h.launches.length, 1);
+		assert.equal(h.launches[0]!.ctx.cwd, target);
+		assert.equal(h.launches[0]!.params.cwd, target);
+		h.launches[0]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "target-async" } });
+		await flush();
 	});
 
 	it("reconciles a terminal async status after a new session binds", async () => {
