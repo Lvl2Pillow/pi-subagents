@@ -309,6 +309,13 @@ function hasTerminalResultFlag(result: Details["results"][number]): boolean {
 	return Boolean(result.detached || result.stopped || result.interrupted);
 }
 
+function hasTerminalResult(result: Details["results"][number]): boolean {
+	if (hasTerminalResultFlag(result)) return true;
+	const status = result.progress?.status;
+	if (status === "running" || status === "pending") return false;
+	return result.exitCode !== undefined;
+}
+
 function isResultRunning(result: Details["results"][number], status = result.progress?.status): boolean {
 	return status === "running" && !hasTerminalResultFlag(result);
 }
@@ -1617,8 +1624,8 @@ export function renderSubagentSummary(
 ): Component {
 	const details = result.details;
 	const results = details?.results ?? [];
-	const hasSingleTerminalResult = results.length === 1 && hasTerminalResultFlag(results[0]!);
-	const hasOnlyTerminalResults = results.length > 0 && results.every(hasTerminalResultFlag);
+	const hasSingleTerminalResult = results.length === 1 && hasTerminalResult(results[0]!);
+	const hasOnlyTerminalResults = results.length > 0 && results.every(hasTerminalResult);
 	const running = !hasSingleTerminalResult && !hasOnlyTerminalResults && (
 		options.isPartial === true
 		|| Boolean(details?.asyncId && details.mode !== "management")

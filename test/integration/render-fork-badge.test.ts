@@ -553,6 +553,62 @@ describe("renderSubagentResult fork indicator", () => {
 		assert.doesNotMatch(summary, /running/);
 	});
 
+	it("keeps all-completed async aggregate inline summaries terminal", () => {
+		for (const mode of ["parallel", "chain"] as const) {
+			const progress = ["writer", "reviewer"].map((agent, index) => ({
+				index,
+				agent,
+				status: "completed" as const,
+				task: "review",
+				recentTools: [],
+				recentOutput: [],
+				toolCount: 1,
+				tokens: 42,
+				durationMs: 1_000,
+			}));
+			const summary = renderSubagentSummary!({
+				content: [{ type: "text", text: "done" }],
+				details: {
+					mode,
+					asyncId: `async-${mode}`,
+					progress,
+					results: progress.map((entry) => ({ agent: entry.agent, task: "review", exitCode: 0, messages: [], usage: emptyUsage, progress: entry })),
+				},
+			}, {}, theme).render(120).join("\n");
+
+			assert.match(summary, /· completed$/, mode);
+			assert.doesNotMatch(summary, /running/, mode);
+		}
+	});
+
+	it("keeps all-failed async aggregate inline summaries terminal", () => {
+		for (const mode of ["parallel", "chain"] as const) {
+			const progress = ["writer", "reviewer"].map((agent, index) => ({
+				index,
+				agent,
+				status: "failed" as const,
+				task: "review",
+				recentTools: [],
+				recentOutput: [],
+				toolCount: 1,
+				tokens: 42,
+				durationMs: 1_000,
+			}));
+			const summary = renderSubagentSummary!({
+				content: [{ type: "text", text: "failed" }],
+				details: {
+					mode,
+					asyncId: `async-${mode}`,
+					progress,
+					results: progress.map((entry) => ({ agent: entry.agent, task: "review", exitCode: 1, error: "boom", messages: [], usage: emptyUsage, progress: entry })),
+				},
+			}, {}, theme).render(120).join("\n");
+
+			assert.match(summary, /· failed$/, mode);
+			assert.doesNotMatch(summary, /running/, mode);
+		}
+	});
+
 	it("uses shared semantic status presentation for expanded multi-result rows", () => {
 		const results = [
 			{
