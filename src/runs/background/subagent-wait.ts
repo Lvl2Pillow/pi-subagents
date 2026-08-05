@@ -46,7 +46,7 @@ import {
 	type BackgroundWorkSnapshot,
 	type RegisteredBackgroundWorkItem,
 } from "../../api/background-work.ts";
-import { listAsyncRuns, type AsyncRunSummary } from "./async-status.ts";
+import { formatAsyncRunList, listAsyncRuns, type AsyncRunSummary } from "./async-status.ts";
 import {
 	DIRS,
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
@@ -57,7 +57,7 @@ import {
 	type ForegroundResumeRun,
 	type SubagentState,
 } from "../../shared/types.ts";
-import { formatDuration } from "../../shared/formatters.ts";
+import { formatDuration, shortenPath } from "../../shared/formatters.ts";
 export { WAIT_TOOL_ENABLED_ENV, resolveWaitToolConfig, type ResolvedWaitToolConfig } from "./wait-config.ts";
 
 /** States that mean a run is still in flight (not yet resolved). */
@@ -305,6 +305,25 @@ function result(text: string, isError = false): AgentToolResult<Details> {
 	};
 }
 
+/** Build the live status shown while async work keeps subagent_wait blocked. */
+function asyncWaitUpdate(runs: AsyncRunSummary[], providerCount: number, elapsedMs: number): AgentToolResult<Details> {
+	const activity = runs.flatMap((run) => {
+		const activeSteps = run.steps.filter((step) => step.status === "pending" || step.status === "running");
+		if (activeSteps.length === 0) {
+			return [`${run.id}: ${run.state}`];
+		}
+		return activeSteps.map((step) => {
+			const current = step.currentTool ?? (step.status === "pending" ? "queued" : "thinking…");
+			return `${step.agent}: ${current}${step.currentPath ? ` ${shortenPath(step.currentPath)}` : ""}`;
+		});
+	});
+	const headline = [
+		`Waiting ${formatDuration(elapsedMs)} for ${runs.length} async run(s) and ${providerCount} provider item(s).`,
+		...activity,
+	].join(" · ");
+	return result([headline, runs.length > 0 ? formatAsyncRunList(runs) : ""].filter(Boolean).join("\n"));
+}
+
 const TRANSCRIPT_TAIL_BYTES = 128 * 1024;
 const TRANSCRIPT_PREVIEW_LINES = 3;
 const TRANSCRIPT_PREVIEW_WIDTH = 220;
@@ -543,6 +562,7 @@ export async function waitForSubagents(
 			...activeInitialRuns.map((run) => `${run.id} (${run.state})`),
 			...activeInitialProviderItems.map((item) => `${item.provider}/${item.id}`),
 		].join(", ");
+		deps.onUpdate?.(asyncWaitUpdate(activeInitialRuns, activeInitialProviderItems.length, now() - startedAt));
 		if (signal?.aborted) {
 			return result(`Wait aborted after ${formatDuration(now() - startedAt)}. Still active: ${stillActive}.`, true);
 		}

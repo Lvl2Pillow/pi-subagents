@@ -138,6 +138,39 @@ describe("subagent_wait tool", () => {
 		}
 	});
 
+	it("streams active async run status while waiting", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-progress-"));
+		try {
+			const asyncRoot = path.join(root, "runs");
+			const state = makeState("sess-1");
+			writeStatus(asyncRoot, "run-live", "running", {
+				sessionId: "sess-1",
+				pid: 999999,
+				steps: [{
+					agent: "worker",
+					status: "running",
+					currentTool: "edit",
+					currentPath: "src/render.ts",
+					turnCount: 2,
+					toolCount: 4,
+				}],
+			});
+			const updates: string[] = [];
+			const result = await waitForSubagents({}, undefined, baseDeps(root, state, {
+				onUpdate: (update) => updates.push(textOf(update)),
+				sleep: async () => writeStatus(asyncRoot, "run-live", "complete", { sessionId: "sess-1" }),
+			}));
+
+			assert.equal(result.isError, undefined);
+			assert.equal(updates.length, 1);
+			assert.match(updates[0]!, /Waiting .* for 1 async run/);
+			assert.match(updates[0]!.split("\n")[0]!, /worker: edit .*src\/render\.ts/);
+			assert.match(updates[0]!, /run-live/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("surfaces failed terminal runs as errors only for internal auto-drain", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-drain-failure-"));
 		try {
