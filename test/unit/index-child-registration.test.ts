@@ -255,6 +255,10 @@ describe("subagent extension child mode", () => {
 					content: [{ type: "text", text: "aggregate output that must not appear" }],
 					details: { mode: "parallel", results: [{ ...base, agent: "paused", exitCode: 1, interrupted: true }, { ...base, agent: "failed", exitCode: 1, stopped: false }] },
 				}, { expanded: true, isPartial: false }, theme, { state: {} }).render(120);
+				const failedWithStopped = registeredTool.renderResult({
+					content: [{ type: "text", text: "aggregate output that must not appear" }],
+					details: { mode: "parallel", results: [{ ...base, agent: "stopped", exitCode: 1, stopped: true }, { ...base, agent: "failed", exitCode: 1, stopped: false }] },
+				}, { expanded: true, isPartial: false }, theme, { state: {} }).render(120);
 				if (running.length !== 1 || running[0] !== "● delegate · running") throw new Error("unexpected running summary: " + JSON.stringify(running));
 				if (asyncSingle.length !== 1 || asyncSingle[0] !== "● single · running") throw new Error("unexpected async single summary: " + JSON.stringify(asyncSingle));
 				if (asyncChain.length !== 1 || asyncChain[0] !== "● chain · running") throw new Error("unexpected async chain summary: " + JSON.stringify(asyncChain));
@@ -262,7 +266,8 @@ describe("subagent extension child mode", () => {
 				if (stopped.length !== 1 || stopped[0] !== "■ delegate · stopped") throw new Error("unexpected stopped summary: " + JSON.stringify(stopped));
 				if (paused.length !== 1 || paused[0] !== "■ delegate · paused") throw new Error("unexpected paused summary: " + JSON.stringify(paused));
 				if (failed.length !== 1 || failed[0] !== "✗ delegate · failed") throw new Error("unexpected failed summary: " + JSON.stringify(failed));
-				if (failedWithPaused.length !== 1 || failedWithPaused[0] !== "✗ parallel · failed") throw new Error("unexpected aggregate summary: " + JSON.stringify(failedWithPaused));
+				if (failedWithPaused.length !== 1 || failedWithPaused[0] !== "✗ parallel · failed") throw new Error("unexpected paused aggregate summary: " + JSON.stringify(failedWithPaused));
+				if (failedWithStopped.length !== 1 || failedWithStopped[0] !== "✗ parallel · failed") throw new Error("unexpected stopped aggregate summary: " + JSON.stringify(failedWithStopped));
 			`;
 			const env = parentToolEnv();
 			env.PI_CODING_AGENT_DIR = agentDir;

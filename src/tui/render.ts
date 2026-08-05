@@ -1626,7 +1626,7 @@ export function renderSubagentSummary(
 	const failed = result.isError === true
 		|| results.some((entry) => !entry.stopped && !entry.interrupted && !entry.detached && entry.exitCode !== 0 && entry.progress?.status !== "running")
 		|| Boolean(details && workflowGraphHasStatus(details, ["failed"]));
-	const state = running ? "running" : stopped ? "stopped" : failed ? "failed" : paused ? "paused" : "completed";
+	const state = running ? "running" : failed ? "failed" : stopped ? "stopped" : paused ? "paused" : "completed";
 	const glyph = state === "running"
 		? theme.fg("accent", STATIC_RUNNING_GLYPH)
 		: state === "completed"
