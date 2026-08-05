@@ -175,16 +175,20 @@ describe("Fleet inspector structured transcript", () => {
 		try {
 			const safePayload = '{\r\n\t"path": "src/tui/fleet.ts",\r\n\t"lines": [1, 2]\r\n}';
 			const unsafePayload = '{\n  "value": "\\u001b"\n}';
+			const protoPayload = '{"nested":{"__proto__":"\\u001b"}}';
 			const transcriptPath = writeTranscript(root, [
 				{ recordType: "tool_start", toolName: "safe", argsPayload: safePayload },
 				{ recordType: "tool_start", toolName: "unsafe", argsPayload: unsafePayload },
+				{ recordType: "tool_start", toolName: "proto", argsPayload: protoPayload },
 			]);
 			const transcript = readFleetTranscript(transcriptPath, { trustedRoots: [root] });
 			const tools = transcript.events.filter((event) => event.kind === "tool");
 			assert.equal(tools[0]?.kind, "tool");
 			assert.equal(tools[1]?.kind, "tool");
+			assert.equal(tools[2]?.kind, "tool");
 			if (tools[0]?.kind === "tool") assert.equal(tools[0].argsPayload, safePayload);
 			if (tools[1]?.kind === "tool") assert.equal(tools[1].argsPayload, '{"value":"[U+001B]"}');
+			if (tools[2]?.kind === "tool") assert.equal(tools[2].argsPayload, '{"nested":{"__proto__":"[U+001B]"}}');
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

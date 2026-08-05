@@ -70,7 +70,7 @@ function sanitizeJsonDisplayValue(value: unknown): { value: unknown; changed: bo
 	}
 	if (value && typeof value === "object") {
 		let changed = false;
-		const sanitized: Record<string, unknown> = {};
+		const sanitized: Record<string, unknown> = Object.create(null);
 		for (const [key, nested] of Object.entries(value)) {
 			const safeKey = safeDisplayText(key);
 			const safeValue = sanitizeJsonDisplayValue(nested);
