@@ -376,8 +376,26 @@ describe("renderSubagentResult fork indicator", () => {
 				label: "running",
 				extra: { progress: { index: 0, agent: "reviewer", status: "running", task: "review", recentTools: [], recentOutput: [], toolCount: 0, tokens: 0, durationMs: 0 } },
 			},
-			{ name: "detached", glyph: "■", label: "detached", extra: { detached: true, detachedReason: "continuing externally" } },
-			{ name: "stopped", glyph: "■", label: "stopped", extra: { stopped: true, exitCode: 1 } },
+			{
+				name: "detached",
+				glyph: "■",
+				label: "detached",
+				extra: {
+					detached: true,
+					detachedReason: "continuing externally",
+					progress: { index: 0, agent: "reviewer", status: "running", task: "review", recentTools: [], recentOutput: [], toolCount: 1, tokens: 42, durationMs: 1000 },
+				},
+			},
+			{
+				name: "stopped",
+				glyph: "■",
+				label: "stopped",
+				extra: {
+					stopped: true,
+					exitCode: 1,
+					progress: { index: 0, agent: "reviewer", status: "running", task: "review", recentTools: [], recentOutput: [], toolCount: 1, tokens: 42, durationMs: 1000 },
+				},
+			},
 			{
 				name: "interrupted",
 				glyph: "■",
@@ -411,14 +429,32 @@ describe("renderSubagentResult fork indicator", () => {
 
 			assert.equal(firstGrapheme(compact), testCase.glyph, `${testCase.name} compact glyph`);
 			assert.equal(firstGrapheme(expanded), testCase.glyph, `${testCase.name} expanded glyph`);
-			assert.match(expanded.split("\n")[0] ?? "", new RegExp(`reviewer(?: \\| [^·]+)? · ${testCase.label}$`), `${testCase.name} expanded label`);
+			assert.match((expanded.split("\n")[0] ?? "").trimEnd(), new RegExp(`reviewer(?: \\| [^·]+)? · ${testCase.label}$`), `${testCase.name} expanded label`);
 		}
 	});
 
 	it("uses shared semantic status presentation for expanded multi-result rows", () => {
 		const results = [
-			{ agent: "detached-agent", task: "one", exitCode: 0, detached: true, finalOutput: "output", messages: [], usage: emptyUsage },
-			{ agent: "stopped-agent", task: "two", exitCode: 1, stopped: true, finalOutput: "output", messages: [], usage: emptyUsage },
+			{
+				agent: "detached-agent",
+				task: "one",
+				exitCode: 0,
+				detached: true,
+				finalOutput: "output",
+				messages: [],
+				usage: emptyUsage,
+				progress: { index: 0, agent: "detached-agent", status: "running" as const, task: "one", recentTools: [], recentOutput: [], toolCount: 1, tokens: 42, durationMs: 1000 },
+			},
+			{
+				agent: "stopped-agent",
+				task: "two",
+				exitCode: 1,
+				stopped: true,
+				finalOutput: "output",
+				messages: [],
+				usage: emptyUsage,
+				progress: { index: 1, agent: "stopped-agent", status: "running" as const, task: "two", recentTools: [], recentOutput: [], toolCount: 1, tokens: 42, durationMs: 1000 },
+			},
 			{
 				agent: "paused-agent",
 				task: "three",
@@ -442,8 +478,9 @@ describe("renderSubagentResult fork indicator", () => {
 		assert.match(compact, /^■ parallel/);
 		assert.match(compact, /■ Agent 3\/5: paused-agent/);
 		assert.doesNotMatch(compact, /running agent/);
-		assert.match(expanded, /■ Agent 1\/5: detached-agent · detached/);
-		assert.match(expanded, /■ Agent 2\/5: stopped-agent · stopped/);
+		assert.match(expanded, /^■ parallel[^\n]* · detached/);
+		assert.match(expanded, /■ Agent 1\/5: detached-agent[^\n]* · detached/);
+		assert.match(expanded, /■ Agent 2\/5: stopped-agent[^\n]* · stopped/);
 		assert.match(expanded, /■ Agent 3\/5: paused-agent[^\n]* · paused/);
 		assert.doesNotMatch(expanded, /running agent/);
 		assert.match(expanded, /✗ Agent 4\/5: failed-agent · failed/);

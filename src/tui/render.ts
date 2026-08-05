@@ -1504,12 +1504,14 @@ function renderWorkflowChatProgress(d: Details, result: AgentToolResult<Details>
 
 function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component {
 	const hasRunning = detailsHaveRunningResult(d);
+	const detached = d.results.some((r) => r.detached)
+		|| workflowGraphHasStatus(d, ["detached"]);
 	const stopped = d.results.some((r) => r.stopped)
 		|| workflowGraphHasStatus(d, ["stopped"]);
 	const failed = d.results.some((r) => !hasTerminalResultFlag(r) && r.exitCode !== 0 && !isResultRunning(r))
 		|| workflowGraphHasStatus(d, ["failed"]);
-	const paused = d.results.some((r) => r.interrupted || r.detached)
-		|| workflowGraphHasStatus(d, ["paused", "detached"]);
+	const paused = d.results.some((r) => r.interrupted)
+		|| workflowGraphHasStatus(d, ["paused"]);
 	let totalSummary = d.progressSummary;
 	if (!totalSummary) {
 		let sawProgress = false;
@@ -1529,6 +1531,7 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 	const stats = statJoin(theme, [multiLabel.headerLabel, formatProgressStats(theme, totalSummary), formatTotalCostStat(d.totalCost)]);
 	const aggregatePresentation = semanticResultPresentation({
 		running: hasRunning,
+		detached,
 		stopped,
 		interrupted: paused,
 		failed,
@@ -1778,19 +1781,23 @@ export function renderSubagentResult(
 	if (!expanded) return renderMultiCompact(d, theme, frame);
 
 	const hasRunning = detailsHaveRunningResult(d);
+	const detached = d.results.some((r) => r.detached)
+		|| workflowGraphHasStatus(d, ["detached"]);
 	const stopped = d.results.some((r) => r.stopped)
 		|| workflowGraphHasStatus(d, ["stopped"]);
 	const failed = d.results.some((r) => !hasTerminalResultFlag(r) && r.exitCode !== 0 && !isResultRunning(r))
 		|| workflowGraphHasStatus(d, ["failed"]);
-	const paused = d.results.some((r) => r.interrupted || r.detached)
-		|| workflowGraphHasStatus(d, ["paused", "detached"]);
+	const paused = d.results.some((r) => r.interrupted)
+		|| workflowGraphHasStatus(d, ["paused"]);
 	const completedWithoutOutput = d.results.some((r) =>
-		r.exitCode === 0
-		&& r.progress?.status !== "running"
+		!hasTerminalResultFlag(r)
+		&& r.exitCode === 0
+		&& !isResultRunning(r)
 		&& hasEmptyTextOutputWithoutOutputTarget(r.task, getSingleResultOutput(r)),
 	);
 	const presentation = styledResultPresentation(semanticResultPresentation({
 		running: hasRunning,
+		detached,
 		stopped,
 		interrupted: paused,
 		failed,
