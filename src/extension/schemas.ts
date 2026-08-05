@@ -81,7 +81,7 @@ const AcceptanceEvidenceKinds = [
 
 const AcceptanceOverride = Type.Unsafe({
 	anyOf: [
-		{ type: "string", enum: ["auto", "attested", "checked", "verified"] },
+		{ type: "string", enum: ["auto", "attested", "checked"] },
 		{
 			type: "string",
 			enum: ["reviewed"],
