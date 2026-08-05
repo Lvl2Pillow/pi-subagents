@@ -24,12 +24,9 @@ import {
 	type ChainStep,
 } from "../shared/settings.ts";
 import { formatTokens, shortenPath } from "../shared/formatters.ts";
-import {
-	listAsyncRuns,
-	formatAsyncRunProgressLabel,
-	type AsyncRunSummary,
-} from "../runs/background/async-status.ts";
-import { scheduledRunStorePath } from "../runs/background/scheduled-runs.ts";
+import { listAsyncRuns, formatAsyncRunProgressLabel, type AsyncRunSummary } from "../runs/background/async-status.ts";
+import { listScheduledRunSummaries } from "../runs/background/scheduled-runs.ts";
+
 import { SUBAGENT_FANOUT_CHILD_ENV } from "../runs/shared/pi-args.ts";
 import { assertJsonSchemaObject } from "../runs/shared/structured-output.ts";
 import { validateAcceptanceInput } from "../runs/shared/acceptance.ts";
@@ -300,7 +297,7 @@ type StopSelectorResult = { confirmed: boolean; target?: StopSelectorTarget };
 
 function commandForTarget(target: StopSelectorTarget): string {
 	return target.kind === "scheduled"
-		? `subagent({ action: "schedule-cancel", id: ${JSON.stringify(target.id)} })`
+		? `subagent({ action: "schedule.pause", id: ${JSON.stringify(target.id)} })`
 		: `subagent({ action: "stop", id: ${JSON.stringify(target.id)} })`;
 }
 
@@ -316,42 +313,23 @@ function formatAsyncStopTarget(run: AsyncRunSummary): StopSelectorTarget {
 	};
 }
 
-function scheduledStopTargets(
-	ctx: ExtensionContext,
-	state: SubagentState,
-): StopSelectorTarget[] {
-	const sessionId = state.currentSessionId ?? ctx.sessionManager.getSessionId();
-	if (!sessionId) return [];
-	const storePath = scheduledRunStorePath(ctx.cwd, sessionId);
-	if (!fs.existsSync(storePath)) return [];
-	let parsed: unknown;
+function scheduledStopTargets(ctx: ExtensionContext, _state: SubagentState): StopSelectorTarget[] {
+
 	try {
-		parsed = JSON.parse(fs.readFileSync(storePath, "utf-8"));
+		return listScheduledRunSummaries(ctx.cwd)
+			.filter((schedule) => !schedule.paused && !schedule.activeRunId && schedule.trigger.nextRunAt)
+			.sort((left, right) => left.trigger.nextRunAt!.localeCompare(right.trigger.nextRunAt!))
+			.map((schedule) => ({
+				kind: "scheduled" as const,
+				id: schedule.id,
+				label: `${schedule.id} · ${schedule.name}`,
+				detail: `scheduled · ${schedule.trigger.nextRunAt}`,
+				actionLabel: "pause schedule",
+			}));
 	} catch {
 		return [];
 	}
-	const jobs =
-		parsed &&
-		typeof parsed === "object" &&
-		Array.isArray((parsed as { jobs?: unknown }).jobs)
-			? (parsed as { jobs: Array<Record<string, unknown>> }).jobs
-			: [];
-	return jobs
-		.filter(
-			(job) =>
-				job.state === "scheduled" &&
-				typeof job.id === "string" &&
-				typeof job.name === "string" &&
-				typeof job.runAt === "number",
-		)
-		.sort((left, right) => Number(left.runAt) - Number(right.runAt))
-		.map((job) => ({
-			kind: "scheduled" as const,
-			id: String(job.id),
-			label: `${String(job.id)} · ${String(job.name)}`,
-			detail: `scheduled · ${new Date(Number(job.runAt)).toISOString()}`,
-			actionLabel: "cancel scheduled run",
-		}));
+
 }
 
 function discoverStopTargets(
@@ -1850,10 +1828,8 @@ export function registerSlashCommands(
 			);
 			if (!result?.confirmed || !result.target) return;
 			if (result.target.kind === "scheduled") {
-				await runSlashSubagent(pi, ctx, {
-					action: "schedule-cancel",
-					id: result.target.id,
-				});
+				await runSlashSubagent(pi, ctx, { action: "schedule.pause", id: result.target.id });
+
 				return;
 			}
 			await runSlashSubagent(pi, ctx, { action: "stop", id: result.target.id });

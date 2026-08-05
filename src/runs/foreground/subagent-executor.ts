@@ -126,8 +126,9 @@ import {
 	wrapForkTask,
 } from "../../shared/types.ts";
 
-const MUTATING_MANAGEMENT_ACTIONS = new Set(["create", "update", "delete", "eject", "disable", "enable", "reset", "grant-spawn-budget", "watchdog.configure"]);
+const MUTATING_MANAGEMENT_ACTIONS = new Set(["create", "update", "delete", "eject", "disable", "enable", "reset", "grant-spawn-budget", "watchdog.configure", "schedule.create", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"]);
 function compactOptional<T extends object>(value: T): T {
+
 	for (const key of Object.keys(value) as Array<keyof T>) {
 		if (value[key] === undefined) delete value[key];
 	}
@@ -205,10 +206,16 @@ export interface SubagentParamsLike {
 	chainDir?: string;
 	acceptance?: AcceptanceInput;
 	agentContract?: AgentContract;
+	name?: string;
 	schedule?: string;
 	scheduleName?: string;
-	chainName?: string;
-	config?: unknown;
+	at?: string;
+	every?: string;
+	on?: string | number;
+	timezone?: string;
+	overlap?: "skip";
+	catchUp?: "none" | "latest";
+
 	additional?: number;
 }
 
@@ -3925,6 +3932,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			requestParentModel = normalizeParentModel(ctx.model);
 		}
 		if (action) {
+
 			if ((WATCHDOG_TOOL_ACTIONS as readonly string[]).includes(action)) {
 				if (deps.allowMutatingManagementActions === false && MUTATING_MANAGEMENT_ACTIONS.has(action)) {
 					return {
@@ -4197,7 +4205,14 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			if (action === "append-step") {
 				return appendStepToAsyncChain({ params: paramsWithResolvedCwd, requestCwd, ctx, deps, parentModel: requestParentModel });
 			}
-			if (action === "schedule" || action === "schedule-list" || action === "schedule-status" || action === "schedule-cancel") {
+			if (action.startsWith("schedule.")) {
+				if (deps.allowMutatingManagementActions === false && MUTATING_MANAGEMENT_ACTIONS.has(action)) {
+					return {
+						content: [{ type: "text", text: `Action '${action}' is not available from child-safe subagent fanout mode.` }],
+						isError: true,
+						details: { mode: "management", results: [] },
+					};
+				}
 				if (!deps.handleScheduledRunAction) {
 					return {
 						content: [{ type: "text", text: `Action '${action}' is not available in this subagent context.` }],

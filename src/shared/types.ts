@@ -1013,6 +1013,12 @@ export interface Details {
 		repoRelation: "same" | "other";
 		repoLabel?: string;
 	};
+	/** Project-scoped recurring schedule records and run history for management actions. */
+	schedules?: {
+		records?: unknown[];
+		runs?: unknown[];
+	};
+
 }
 
 // ============================================================================
@@ -1690,7 +1696,6 @@ export type InlineToolDisplay = "rich" | "summary";
 
 export interface ScheduledRunsConfig {
 	enabled?: boolean;
-	maxLatenessMs?: number;
 	maxPending?: number;
 }
 
@@ -1874,36 +1879,7 @@ export const SLASH_SUBAGENT_CANCEL_EVENT = "subagent:slash:cancel";
 export const POLL_INTERVAL_MS = 250;
 export const MAX_WIDGET_JOBS = 4;
 export const DEFAULT_SUBAGENT_MAX_DEPTH = 2;
-export const SUBAGENT_ACTIONS = [
-	"list",
-	"get",
-	"models",
-	"create",
-	"update",
-	"delete",
-	"eject",
-	"disable",
-	"enable",
-	"reset",
-	"status",
-	"grant-spawn-budget",
-	"interrupt",
-	"resume",
-	"steer",
-	"stop",
-	"append-step",
-	"approve-checkpoint",
-	"reject-checkpoint",
-	"doctor",
-	"watchdog.status",
-	"watchdog.check",
-	"watchdog.configure",
-	"watchdog.recommend-model",
-	"schedule",
-	"schedule-list",
-	"schedule-status",
-	"schedule-cancel",
-] as const;
+export const SUBAGENT_ACTIONS = ["list", "get", "models", "create", "update", "delete", "eject", "disable", "enable", "reset", "status", "grant-spawn-budget", "interrupt", "resume", "steer", "stop", "append-step", "approve-checkpoint", "reject-checkpoint", "doctor", "watchdog.status", "watchdog.check", "watchdog.configure", "watchdog.recommend-model", "schedule.create", "schedule.list", "schedule.show", "schedule.history", "schedule.pause", "schedule.resume", "schedule.run", "schedule.run-due", "schedule.delete"] as const;
 
 export const DEFAULT_FORK_PREAMBLE =
 	"You are a delegated subagent running from a fork of the parent session. " +

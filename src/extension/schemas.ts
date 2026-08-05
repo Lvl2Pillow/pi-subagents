@@ -252,6 +252,7 @@ const SubagentParamsSchema = Type.Object({
 	action: Type.Optional(Type.String({
 		description: "Optional management/control action. Omit this field entirely for execution/delegation ({agent, task} or {workflowScript}); use it only for management/control actions."
 	})),
+	name: Type.Optional(Type.String({ description: "Human-readable name for action='schedule.create'." })),
 	id: Type.Optional(Type.String({
 		description: "Run id or prefix for action='status', action='interrupt', action='stop', action='resume', action='steer', action='append-step', action='approve-checkpoint', or action='reject-checkpoint'."
 	})),
@@ -273,8 +274,14 @@ const SubagentParamsSchema = Type.Object({
 	scope: Type.Optional(Type.String({ enum: ["session", "user", "project"], description: "Scope for action='watchdog.configure'. Defaults to session to avoid persistent settings writes unless user/project is explicit." })),
 	target: Type.Optional(Type.String({ enum: ["main", "children", "child"], description: "Target for action='watchdog.configure'. Defaults to main. Use target='child' with agent for a per-agent child watchdog override." })),
 	thinking: Type.Optional(Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean", enum: [false] }], description: "Thinking level for action='watchdog.configure' (off/minimal/low/medium/high/xhigh/max, inherit, or false for off)." })),
-	schedule: Type.Optional(Type.String({ description: "Explicit one-shot schedule for action='schedule'. Disabled only when scheduledRuns.enabled is false. Use '+10m' or a future ISO timestamp with timezone; scheduled runs always launch async with fresh context." })),
-	scheduleName: Type.Optional(Type.String({ description: "Optional display name for action='schedule'." })),
+	schedule: Type.Optional(Type.String({ deprecated: true, description: "Removed one-shot schedule field. Use action='schedule.create' with at." })),
+	scheduleName: Type.Optional(Type.String({ deprecated: true, description: "Removed schedule display field. Use name." })),
+	at: Type.Optional(Type.String({ description: "One-shot trigger for action='schedule.create': a relative delay such as '+10m' or an ISO timestamp with timezone." })),
+	every: Type.Optional(Type.String({ description: "Fixed recurring interval for action='schedule.create', such as '30m', '6h', '2d', or '2w'." })),
+	on: Type.Optional(Type.Unsafe({ anyOf: [{ type: "string" }, { type: "integer" }], description: "Calendar selector reserved for a later schedule slice." })),
+	timezone: Type.Optional(Type.String({ description: "IANA timezone reserved for a later calendar schedule slice." })),
+	overlap: Type.Optional(Type.String({ enum: ["skip"], description: "Overlap policy. This slice supports skip only." })),
+	catchUp: Type.Optional(Type.String({ enum: ["none", "latest"], description: "Missed occurrence policy for recurring schedules. Defaults to latest." })),
 	// Chain identifier for management (can't reuse 'chain' — that's the execution array)
 	chainName: Type.Optional(Type.String({
 		description: "Chain name for get/update/delete management actions"
