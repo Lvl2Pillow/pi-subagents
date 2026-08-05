@@ -36,72 +36,41 @@ function stateForTest(): SubagentState {
 	};
 }
 
-function writeAsyncRun(
-	root: string,
-	input: {
-		id: string;
-		sessionId?: string;
-		state?: "running" | "complete";
-		agents?: string[];
-		contexts?: Array<"fresh" | "fork">;
-		output?: string;
-		transcript?: Array<Record<string, unknown>>;
-	},
-): string {
+function writeAsyncRun(root: string, input: {
+	id: string;
+	sessionId?: string;
+	state?: "running" | "complete" | "failed";
+	mode?: "single" | "parallel" | "workflow";
+	lastUpdate?: number;
+	agents?: string[];
+	contexts?: Array<"fresh" | "fork">;
+	output?: string;
+	transcript?: Array<Record<string, unknown>>;
+}): string {
 	const asyncDir = path.join(root, input.id);
 	fs.mkdirSync(asyncDir, { recursive: true });
 	const agents = input.agents ?? ["worker"];
-	if (input.output !== undefined)
-		fs.writeFileSync(
-			path.join(asyncDir, "output-0.log"),
-			input.output,
-			"utf-8",
-		);
-	const transcriptPath = input.transcript
-		? path.join(asyncDir, "transcript-0.jsonl")
-		: undefined;
-	if (transcriptPath && input.transcript)
-		fs.writeFileSync(
-			transcriptPath,
-			`${input.transcript.map((record) => JSON.stringify(record)).join("\n")}\n`,
-			"utf-8",
-		);
-	fs.writeFileSync(
-		path.join(asyncDir, "status.json"),
-		JSON.stringify(
-			{
-				runId: input.id,
-				sessionId: input.sessionId ?? "session-current",
-				mode: agents.length > 1 ? "parallel" : "single",
-				state: input.state ?? "running",
-				startedAt: 100,
-				lastUpdate: 200,
-				currentStep: 0,
-				steps: agents.map((agent, index) => ({
-					agent,
-					...(input.contexts?.[index]
-						? { context: input.contexts[index] }
-						: {}),
-					status:
-						input.state === "complete"
-							? "complete"
-							: index === 0
-								? "running"
-								: "pending",
-					startedAt: 100,
-					...(index === 0
-						? {
-								sessionFile: path.join(asyncDir, `${agent}.jsonl`),
-								...(transcriptPath ? { transcriptPath } : {}),
-							}
-						: {}),
-				})),
-				...(input.output !== undefined ? { outputFile: "output-0.log" } : {}),
-			},
-			null,
-			2,
-		),
-	);
+	if (input.output !== undefined) fs.writeFileSync(path.join(asyncDir, "output-0.log"), input.output, "utf-8");
+	const transcriptPath = input.transcript ? path.join(asyncDir, "transcript-0.jsonl") : undefined;
+	if (transcriptPath && input.transcript) fs.writeFileSync(transcriptPath, `${input.transcript.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf-8");
+	fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({
+		runId: input.id,
+		sessionId: input.sessionId ?? "session-current",
+		mode: input.mode ?? (agents.length > 1 ? "parallel" : "single"),
+		state: input.state ?? "running",
+		startedAt: 100,
+		lastUpdate: input.lastUpdate ?? 200,
+		currentStep: 0,
+		steps: agents.map((agent, index) => ({
+			agent,
+			...(input.contexts?.[index] ? { context: input.contexts[index] } : {}),
+			status: input.state === "complete" ? "complete" : input.state === "failed" ? "failed" : index === 0 ? "running" : "pending",
+			startedAt: 100,
+			...(index === 0 ? { sessionFile: path.join(asyncDir, `${agent}.jsonl`), ...(transcriptPath ? { transcriptPath } : {}) } : {}),
+		})),
+		...(input.output !== undefined ? { outputFile: "output-0.log" } : {}),
+	}, null, 2));
+
 	return asyncDir;
 }
 
@@ -218,6 +187,20 @@ describe("native subagent fleet", () => {
 				],
 			);
 			assert.equal(snapshot.error, undefined);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps active workflows ahead of older failed terminal history", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-history-"));
+		try {
+			writeAsyncRun(root, { id: "older-failed", state: "failed", lastUpdate: 100 });
+			writeAsyncRun(root, { id: "newer-complete", state: "complete", lastUpdate: 300 });
+			writeAsyncRun(root, { id: "active-workflow", mode: "workflow", state: "running", lastUpdate: 200 });
+
+			const snapshot = collectFleetSnapshot(stateForTest(), { asyncDirRoot: root, resultsDir: path.join(root, "results") });
+			assert.deepEqual(snapshot.items.map((item) => ("runId" in item ? item.runId : "")), ["active-workflow", "newer-complete", "older-failed"]);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
