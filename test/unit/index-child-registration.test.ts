@@ -313,6 +313,49 @@ describe("subagent extension child mode", () => {
 		}
 	});
 
+	it("restores disk-backed active status after a management tool result", () => {
+		const script = String.raw`
+			import * as fs from "node:fs";
+			import * as path from "node:path";
+			import registerSubagentExtension from "./index.ts";
+			import { DIRS } from "./src/shared/types.ts";
+			const eventHandlers = new Map();
+			const handlers = new Map();
+			const events = { on(channel, handler) { eventHandlers.set(channel, handler); return () => {}; }, emit() {} };
+			const widgets = [];
+			const fakePi = new Proxy({
+				events,
+				on(channel, handler) { handlers.set(channel, handler); },
+				registerTool() {}, registerCommand() {}, registerShortcut() {}, registerMessageRenderer() {},
+				sendMessage() {}, getSessionName() { return undefined; },
+			}, { get(target, prop) { return prop in target ? target[prop] : () => undefined; } });
+			const runId = "management-refresh-" + crypto.randomUUID();
+			const sessionId = "session-" + runId;
+			const ctx = {
+				cwd: process.cwd(), hasUI: true,
+				ui: { setWidget(key, value) { widgets.push({ key, value }); }, requestRender() {}, theme: { fg(_name, text) { return text; }, bg(_name, text) { return text; }, bold(text) { return text; } } },
+				sessionManager: { getSessionId() { return sessionId; }, getSessionFile() { return null; }, getEntries() { return []; } },
+				modelRegistry: { getAvailable() { return []; } },
+			};
+			const asyncDir = path.join(DIRS.async, runId);
+			fs.rmSync(asyncDir, { recursive: true, force: true });
+			registerSubagentExtension(fakePi);
+			handlers.get("session_start")({}, ctx);
+			widgets.length = 0;
+			fs.mkdirSync(asyncDir, { recursive: true });
+			fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({
+				runId, sessionId, mode: "workflow", state: "running",
+				startedAt: Date.now(), lastUpdate: Date.now(), cwd: process.cwd(), pid: process.pid,
+			}), "utf-8");
+			handlers.get("tool_result")({ toolName: "subagent" }, ctx);
+			const fleetWidgets = widgets.filter((entry) => entry.key === "subagent-fleet-status");
+			if (!fleetWidgets.some((entry) => typeof entry.value === "function")) throw new Error("management result did not restore active fleet status: " + JSON.stringify(fleetWidgets));
+			handlers.get("session_shutdown")();
+			fs.rmSync(asyncDir, { recursive: true, force: true });
+		`;
+		execFileSync(process.execPath, ["--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script], { cwd: projectRoot, env: parentToolEnv(), stdio: "pipe" });
+	});
+
 	it("disposes pending completion notifications on session shutdown", () => {
 		const agentDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-subagents-notify-shutdown-"),

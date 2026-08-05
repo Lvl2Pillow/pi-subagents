@@ -31,6 +31,7 @@
 
 ### Fixed
 - Keep the under-editor async status widget visible by default while FleetView is enabled, including after active runs restore following reload. Thanks to @nicobailon for #804.
+- Restore active under-editor subagent status after management calls, so `status` and `list` do not hide running disk-backed work. Thanks to @nicobailon for #816.
 - Allow direct single-child `worktree: true` launches to use managed isolation without requiring `workflowScript`. Thanks to @nicobailon for #808.
 - Isolated each mock Pi test queue so late child processes cannot consume or lose responses after the next test resets the harness. Thanks to @nicobailon for #810.
 - Reject scalar or commandless verified acceptance before spawning a child; verified policies now require object form with at least one runtime command. Thanks to @ryanbbrown for #807.
