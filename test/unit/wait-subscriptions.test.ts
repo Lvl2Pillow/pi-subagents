@@ -157,6 +157,35 @@ describe("non-blocking wait subscriptions", () => {
 		}
 	});
 
+	it("keeps subscriptions active across a session restart", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-restart-"));
+		const asyncRoot = path.join(root, "runs");
+		const subscriptionsDir = path.join(root, "subscriptions");
+		const bus = new TestBus();
+		const sent: string[] = [];
+		const state = makeState();
+		const manager = createWaitSubscriptionManager({
+			events: bus,
+			sendMessage(message: { content?: unknown }) { sent.push(String(message.content)); },
+		} as never, state, { asyncDirRoot: asyncRoot, subscriptionsDir, pollIntervalMs: 60_000, kill: () => true });
+		try {
+			writeStatus(asyncRoot, "run-restart", "running", { sessionId: "session-a", pid: 999_999 });
+			const registration = manager.arm({ targetKind: "async", runId: "run-restart", requestedId: "run-restart", timeoutMs: 30_000 });
+
+			state.currentSessionId = null;
+			manager.restore();
+			state.currentSessionId = "session-a";
+			writeStatus(asyncRoot, "run-restart", "complete", { sessionId: "session-a" });
+			manager.restore();
+
+			assert.match(sent[0] ?? "", /run run-restart: completed/);
+			assert.equal(state.waitSubscriptions?.has(registration.token), false);
+		} finally {
+			manager.dispose();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("wakes when async reconciliation throws", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-reconcile-error-"));
 		const asyncRoot = path.join(root, "not-a-directory");

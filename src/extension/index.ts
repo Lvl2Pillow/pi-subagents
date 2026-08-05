@@ -772,7 +772,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			reason: (event as { reason?: string } | undefined)?.reason,
 		});
 		stopResultWatcher();
-		waitSubscriptionManager.dispose();
 		state.currentSessionId = null;
 		state.parentSessionFile = null;
 		completionNotifier.dispose();
