@@ -88,10 +88,12 @@ export function createWaitSubscriptionManager(
 	const now = options.now ?? Date.now;
 	const subscriptions = state.waitSubscriptions ?? new Map<string, WaitSubscriptionRecord>();
 	state.waitSubscriptions = subscriptions;
+	const unresolvedRestoredForegroundTokens = new Set<string>();
 	let disposed = false;
 
 	const remove = (record: WaitSubscriptionRecord) => {
 		subscriptions.delete(record.token);
+		unresolvedRestoredForegroundTokens.delete(record.token);
 		try {
 			fs.unlinkSync(subscriptionFile(subscriptionsDir, record.token));
 		} catch (error) {
@@ -121,8 +123,9 @@ export function createWaitSubscriptionManager(
 			return;
 		}
 		if (record.targetKind === "foreground") {
-			if (!state.foregroundRuns) return;
-			const run = state.foregroundRuns.get(record.runId);
+			const run = state.foregroundRuns?.get(record.runId);
+			if (!run && unresolvedRestoredForegroundTokens.has(record.token)) return;
+			if (run) unresolvedRestoredForegroundTokens.delete(record.token);
 			if (!run || run.sessionId !== record.sessionId) {
 				settle(record, "could not be reconciled", "The remembered foreground run disappeared before completion was confirmed.");
 				return;
@@ -204,6 +207,7 @@ export function createWaitSubscriptionManager(
 		},
 		restore() {
 			subscriptions.clear();
+			unresolvedRestoredForegroundTokens.clear();
 			if (!state.currentSessionId) return;
 			let files: string[];
 			try {
@@ -216,7 +220,10 @@ export function createWaitSubscriptionManager(
 				try {
 					const record = parseRecord(JSON.parse(fs.readFileSync(path.join(subscriptionsDir, file), "utf-8")));
 					if (!record || file !== `${record.token}.json`) continue;
-					if (record.sessionId === state.currentSessionId) subscriptions.set(record.token, record);
+					if (record.sessionId === state.currentSessionId) {
+						subscriptions.set(record.token, record);
+						if (record.targetKind === "foreground" && !state.foregroundRuns?.has(record.runId)) unresolvedRestoredForegroundTokens.add(record.token);
+					}
 				} catch (error) {
 					console.error(`Ignoring invalid wait subscription '${path.join(subscriptionsDir, file)}':`, error);
 				}

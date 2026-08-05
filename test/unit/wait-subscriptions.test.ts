@@ -210,6 +210,7 @@ describe("non-blocking wait subscriptions", () => {
 			first.dispose();
 
 			const restoredState = makeState();
+			restoredState.foregroundRuns = new Map();
 			const restored = createWaitSubscriptionManager(pi as never, restoredState, { subscriptionsDir, pollIntervalMs: 60_000 });
 			try {
 				restored.restore();
@@ -232,6 +233,25 @@ describe("non-blocking wait subscriptions", () => {
 			}
 		} finally {
 			first.dispose();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("settles a missing live foreground run as unreconcilable", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-foreground-missing-"));
+		const state = makeState();
+		state.foregroundRuns = new Map();
+		const sent: string[] = [];
+		const manager = createWaitSubscriptionManager({
+			events: new TestBus(),
+			sendMessage(message: { content?: unknown }) { sent.push(String(message.content)); },
+		} as never, state, { subscriptionsDir: path.join(root, "subscriptions"), pollIntervalMs: 60_000 });
+		try {
+			manager.arm({ targetKind: "foreground", runId: "run-missing", requestedId: "run-missing", timeoutMs: 30_000 });
+			manager.reconcile();
+			assert.match(sent[0] ?? "", /could not be reconciled/);
+		} finally {
+			manager.dispose();
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
