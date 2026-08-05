@@ -251,7 +251,7 @@ describe("recurring schedule execution", () => {
 		h.clock.now += 3_600_000;
 		h.timers.fireAll();
 		assert.equal(h.launches.length, 1);
-		assert.deepEqual(h.launches[0]?.params, { agent: "worker", task: "Maintain backlog", async: true, clarify: false, context: "fresh", cwd: h.ctx.cwd, mission: false });
+		assert.deepEqual(h.launches[0]?.params, { agent: "worker", task: "Maintain backlog", async: true, clarify: false, context: "fresh", cwd: h.ctx.cwd });
 
 		h.launches[0]!.resolve({ content: [{ type: "text", text: "Async worker" }], details: { mode: "single", results: [], asyncId: "async-1", asyncDir: "/tmp/async-1" } });
 		await flush();

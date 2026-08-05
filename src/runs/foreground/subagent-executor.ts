@@ -3695,6 +3695,36 @@ function omitExecutionModeActionAlias(params: SubagentParamsLike): SubagentParam
 	return params;
 }
 
+function createScheduledOwnerState(source: SubagentState, ownerSessionId: string, ctx: ExtensionContext): SubagentState {
+	const ownerSpawns = source.subagentSpawns?.sessionId === ownerSessionId
+		? {
+			...source.subagentSpawns,
+			grantHistory: [...(source.subagentSpawns.grantHistory ?? [])],
+		}
+		: undefined;
+	return {
+		...source,
+		baseCwd: ctx.cwd,
+		currentSessionId: ownerSessionId,
+		parentSessionFile: ctx.sessionManager.getSessionFile() ?? null,
+		subagentInProgress: false,
+		...(ownerSpawns ? { subagentSpawns: ownerSpawns } : { subagentSpawns: undefined }),
+		asyncJobs: new Map(),
+		fleetJobs: new Map(),
+		foregroundRuns: new Map(),
+		foregroundControls: new Map(),
+		lastForegroundControlId: null,
+		cleanupTimers: new Map(),
+		lastUiContext: null,
+		poller: null,
+		completionSeen: new Map(),
+		watcher: null,
+		watcherRestartTimer: null,
+		waitSubscriptions: new Map(),
+		workflowControllers: new Map(),
+	};
+}
+
 export function createSubagentExecutor(deps: ExecutorDeps): {
 	execute: (
 		id: string,
@@ -3725,6 +3755,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 } {
 	const delegatedThinkingOverrides = new WeakMap<object, AgentConfig["thinking"]>();
 	const delegatedZeroToolBudgets = new WeakSet<object>();
+	const scheduledOwnerExecutors = new Map<string, ReturnType<typeof createSubagentExecutor>>();
 	const execute = async (
 		_id: string,
 		params: SubagentParamsLike,
@@ -4790,7 +4821,18 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		params: SubagentParamsLike,
 		signal: AbortSignal,
 		ctx: ExtensionContext,
-	) => execute(id, params, signal, undefined, ctx, true);
+	) => {
+		const ownerSessionId = resolveCurrentSessionId(ctx.sessionManager);
+		let ownerExecutor = scheduledOwnerExecutors.get(ownerSessionId);
+		if (!ownerExecutor) {
+			ownerExecutor = createSubagentExecutor({
+				...deps,
+				state: createScheduledOwnerState(deps.state, ownerSessionId, ctx),
+			});
+			scheduledOwnerExecutors.set(ownerSessionId, ownerExecutor);
+		}
+		return ownerExecutor.execute(id, params, signal, undefined, ctx);
+	};
 
 	return { execute: executeWithSingleDispatchGuard, executeDelegated, executeScheduled };
 }

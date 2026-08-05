@@ -75,6 +75,7 @@ interface AsyncResultPayload {
 results: Array<{ agent?: string; launchContractDigest?: string; launchResolvedExtensions?: LaunchResolvedExtensions; output?: string; outputState?: "present" | "absent" | "unknown"; success?: boolean; error?: string; skipped?: boolean; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; stopped?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; terminationDeferredAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; agentContract?: { version: 1 }; execution?: { status?: string; success?: boolean; exitCode?: number }; effects?: { fileMutation?: { status?: string; expected?: boolean; attempted?: boolean } }; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }>; evidenceStatus?: string; reviewResult?: { status?: string } }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string }; outputSaveError?: string; metadataSaveError?: string; capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] }; capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean } }>;
 	outputs?: Record<string, { text?: string; structured?: unknown }>;
 	workflowGraph?: { nodes?: Array<{ kind?: string; label?: string; phase?: string; status?: string; acceptanceStatus?: string; error?: string; outputName?: string; structured?: boolean; flatIndex?: number; children?: Array<{ label?: string; outputName?: string; itemKey?: string; status?: string; acceptanceStatus?: string; error?: string }> }> };
+	workflow?: { value?: { output?: string } };
 	parallelHandoff?: { version?: number; path?: string; groupCount?: number; childCount?: number; changedPatches?: number; cleanupState?: string };
 	capabilityCeiling?: { version?: number; allowedTools?: string[]; denyExtensions?: boolean; sources?: string[] };
 	capabilityAudit?: { effectiveTools?: string[]; removedTools?: string[]; extensionsDenied?: boolean };
@@ -234,7 +235,7 @@ interface TypesModule {
 interface ExecutorModule {
 	createSubagentExecutor?: (...args: unknown[]) => {
 		execute: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean; details?: { asyncId?: string } }>;
-		executeScheduled: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean; details?: { asyncId?: string } }>;
+		executeScheduled: (...args: unknown[]) => Promise<{ content: Array<{ type?: string; text?: string }>; isError?: boolean; details?: { asyncId?: string } }>;
 	};
 }
 
@@ -3436,14 +3437,16 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			baseCwd: liveCwd,
 			currentSessionId: "session-b",
 			lastParentModel: { provider: "deepseek", id: "live-model" },
+			subagentSpawns: { sessionId: "session-b", count: 1, configuredLimit: 1, granted: 1, grantHistory: [] },
 			asyncJobs: new Map(),
+			fleetJobs: new Map(),
 			foregroundControls: new Map(),
 			lastForegroundControlId: null,
 		};
 		const executor = createSubagentExecutor!({
 			pi: { events: createEventBus(), getSessionName: () => undefined },
 			state,
-			config: {},
+			config: { maxSubagentSpawnsPerSession: 1 },
 			asyncByDefault: false,
 			tempArtifactsDir: tempDir,
 			getSubagentSessionRoot: () => path.join(tempDir, "sessions"),
@@ -3465,7 +3468,60 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(state.currentSessionId, "session-b");
 		assert.equal(state.baseCwd, liveCwd);
 		assert.deepEqual(state.lastParentModel, { provider: "deepseek", id: "live-model" });
+		assert.deepEqual(state.subagentSpawns, { sessionId: "session-b", count: 1, configuredLimit: 1, granted: 1, grantHistory: [] });
+		const blocked = await executor.executeScheduled(
+			`scheduled-owner-blocked-${Date.now().toString(36)}`,
+			{ agent: "worker", task: "Exceed the retained owner budget", async: true, acceptance: false },
+			new AbortController().signal,
+			retainedCtx,
+		);
+		assert.equal(blocked.isError, true);
+		assert.match(blocked.content[0]?.type === "text" ? blocked.content[0].text : "", /1\/1 used/);
+		assert.deepEqual(state.subagentSpawns, { sessionId: "session-b", count: 1, configuredLimit: 1, granted: 1, grantHistory: [] });
 		await readAsyncPayload(launch.details.asyncId);
+	});
+
+	it("scheduled workflows keep owner status and registries isolated from the live session", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
+		const liveCwd = path.join(tempDir, "live-workflow-project");
+		fs.mkdirSync(liveCwd);
+		const state = {
+			baseCwd: liveCwd,
+			currentSessionId: "session-b",
+			subagentSpawns: { sessionId: "session-b", count: 4, configuredLimit: 5, granted: 0, grantHistory: [] },
+			asyncJobs: new Map(),
+			fleetJobs: new Map(),
+			foregroundControls: new Map(),
+			lastForegroundControlId: null,
+		};
+		const executor = createSubagentExecutor!({
+			pi: { events: createEventBus(), getSessionName: () => undefined },
+			state,
+			config: { maxSubagentSpawnsPerSession: 5 },
+			asyncByDefault: false,
+			tempArtifactsDir: tempDir,
+			getSubagentSessionRoot: () => path.join(tempDir, "sessions"),
+			expandTilde: (p: string) => p,
+			discoverAgents: () => ({ agents: [makeAgent("worker")] }),
+		});
+		const retainedCtx = makeMinimalCtx(tempDir);
+		retainedCtx.sessionManager.getSessionId = () => "session-a";
+		const workflowId = `scheduled-workflow-${Date.now().toString(36)}`;
+		const launch = await executor.executeScheduled(
+			workflowId,
+			{ workflowScript: `return await runs.status("${workflowId}")`, async: true },
+			new AbortController().signal,
+			retainedCtx,
+		) as AsyncExecutionResult;
+
+		assert.equal(launch.isError, undefined);
+		assert.equal(state.asyncJobs.size, 0);
+		assert.equal(state.fleetJobs.size, 0);
+		assert.deepEqual(state.subagentSpawns, { sessionId: "session-b", count: 4, configuredLimit: 5, granted: 0, grantHistory: [] });
+		const payload = await readAsyncPayload(launch.details.asyncId);
+		assert.equal(state.asyncJobs.size, 0);
+		assert.equal(state.fleetJobs.size, 0);
+		assert.match(payload.workflow.value.output, /Spawn budget: 0\/5 used/);
+		assert.match(payload.workflow.value.output, new RegExp(workflowId));
 	});
 
 	it("async executor keeps the last parent session model after continuation drops ctx.model", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
