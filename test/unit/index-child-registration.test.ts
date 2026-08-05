@@ -272,6 +272,47 @@ describe("subagent extension child mode", () => {
 		}
 	});
 
+	it("shows active async work in the under-editor widget when FleetView is enabled", () => {
+		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-async-widget-fleet-"));
+		try {
+			const configDir = path.join(agentDir, "extensions", "subagent");
+			fs.mkdirSync(configDir, { recursive: true });
+			fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ fleetView: true }), "utf-8");
+			const script = String.raw`
+				import registerSubagentExtension from "./index.ts";
+				const eventHandlers = new Map();
+				const handlers = new Map();
+				const events = { on(channel, handler) { eventHandlers.set(channel, handler); return () => {}; }, emit() {} };
+				const fakePi = new Proxy({
+					events,
+					on(channel, handler) { handlers.set(channel, handler); },
+					registerTool() {}, registerCommand() {}, registerShortcut() {}, registerMessageRenderer() {},
+					sendMessage() {}, getSessionName() { return undefined; },
+				}, { get(target, prop) { return prop in target ? target[prop] : () => undefined; } });
+				const widgets = [];
+				const ctx = {
+					cwd: process.cwd(), hasUI: true,
+					ui: { setWidget(key, value) { widgets.push({ key, value }); }, requestRender() {}, theme: { fg(_name, text) { return text; }, bg(_name, text) { return text; }, bold(text) { return text; } } },
+					sessionManager: { getSessionId() { return "session-widget"; }, getSessionFile() { return null; }, getEntries() { return []; } },
+					modelRegistry: { getAvailable() { return []; } },
+				};
+				registerSubagentExtension(fakePi);
+				handlers.get("session_start")({}, ctx);
+				widgets.length = 0;
+				eventHandlers.get("subagent:async-started")({ id: "widget-run", pid: 1, sessionId: "session-widget", mode: "workflow", agent: "worker", asyncDir: "/tmp/widget-run" });
+				handlers.get("tool_result")({ toolName: "subagent" }, ctx);
+				const asyncWidgets = widgets.filter((entry) => entry.key === "subagent-async");
+				if (!asyncWidgets.some((entry) => entry.value !== undefined)) throw new Error("async widget was not rendered with FleetView enabled: " + JSON.stringify(asyncWidgets));
+				handlers.get("session_shutdown")();
+			`;
+			const env = parentToolEnv();
+			env.PI_CODING_AGENT_DIR = agentDir;
+			execFileSync(process.execPath, ["--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script], { cwd: projectRoot, env, stdio: "pipe" });
+		} finally {
+			fs.rmSync(agentDir, { recursive: true, force: true });
+		}
+	});
+
 	it("disposes pending completion notifications on session shutdown", () => {
 		const agentDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "pi-subagents-notify-shutdown-"),

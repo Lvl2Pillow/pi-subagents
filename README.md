@@ -1476,7 +1476,7 @@ Places the persistent FleetView either `"belowEditor"` or `"aboveEditor"`. The d
 { "asyncWidget": true }
 ```
 
-Controls the legacy above-editor widget for background runs. It defaults to `false` while FleetView is enabled and `true` when FleetView is disabled. Set it explicitly to show both surfaces or hide the legacy widget entirely.
+Controls the under-editor widget for active background runs. It defaults to `true`, including when FleetView is enabled, so active work remains visible after reload. Set it to `false` to hide this widget while keeping FleetView available.
 
 ### `waitTool`
 

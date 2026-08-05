@@ -30,6 +30,7 @@
 - Scheduled subagent runs are now enabled by default; set `{ "scheduledRuns": { "enabled": false } }` to opt out.
 
 ### Fixed
+- Keep the under-editor async status widget visible by default while FleetView is enabled, including after active runs restore following reload. Thanks to @nicobailon for #804.
 - Allow direct single-child `worktree: true` launches to use managed isolation without requiring `workflowScript`. Thanks to @nicobailon for #808.
 - Preserve successful async completion when project-local artifact or mission files are removed before final bookkeeping by recreating artifact directories and recording missing-mission warnings.
 - Keep active Fleet inspector runs ahead of terminal history, which now sorts by recency instead of failure state so old failures do not look attached to current workflow work. Thanks to @nicobailon for #802.
