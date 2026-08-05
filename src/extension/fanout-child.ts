@@ -151,7 +151,7 @@ export default function registerFanoutChildSubagentExtension(pi: ExtensionAPI): 
 		parameters: SubagentParams,
 		execute(id, params, signal, onUpdate, ctx) {
 			const input = params as SubagentParamsLike;
-			if (input.tasks !== undefined || input.chain !== undefined || input.concurrency !== undefined || input.worktree !== undefined || input.chainDir !== undefined) {
+			if (input.tasks !== undefined || input.chain !== undefined || input.concurrency !== undefined || input.chainDir !== undefined || (input.worktree !== undefined && !(input.worktree === true && input.agent))) {
 				return Promise.resolve({ content: [{ type: "text", text: "Legacy top-level chain and parallel inputs were removed; use workflowScript." }], isError: true, details: { mode: "management", results: [] } });
 			}
 			return executor.execute(id, input, signal ?? new AbortController().signal, onUpdate, ctx);

@@ -199,7 +199,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.match(String(chatProgress?.description ?? ""), /same Git repository/i);
 		const worktree = SubagentParams?.properties?.worktree;
 		assert.equal(worktree?.type, "boolean");
-		assert.match(String(worktree?.description ?? ""), /workflow-only default/i);
+		assert.match(String(worktree?.description ?? ""), /direct single child/i);
 	});
 
 	it("removes legacy top-level orchestration parameters", () => {

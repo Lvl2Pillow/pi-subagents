@@ -3912,11 +3912,9 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 				};
 			}
 		}
-		if (requestParams.worktree === true && requestParams.agent && !requestParams.tasks?.length && !requestParams.chain?.length) {
-			return { content: [{ type: "text", text: "worktree is a workflow child control; use it on workflowScript or a runs.run/runs.all child." }], isError: true, details: { mode: "single", results: [] } };
-		}
-		const requestCwd = resolveRequestedCwd(ctx.cwd, requestParams.cwd);
-		const paramsWithResolvedCwd = requestParams.cwd === undefined ? requestParams : { ...requestParams, cwd: requestCwd };
+		const directParams = prepareWorkflowChildParams(requestParams);
+		const requestCwd = resolveRequestedCwd(ctx.cwd, directParams.cwd);
+		const paramsWithResolvedCwd = directParams.cwd === undefined ? directParams : { ...directParams, cwd: requestCwd };
 		const action = paramsWithResolvedCwd.action;
 		let requestParentModel: ParentModel | undefined;
 		try {
