@@ -149,6 +149,50 @@ describe("subagent extension child mode", () => {
 		}
 	});
 
+	it("keeps registered tool errors actionable while successful results stay collapsed", () => {
+		const script = String.raw`
+			import registerSubagentExtension from "./index.ts";
+			const events = { on() { return () => {}; }, emit() {} };
+			let registeredTool;
+			const fakePi = new Proxy({
+				events,
+				registerTool(tool) { if (tool.name === "subagent") registeredTool = tool; },
+				registerCommand() {}, registerShortcut() {}, registerMessageRenderer() {},
+				sendMessage() {}, getSessionName() { return undefined; },
+			}, { get(target, prop) { return prop in target ? target[prop] : () => undefined; } });
+			registerSubagentExtension(fakePi);
+			if (!registeredTool) throw new Error("tool not registered");
+
+			const theme = { fg(_name, text) { return text; }, bold(text) { return text; } };
+			const render = (text, isError) => registeredTool.renderResult({
+				content: [{ type: "text", text }],
+				details: { mode: "management", results: [] },
+			}, { expanded: false }, theme, { isError, state: {} }).render(120).join("\n");
+
+			const error = render("Agent configuration is invalid.\nSet tools to an array.\nRetry the subagent call.", true);
+			if (!error.includes("Set tools to an array.")) throw new Error("error remediation was hidden: " + error);
+			if (!error.includes("Retry the subagent call.")) throw new Error("error retry guidance was hidden: " + error);
+			if (error.includes("3 lines")) throw new Error("error was collapsed: " + error);
+
+			const success = render("Managed agents:\n- reviewer\n- writer", false);
+			if (!success.includes("Managed agents: · 3 lines")) throw new Error("success summary was not collapsed: " + success);
+			if (success.includes("- reviewer") || success.includes("- writer")) throw new Error("success details were not collapsed: " + success);
+		`;
+
+		execFileSync(
+			process.execPath,
+			[
+				"--experimental-strip-types",
+				"--import",
+				"./test/support/register-loader.mjs",
+				"--input-type=module",
+				"--eval",
+				script,
+			],
+			{ cwd: projectRoot, env: parentToolEnv(), stdio: "pipe" },
+		);
+	});
+
 	it("does not animate foreground results on a timer", () => {
 		const script = String.raw`
 			import registerSubagentExtension from "./index.ts";
@@ -259,6 +303,10 @@ describe("subagent extension child mode", () => {
 					content: [{ type: "text", text: "aggregate output that must not appear" }],
 					details: { mode: "parallel", results: [{ ...base, agent: "stopped", exitCode: 1, stopped: true }, { ...base, agent: "failed", exitCode: 1, stopped: false }] },
 				}, { expanded: true, isPartial: false }, theme, { state: {} }).render(120);
+				const contextError = registeredTool.renderResult({
+					content: [{ type: "text", text: "Agent configuration is invalid." }],
+					details: { mode: "management", results: [] },
+				}, { expanded: false, isPartial: false }, theme, { isError: true, state: {} }).render(120);
 				if (running.length !== 1 || running[0] !== "● delegate · running") throw new Error("unexpected running summary: " + JSON.stringify(running));
 				if (asyncSingle.length !== 1 || asyncSingle[0] !== "● single · running") throw new Error("unexpected async single summary: " + JSON.stringify(asyncSingle));
 				if (asyncChain.length !== 1 || asyncChain[0] !== "● chain · running") throw new Error("unexpected async chain summary: " + JSON.stringify(asyncChain));
@@ -268,6 +316,7 @@ describe("subagent extension child mode", () => {
 				if (failed.length !== 1 || failed[0] !== "✗ delegate · failed") throw new Error("unexpected failed summary: " + JSON.stringify(failed));
 				if (failedWithPaused.length !== 1 || failedWithPaused[0] !== "✗ parallel · failed") throw new Error("unexpected paused aggregate summary: " + JSON.stringify(failedWithPaused));
 				if (failedWithStopped.length !== 1 || failedWithStopped[0] !== "✗ parallel · failed") throw new Error("unexpected stopped aggregate summary: " + JSON.stringify(failedWithStopped));
+				if (contextError.length !== 1 || contextError[0] !== "✗ management · failed") throw new Error("unexpected context error summary: " + JSON.stringify(contextError));
 			`;
 			const env = parentToolEnv();
 			env.PI_CODING_AGENT_DIR = agentDir;

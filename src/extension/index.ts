@@ -713,9 +713,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 		renderResult(result, options, theme, context) {
 			clearLegacyResultAnimationTimer(context);
+			const renderedResult = { ...result, isError: context.isError };
 			return summaryInlineToolDisplay
-				? renderSubagentSummary(result, options, theme)
-				: renderSubagentResult(result, options, theme);
+				? renderSubagentSummary(renderedResult, options, theme)
+				: renderSubagentResult(renderedResult, options, theme);
 		},
 	};
 
