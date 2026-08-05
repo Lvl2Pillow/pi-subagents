@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { keyText } from "@earendil-works/pi-coding-agent";
 
+type RenderTheme = {
+	fg(name: string, text: string): string;
+	bold(text: string): string;
+};
+
 type RenderSubagentResult = (
 	result: {
 		content: Array<{ type: "text"; text: string }>;
@@ -17,15 +22,25 @@ type RenderSubagentResult = (
 		};
 	},
 	options: { expanded: boolean },
-	theme: {
-		fg(name: string, text: string): string;
-		bold(text: string): string;
-	},
+	theme: RenderTheme,
 ) => { render(width: number): string[] };
 
-const { renderSubagentResult } = await import("../../src/tui/render.ts") as {
+type RenderSubagentSummary = (
+	result: {
+		content: Array<{ type: "text"; text: string }>;
+		details?: { mode: "single" | "parallel" | "chain" | "management"; results: unknown[]; progress?: unknown[]; asyncId?: string };
+	},
+	options: { isPartial?: boolean },
+	theme: RenderTheme,
+) => { render(width: number): string[] };
+
+let renderSubagentResult: RenderSubagentResult | undefined;
+let renderSubagentSummary: RenderSubagentSummary | undefined;
+({ renderSubagentResult, renderSubagentSummary } = await import("../../src/tui/render.ts") as {
 	renderSubagentResult?: RenderSubagentResult;
-};
+	renderSubagentSummary?: RenderSubagentSummary;
+});
+
 
 const theme = {
 	fg: (_name: string, text: string) => text,
@@ -430,6 +445,48 @@ describe("renderSubagentResult fork indicator", () => {
 			assert.equal(firstGrapheme(compact), testCase.glyph, `${testCase.name} compact glyph`);
 			assert.equal(firstGrapheme(expanded), testCase.glyph, `${testCase.name} expanded glyph`);
 			assert.match((expanded.split("\n")[0] ?? "").trimEnd(), new RegExp(`reviewer(?: \\| [^·]+)? · ${testCase.label}$`), `${testCase.name} expanded label`);
+		}
+	});
+
+	it("keeps terminal results terminal in inline summaries with stale progress", () => {
+		const progress = {
+			index: 0,
+			agent: "reviewer",
+			status: "running",
+			task: "review",
+			recentTools: [],
+			recentOutput: [],
+			toolCount: 1,
+			tokens: 42,
+			durationMs: 1_000,
+		};
+		const cases = [
+			{ name: "detached", state: "paused", flag: { detached: true } },
+			{ name: "stopped", state: "stopped", flag: { stopped: true } },
+			{ name: "interrupted", state: "paused", flag: { interrupted: true } },
+		] as const;
+
+		for (const testCase of cases) {
+			const summary = renderSubagentSummary!({
+				content: [{ type: "text", text: testCase.name }],
+				details: {
+					mode: "single",
+					asyncId: "async-review",
+					progress: [progress],
+					results: [{
+						agent: "reviewer",
+						task: "review",
+						exitCode: 0,
+						messages: [],
+						usage: emptyUsage,
+						progress,
+						...testCase.flag,
+					}],
+				},
+			}, {}, theme).render(120).join("\n");
+
+			assert.match(summary, new RegExp(`· ${testCase.state}$`), testCase.name);
+			assert.doesNotMatch(summary, /running/, testCase.name);
 		}
 	});
 

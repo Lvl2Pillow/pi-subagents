@@ -1617,17 +1617,18 @@ export function renderSubagentSummary(
 ): Component {
 	const details = result.details;
 	const results = details?.results ?? [];
-	const running = options.isPartial === true
+	const hasTerminalResult = results.some(hasTerminalResultFlag);
+	const running = !hasTerminalResult && (
+		options.isPartial === true
 		|| Boolean(details?.asyncId && details.mode !== "management")
-		|| details?.progress?.some((progress) => progress.status === "running")
-		|| results.some((entry) => entry.progress?.status === "running")
-		|| Boolean(details && workflowGraphHasStatus(details, ["running"]));
-	const stopped = results.some((entry) => entry.stopped && entry.progress?.status !== "running")
+		|| Boolean(details && detailsHaveRunningResult(details))
+	);
+	const stopped = results.some((entry) => entry.stopped)
 		|| Boolean(details && workflowGraphHasStatus(details, ["stopped"]));
-	const paused = results.some((entry) => (entry.interrupted || entry.detached) && entry.progress?.status !== "running")
+	const paused = results.some((entry) => entry.interrupted || entry.detached)
 		|| Boolean(details && workflowGraphHasStatus(details, ["paused", "detached"]));
 	const failed = result.isError === true
-		|| results.some((entry) => !entry.stopped && !entry.interrupted && !entry.detached && entry.exitCode !== 0 && entry.progress?.status !== "running")
+		|| results.some((entry) => !hasTerminalResultFlag(entry) && entry.exitCode !== 0 && !isResultRunning(entry))
 		|| Boolean(details && workflowGraphHasStatus(details, ["failed"]));
 	const state = running ? "running" : failed ? "failed" : stopped ? "stopped" : paused ? "paused" : "completed";
 	const glyph = state === "running"
