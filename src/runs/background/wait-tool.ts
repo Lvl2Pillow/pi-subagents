@@ -20,8 +20,14 @@ In an interactive chat, do not call this merely to wait: return control to the u
 
 Non-blocking subscriptions are visible in subagent status and differ from disabling waitTool: waitTool.enabled=false returns immediately without registering any future wake. Provider jobs are session-scoped and identified exactly, so replacing one job with another cannot hide a completion. Provider extensions must be explicitly loaded in this process. In a child agent, keep \`subagent_wait\` in the child tool allowlist and load each provider through the agent's extensions or subagentOnlyExtensions; this tool never loads providers or grants tools itself.${enabled ? "" : "\n\nConfigured behavior: subagent_wait is disabled by config.waitTool or PI_SUBAGENT_WAIT_TOOL_ENABLED and returns immediately without blocking."}`,
 		parameters: SubagentWaitParams,
-		execute(_id, params, signal, onUpdate) {
-			return waitForSubagents(params, signal, { state, events: pi.events, enabled, onUpdate, ...(subscriptions ? { subscribe: (input) => subscriptions.arm(input) } : {}) });
+		execute(_id, params, signal, onUpdate, ctx) {
+			return waitForSubagents(params, signal, {
+				state,
+				events: pi.events,
+				enabled,
+				onUpdate,
+				...(subscriptions && ctx?.hasUI ? { subscribe: (input) => subscriptions.arm(input) } : {}),
+			});
 		},
 	};
 	pi.registerTool(tool);

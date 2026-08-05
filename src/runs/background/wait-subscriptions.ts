@@ -165,7 +165,8 @@ export function createWaitSubscriptionManager(
 			try {
 				reconcileRecord(record);
 			} catch (error) {
-				console.error(`Failed to reconcile wait subscription '${record.token}'; will retry:`, error);
+				console.error(`Failed to reconcile wait subscription '${record.token}':`, error);
+				settle(record, "reconciliation failed", "The targeted run could not be reconciled. Inspect its status before taking follow-up action.");
 			}
 		}
 	};

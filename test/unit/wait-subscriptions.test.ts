@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import { waitForSubagents } from "../../src/runs/background/subagent-wait.ts";
+import { registerWaitTool } from "../../src/runs/background/wait-tool.ts";
 import { createWaitSubscriptionManager } from "../../src/runs/background/wait-subscriptions.ts";
 import { inspectSubagentStatus } from "../../src/runs/background/run-status.ts";
 import { SUBAGENT_ASYNC_COMPLETE_EVENT, type IntercomEventBus, type SubagentState } from "../../src/shared/types.ts";
@@ -86,6 +87,33 @@ describe("non-blocking wait subscriptions", () => {
 		}
 	});
 
+	it("rejects non-blocking subscriptions from headless tool calls", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-headless-"));
+		try {
+			const state = makeState();
+			state.foregroundRuns = new Map([["run-headless", {
+				runId: "run-headless",
+				mode: "single",
+				cwd: root,
+				sessionId: "session-a",
+				updatedAt: Date.now(),
+				children: [{ agent: "worker", index: 0, status: "detached" }],
+			}]]);
+			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean }> } | undefined;
+			registerWaitTool({
+				events: new TestBus(),
+				registerTool(value: unknown) { tool = value as typeof tool; },
+			} as never, state, true, {
+				arm() { throw new Error("headless calls must not arm subscriptions"); },
+			});
+			const result = await tool!.execute("wait", { id: "run-headless", nonBlocking: true }, undefined, undefined, { hasUI: false });
+			assert.equal(result.isError, true);
+			assert.match(textOf(result), /long-lived interactive subagent runtime/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("restores durable registrations and wakes on exact completion", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-restore-"));
 		const asyncRoot = path.join(root, "runs");
@@ -125,6 +153,30 @@ describe("non-blocking wait subscriptions", () => {
 			assert.equal(fs.existsSync(path.join(subscriptionsDir, `${registration.token}.json`)), false);
 			restored.dispose();
 		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("wakes when async reconciliation throws", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-subscribe-reconcile-error-"));
+		const asyncRoot = path.join(root, "not-a-directory");
+		const subscriptionsDir = path.join(root, "subscriptions");
+		const bus = new TestBus();
+		const sent: string[] = [];
+		const state = makeState();
+		fs.writeFileSync(asyncRoot, "not a directory", "utf-8");
+		const manager = createWaitSubscriptionManager({
+			events: bus,
+			sendMessage(message: { content?: unknown }) { sent.push(String(message.content)); },
+		} as never, state, { asyncDirRoot: asyncRoot, subscriptionsDir, pollIntervalMs: 60_000 });
+		try {
+			const registration = manager.arm({ targetKind: "async", runId: "run-error", requestedId: "run-error", timeoutMs: 30_000 });
+			manager.reconcile();
+			assert.match(sent[0] ?? "", /reconciliation failed/);
+			assert.equal(state.waitSubscriptions?.has(registration.token), false);
+			assert.equal(fs.existsSync(path.join(subscriptionsDir, `${registration.token}.json`)), false);
+		} finally {
+			manager.dispose();
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
