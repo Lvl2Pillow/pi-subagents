@@ -219,12 +219,16 @@ class ScheduleStore {
 		return scheduleDir(this.root, id, create, this.projectCwd);
 	}
 
-	list(): ScheduleRecord[] {
+	ids(): string[] {
 		assertScheduleRoot(this.root, this.projectCwd, false);
 		if (!fs.existsSync(this.root)) return [];
 		return fs.readdirSync(this.root, { withFileTypes: true })
 			.filter((entry) => entry.isDirectory() && SCHEDULE_ID.test(entry.name))
-			.map((entry) => this.get(entry.name));
+			.map((entry) => entry.name);
+	}
+
+	list(): ScheduleRecord[] {
+		return this.ids().map((id) => this.get(id));
 	}
 
 	get(id: string): ScheduleRecord {
@@ -327,6 +331,21 @@ function executionParams(schedule: ScheduleRecord): SubagentParamsLike {
 	};
 }
 
+function snapshotContext(ctx: ExtensionContext, cwd: string): ExtensionContext {
+	const source = ctx.sessionManager;
+	const sessionId = source.getSessionId();
+	const sessionFile = source.getSessionFile();
+	const sessionManager = new Proxy(source, {
+		get(target, property) {
+			if (property === "getSessionId") return () => sessionId;
+			if (property === "getSessionFile") return () => sessionFile;
+			const value = Reflect.get(target, property, target) as unknown;
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
+	return { ...ctx, cwd, sessionManager };
+}
+
 export function listScheduledRunSummaries(cwd: string, root?: string): ScheduleRecord[] {
 	return new ScheduleStore(scheduledRunStorePath(cwd, undefined, root), root === undefined ? path.resolve(cwd) : undefined).list();
 }
@@ -387,11 +406,23 @@ export class ScheduledRunManager {
 		const asyncId = typeof data.runId === "string" ? data.runId : typeof data.id === "string" ? data.id : undefined;
 		if (!asyncId) return;
 		for (const store of this.stores.values()) {
-			for (const schedule of store.list()) {
-				const run = store.history(schedule.id).find((item) => item.asyncId === asyncId && item.state === "running");
-				if (!run) continue;
-				this.finishRun(store, schedule, run, data.success === true, typeof data.summary === "string" ? data.summary : undefined);
-				return;
+			let ids: string[];
+			try {
+				ids = store.ids();
+			} catch (error) {
+				console.error(`Failed to inspect schedule store '${store.root}' during async completion:`, error);
+				continue;
+			}
+			for (const id of ids) {
+				try {
+					const schedule = store.get(id);
+					const run = store.history(id).find((item) => item.asyncId === asyncId && item.state === "running");
+					if (!run) continue;
+					this.finishRun(store, schedule, run, data.success === true, typeof data.summary === "string" ? data.summary : undefined);
+					return;
+				} catch (error) {
+					console.error(`Failed to inspect schedule '${id}' in '${store.root}' during async completion:`, error);
+				}
 			}
 		}
 	}
@@ -667,7 +698,8 @@ export class ScheduledRunManager {
 	private selectProject(cwd: string, ctx: ExtensionContext): void {
 		const projectCwd = path.resolve(cwd);
 		const root = scheduledRunStorePath(projectCwd, undefined, this.deps.storeRoot);
-		this.contexts.set(root, path.resolve(ctx.cwd) === projectCwd ? ctx : { ...ctx, cwd: projectCwd });
+		if (path.resolve(ctx.cwd) === projectCwd) this.contexts.set(root, snapshotContext(ctx, projectCwd));
+		else if (!this.contexts.has(root)) throw new Error(`Cannot use project '${projectCwd}' until that project has been opened in this runtime.`);
 		let store = this.stores.get(root);
 		if (!store) {
 			store = new ScheduleStore(root, this.deps.storeRoot === undefined ? projectCwd : undefined);

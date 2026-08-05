@@ -158,6 +158,8 @@ describe("project schedule management", () => {
 		const h = harness();
 		const target = path.join(h.root, "other-project");
 		fs.mkdirSync(target);
+		h.manager.bindSession(context(target, "target-session"));
+		h.manager.bindSession(h.ctx);
 		await h.manager.handleToolCall({ action: "schedule.create", id: "other", cwd: target, every: "1h", agent: "worker" }, h.ctx);
 		assert.equal(listScheduledRunSummaries(h.ctx.cwd, path.join(h.root, "stores")).length, 0);
 		assert.equal(listScheduledRunSummaries(target, path.join(h.root, "stores"))[0]?.cwd, target);
@@ -299,6 +301,11 @@ describe("recurring schedule execution", () => {
 		const projectB = path.join(h.root, "project-b");
 		fs.mkdirSync(projectB);
 		const projectBCtx = context(projectB, "session-b");
+		const sourceSessionManager = h.ctx.sessionManager as { getSessionId(): string | null; getSessionFile(): string | null };
+		const getSourceSessionId = sourceSessionManager.getSessionId;
+		const getSourceSessionFile = sourceSessionManager.getSessionFile;
+		sourceSessionManager.getSessionId = () => "session-b";
+		sourceSessionManager.getSessionFile = () => path.join(projectB, "session-b.jsonl");
 		h.manager.bindSession(projectBCtx);
 		await h.manager.handleToolCall({ action: "schedule.create", id: "project-b", every: "1h", agent: "worker" }, projectBCtx);
 		assert.equal(h.timers.values.size, 2, "both project timers remain armed after session_start binds project B");
@@ -309,8 +316,12 @@ describe("recurring schedule execution", () => {
 		assert.equal(h.launches.length, 2);
 		assert.equal(h.launches[0]!.ctx.cwd, h.ctx.cwd);
 		assert.equal(h.launches[0]!.ctx.sessionManager.getSessionId(), "session-a");
+		assert.equal(h.launches[0]!.ctx.sessionManager.getSessionFile(), path.join(h.ctx.cwd, "session-a.jsonl"));
 		assert.equal(h.launches[1]!.ctx.cwd, projectB);
 		assert.equal(h.launches[1]!.ctx.sessionManager.getSessionId(), "session-b");
+		assert.equal(h.launches[1]!.ctx.sessionManager.getSessionFile(), path.join(projectB, "session-b.jsonl"));
+		sourceSessionManager.getSessionId = getSourceSessionId;
+		sourceSessionManager.getSessionFile = getSourceSessionFile;
 		h.launches[0]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "async-a" } });
 		h.launches[1]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "async-b" } });
 		await flush();
@@ -322,20 +333,72 @@ describe("recurring schedule execution", () => {
 		assert.equal(fs.existsSync(path.join(projectARoot, "project-a", "active.lock")), false);
 	});
 
-	it("launches an explicit cross-project cwd with a target project context", async () => {
+	it("uses only a bound target session for an explicit cross-project cwd", async () => {
 		const h = harness();
 		const target = path.join(h.root, "explicit-target");
 		fs.mkdirSync(target);
-		await h.manager.handleToolCall({ action: "schedule.create", id: "targeted", cwd: target, every: "1h", agent: "worker" }, h.ctx);
+		const unbound = await h.manager.handleToolCall({ action: "schedule.create", id: "targeted", cwd: target, every: "1h", agent: "worker" }, h.ctx);
+		assert.equal(unbound.isError, true);
+		assert.match(text(unbound), /until that project has been opened/);
 
+		const targetCtx = context(target, "target-session");
+		h.manager.bindSession(targetCtx);
+		h.manager.bindSession(h.ctx);
+		await h.manager.handleToolCall({ action: "schedule.create", id: "targeted", cwd: target, every: "1h", agent: "worker" }, h.ctx);
 		h.clock.now += 3_600_000;
 		h.timers.fireAll();
 		await flush();
 		assert.equal(h.launches.length, 1);
 		assert.equal(h.launches[0]!.ctx.cwd, target);
+		assert.equal(h.launches[0]!.ctx.sessionManager.getSessionId(), "target-session");
+		assert.equal(h.launches[0]!.ctx.sessionManager.getSessionFile(), path.join(target, "target-session.jsonl"));
 		assert.equal(h.launches[0]!.params.cwd, target);
 		h.launches[0]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "target-async" } });
 		await flush();
+	});
+
+	it("reconciles owner completion after an unrelated store becomes malformed", async () => {
+		const h = harness();
+		const badProject = path.join(h.root, "bad-project");
+		fs.mkdirSync(badProject);
+		const badCtx = context(badProject, "bad-session");
+		const ownerCtx = context(h.ctx.cwd, "owner-session");
+		const timers = new FakeTimers();
+		const launches: Launch[] = [];
+		let id = 0;
+		const manager = createScheduledRunManager({
+			config: { scheduledRuns: { enabled: true } },
+			storeRoot: path.join(h.root, "isolated-stores"),
+			now: () => h.clock.now,
+			randomId: () => `isolated-${++id}`,
+			timers: timers as unknown as Pick<typeof globalThis, "setTimeout" | "clearTimeout">,
+			launch: (params, launchCtx) => new Promise((resolve) => launches.push({ params: params as Record<string, unknown>, ctx: launchCtx, resolve: resolve as Launch["resolve"] })) as never,
+		});
+		manager.bindSession(badCtx);
+		manager.bindSession(ownerCtx);
+		await manager.handleToolCall({ action: "schedule.create", id: "owner", every: "1h", agent: "worker" }, ownerCtx);
+		const manual = manager.handleToolCall({ action: "schedule.run", id: "owner" }, ownerCtx);
+		await flush();
+		launches[0]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "owner-async" } });
+		await manual;
+
+		const badDir = path.join(scheduledRunStorePath(badProject, undefined, path.join(h.root, "isolated-stores")), "broken");
+		fs.mkdirSync(badDir, { recursive: true });
+		fs.writeFileSync(path.join(badDir, "schedule.json"), "{ bad", "utf-8");
+		const ownerRoot = scheduledRunStorePath(ownerCtx.cwd, undefined, path.join(h.root, "isolated-stores"));
+		const badSiblingDir = path.join(ownerRoot, "broken-sibling");
+		fs.mkdirSync(badSiblingDir, { recursive: true });
+		fs.writeFileSync(path.join(badSiblingDir, "schedule.json"), "{ bad", "utf-8");
+		const originalError = console.error;
+		console.error = () => {};
+		try {
+			manager.handleAsyncCompletion({ runId: "owner-async", success: true });
+		} finally {
+			console.error = originalError;
+		}
+		const history = await manager.handleToolCall({ action: "schedule.history", id: "owner" }, ownerCtx);
+		assert.match(text(history), /completed.*async owner-async/);
+		assert.equal(fs.existsSync(path.join(ownerRoot, "owner", "active.lock")), false);
 	});
 
 	it("reconciles a terminal async status after a new session binds", async () => {
