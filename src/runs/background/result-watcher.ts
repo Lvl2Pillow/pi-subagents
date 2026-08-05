@@ -37,6 +37,9 @@ type ResultWatcherDeps = {
 	fs?: ResultWatcherFs;
 	timers?: ResultWatcherTimers;
 	notifier?: Pick<CompletionNotifier, "deliver">;
+	/** Receives persisted completions before active-session delivery filtering. */
+	observeCompletion?: (result: CompletionNotification & { runId: string }) => void;
+
 };
 
 type ResultFileChild = {
@@ -138,10 +141,14 @@ export function createResultWatcher(
 		try {
 			const data = JSON.parse(fsApi.readFileSync(resultPath, "utf-8")) as ResultFileData;
 			if (typeof data.sessionId !== "string" || !data.sessionId) return;
+			const runId = data.runId ?? data.id ?? file.replace(/\.json$/i, "");
+			try {
+				deps.observeCompletion?.({ ...data, runId });
+			} catch (error) {
+				console.error(`Completion observer failed for '${resultPath}':`, error);
+			}
 			const epoch = deliveryEpoch;
 			if (!ownsSession(data.sessionId, epoch)) return;
-
-			const runId = data.runId ?? data.id ?? file.replace(/\.json$/i, "");
 			const hasExplicitNestedChildren = data.nestedChildren !== undefined;
 			let nestedChildren = compactNestedResultChildren(sanitizeNestedResultChildren(data.nestedChildren, resultPath, "nestedChildren"));
 			if (!nestedChildren?.length && !hasExplicitNestedChildren) {

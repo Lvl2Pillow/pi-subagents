@@ -460,10 +460,32 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			await openSubagentFleet(ctx, state, { initialKey: itemKey, asyncDirRoot: DIRS.async, resultsDir: DIRS.results });
 		}, { placement: fleetViewPlacement })
 		: undefined;
-	const { startResultWatcher, primeExistingResults, stopResultWatcher } =
-		createResultWatcher(pi, state, DIRS.results, 10 * 60 * 1000, {
+	let executorScheduled: ((id: string, params: SubagentParamsLike, signal: AbortSignal, ctx: ExtensionContext) => Promise<AgentToolResult<Details>>) | undefined;
+	const scheduledRunManager = createScheduledRunManager({
+		config,
+		launch: (params, ctx, signal) => {
+			if (!executorScheduled) {
+				return Promise.resolve({
+					content: [{ type: "text", text: "Scheduled subagent launch is unavailable (executor not ready)." }],
+					isError: true,
+					details: { mode: "management" as const, results: [] },
+				});
+			}
+			return executorScheduled(randomUUID(), params, signal, ctx);
+		},
+		resolveCapabilityCeiling: (sessionId) => resolveCurrentSubagentCapabilityCeiling(sessionId),
+	});
+	const { startResultWatcher, primeExistingResults, stopResultWatcher } = createResultWatcher(
+		pi,
+		state,
+		DIRS.results,
+		10 * 60 * 1000,
+		{
 			notifier: completionNotifier,
-		});
+			observeCompletion: (result) => scheduledRunManager.handleAsyncCompletion(result),
+		},
+	);
+
 
 	const runtimeCleanup = () => {
 		stopResultWatcher();
@@ -492,36 +514,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	} = createAsyncJobTracker(pi, state, DIRS.async, {
 		widgetEnabled: asyncWidgetEnabled,
 	});
-	// eslint-disable-next-line prefer-const -- assigned once after declaration; the launch closure reads it before the assignment, so const would break
-	let executorExecute:
-		| ((
-				id: string,
-				params: SubagentParamsLike,
-				signal: AbortSignal,
-				onUpdate: ((r: AgentToolResult<Details>) => void) | undefined,
-				ctx: ExtensionContext,
-		  ) => Promise<AgentToolResult<Details>>)
-		| undefined;
-	const scheduledRunManager = createScheduledRunManager({
-		config,
-		launch: (params, ctx, signal) => {
-			if (!executorExecute) {
-				return Promise.resolve({
-					content: [
-						{
-							type: "text",
-							text: "Scheduled subagent launch is unavailable (executor not ready).",
-						},
-					],
-					isError: true,
-					details: { mode: "management" as const, results: [] },
-				});
-			}
-			return executorExecute(randomUUID(), params, signal, undefined, ctx);
-		},
-		resolveCapabilityCeiling: (sessionId) =>
-			resolveCurrentSubagentCapabilityCeiling(sessionId),
-	});
+
 	const executor = createSubagentExecutor({
 		pi,
 		state,
@@ -536,7 +529,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		expandTilde,
 		discoverAgents,
 	});
-	executorExecute = executor.execute;
+	executorScheduled = executor.executeScheduled;
 
 	pi.registerMessageRenderer<SlashMessageDetails>(
 		SLASH_RESULT_TYPE,

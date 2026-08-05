@@ -3,8 +3,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildCompletionKey } from "../../src/runs/background/completion-dedupe.ts";
 import { createResultWatcher } from "../../src/runs/background/result-watcher.ts";
+import { createScheduledRunManager, scheduledRunStorePath } from "../../src/runs/background/scheduled-runs.ts";
 import { createNestedRoute, writeNestedEvent } from "../../src/runs/shared/nested-events.ts";
 import type { SubagentState } from "../../src/shared/types.ts";
 
@@ -70,6 +72,109 @@ describe("result watcher", () => {
 			fs.rmSync(resultsDir, { recursive: true, force: true });
 		}
 	});
+
+	it("observes retained-project completions without changing active-session delivery", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-scheduled-"));
+		const resultsDir = path.join(root, "results");
+		const project = path.join(root, "project-a");
+		fs.mkdirSync(resultsDir);
+		fs.mkdirSync(project);
+		const ctx = {
+			cwd: project,
+			sessionManager: {
+				getSessionId: () => "session-a",
+				getSessionFile: () => path.join(project, "session-a.jsonl"),
+			},
+		} as unknown as ExtensionContext;
+		const manager = createScheduledRunManager({
+			config: { scheduledRuns: { enabled: true } },
+			storeRoot: path.join(root, "stores"),
+			launch: async () => ({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "scheduled-a" } }),
+		});
+		try {
+			manager.bindSession(ctx);
+			await manager.handleToolCall({ action: "schedule.create", id: "retained", every: "1h", agent: "worker" }, ctx);
+			await manager.handleToolCall({ action: "schedule.run", id: "retained" }, ctx);
+			const scheduleDir = path.join(scheduledRunStorePath(project, undefined, path.join(root, "stores")), "retained");
+			assert.equal(fs.existsSync(path.join(scheduleDir, "active.lock")), true);
+
+			const emitted: Array<{ event: string; data: unknown }> = [];
+			const state = createState();
+			state.currentSessionId = "session-b";
+			const resultPath = path.join(resultsDir, "scheduled-a.json");
+			fs.writeFileSync(resultPath, JSON.stringify({ id: "scheduled-a", sessionId: "session-a", success: true, summary: "done" }), "utf-8");
+			const watcher = createResultWatcher({
+				events: {
+					on: () => () => {},
+					emit(event: string, data: unknown) { emitted.push({ event, data }); },
+				},
+			}, state, resultsDir, 60_000, {
+				observeCompletion: (result) => manager.handleAsyncCompletion(result),
+				notifier: { deliver: async () => assert.fail("inactive-session completion must not reach the live notifier") },
+			});
+			try {
+				watcher.startResultWatcher();
+				watcher.primeExistingResults();
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			} finally {
+				watcher.stopResultWatcher();
+			}
+
+			assert.equal(state.currentSessionId, "session-b");
+			assert.equal(emitted.length, 0);
+			assert.equal(fs.existsSync(path.join(scheduleDir, "active.lock")), false);
+			assert.match(fs.readFileSync(path.join(scheduleDir, "history.json"), "utf-8"), /"state": "completed"/);
+			assert.equal(fs.existsSync(resultPath), true, "the owning session keeps delivery ownership of its result file");
+		} finally {
+			manager.stop();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("uses native completion delivery without attempting external grouped intercom when disabled", async () => {
+		const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-native-delivery-"));
+		try {
+			const emitted: Array<{ event: string; data: unknown }> = [];
+			const delivered: unknown[] = [];
+			const pi = {
+				events: {
+					on: () => () => {},
+					emit(event: string, data: unknown) { emitted.push({ event, data }); },
+				},
+			};
+			const state = createState();
+			state.currentSessionId = "session-native";
+			const resultPath = path.join(resultsDir, "native-run.json");
+			fs.writeFileSync(resultPath, JSON.stringify({
+				id: "native-run",
+				runId: "native-run",
+				sessionId: "session-native",
+				mode: "single",
+				success: false,
+				state: "failed",
+				summary: "Subagent process terminated by signal SIGTERM.",
+				results: [{ agent: "worker", output: "", success: false, exitCode: 1, processSignal: "SIGTERM" }],
+				intercomTarget: "native-parent",
+			}), "utf-8");
+			const watcher = createResultWatcher(pi, state, resultsDir, 60_000, {
+				notifier: { deliver: async (result) => { delivered.push(result); return true; } },
+			});
+			try {
+				watcher.primeExistingResults();
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			} finally {
+				watcher.stopResultWatcher();
+			}
+			assert.equal(emitted.some((entry) => entry.event === "subagent:result-intercom"), false);
+			assert.equal(emitted.filter((entry) => entry.event === "subagent:async-complete").length, 1);
+			const notification = delivered[0] as { results?: Array<{ status?: string }> } | undefined;
+			assert.equal(notification?.results?.[0]?.status, "stopped");
+			assert.equal(fs.existsSync(resultPath), false);
+		} finally {
+			fs.rmSync(resultsDir, { recursive: true, force: true });
+		}
+	});
+
 
 	it("delivers result files only to the exact owning session when another watcher shares the same repo", async () => {
 		const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-scope-"));

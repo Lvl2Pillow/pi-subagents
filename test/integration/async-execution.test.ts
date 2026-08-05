@@ -234,6 +234,7 @@ interface TypesModule {
 interface ExecutorModule {
 	createSubagentExecutor?: (...args: unknown[]) => {
 		execute: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean; details?: { asyncId?: string } }>;
+		executeScheduled: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean; details?: { asyncId?: string } }>;
 	};
 }
 
@@ -3425,6 +3426,46 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.success, true);
 		assert.equal(payload.results[0].model, "github-copilot/gpt-5-mini");
 		assert.deepEqual(payload.results[0].attemptedModels, ["github-copilot/gpt-5-mini"]);
+	});
+
+	it("scheduled executor launches retain the live active session ownership", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
+		mockPi.onCall({ output: "Scheduled work completed" });
+		const liveCwd = path.join(tempDir, "live-project");
+		fs.mkdirSync(liveCwd);
+		const state = {
+			baseCwd: liveCwd,
+			currentSessionId: "session-b",
+			lastParentModel: { provider: "deepseek", id: "live-model" },
+			asyncJobs: new Map(),
+			foregroundControls: new Map(),
+			lastForegroundControlId: null,
+		};
+		const executor = createSubagentExecutor!({
+			pi: { events: createEventBus(), getSessionName: () => undefined },
+			state,
+			config: {},
+			asyncByDefault: false,
+			tempArtifactsDir: tempDir,
+			getSubagentSessionRoot: () => path.join(tempDir, "sessions"),
+			expandTilde: (p: string) => p,
+			discoverAgents: () => ({ agents: [makeAgent("worker")] }),
+		});
+		const retainedCtx = makeMinimalCtx(tempDir);
+		retainedCtx.sessionManager.getSessionId = () => "session-a";
+		retainedCtx.model = { provider: "deepseek", id: "scheduled-model" };
+		const launch = await executor.executeScheduled(
+			`scheduled-owner-${Date.now().toString(36)}`,
+			{ agent: "worker", task: "Run retained project timer", async: true, acceptance: false },
+			new AbortController().signal,
+			retainedCtx,
+		) as AsyncExecutionResult;
+
+		assert.equal(launch.isError, undefined);
+		assert.ok(launch.details.asyncId);
+		assert.equal(state.currentSessionId, "session-b");
+		assert.equal(state.baseCwd, liveCwd);
+		assert.deepEqual(state.lastParentModel, { provider: "deepseek", id: "live-model" });
+		await readAsyncPayload(launch.details.asyncId);
 	});
 
 	it("async executor keeps the last parent session model after continuation drops ctx.model", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
