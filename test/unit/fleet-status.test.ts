@@ -107,6 +107,7 @@ describe("below-editor subagent FleetView", () => {
 			assert.deepEqual(fleet.handleKey("\x1b[B"), { consume: true });
 			const expandedLines = component.render(80);
 			assert.ok(expandedLines.some((line) => line.includes("> main")));
+			assert.ok(expandedLines.some((line) => line.includes("  worker-0")), "unselected agents use blank focus space");
 			assert.ok(expandedLines.every((line) => !/[⏺◯]/u.test(line)), "selection avoids terminal-ambiguous circle glyphs");
 			assert.ok(expandedLines.some((line) => line.includes("worker-0 (fable-5 · thinking low)")));
 			assert.ok(expandedLines.some((line) => line.includes("11s · ↓ 13.1k tokens")));
