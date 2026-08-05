@@ -508,6 +508,7 @@ describe("renderSubagentResult fork indicator", () => {
 			content: [{ type: "text", text: "mixed" }],
 			details: {
 				mode: "parallel",
+				asyncId: "async-review",
 				progress: [stoppedProgress, runningProgress],
 				results: [
 					{ agent: "stopped-reviewer", task: "review", exitCode: 1, messages: [], usage: emptyUsage, stopped: true, progress: stoppedProgress },
@@ -517,6 +518,39 @@ describe("renderSubagentResult fork indicator", () => {
 		}, {}, theme).render(120).join("\n");
 
 		assert.match(summary, /· running$/);
+	});
+
+	it("keeps all-terminal async aggregate inline summaries terminal", () => {
+		const progress = (index: number, agent: string) => ({
+			index,
+			agent,
+			status: "running" as const,
+			task: "review",
+			recentTools: [],
+			recentOutput: [],
+			toolCount: 1,
+			tokens: 42,
+			durationMs: 1_000,
+		});
+		const stoppedProgress = progress(0, "stopped-reviewer");
+		const pausedProgress = progress(1, "paused-reviewer");
+		const detachedProgress = progress(2, "detached-reviewer");
+		const summary = renderSubagentSummary!({
+			content: [{ type: "text", text: "all terminal" }],
+			details: {
+				mode: "parallel",
+				asyncId: "async-review",
+				progress: [stoppedProgress, pausedProgress, detachedProgress],
+				results: [
+					{ agent: "stopped-reviewer", task: "review", exitCode: 1, messages: [], usage: emptyUsage, stopped: true, progress: stoppedProgress },
+					{ agent: "paused-reviewer", task: "review", exitCode: 1, messages: [], usage: emptyUsage, interrupted: true, progress: pausedProgress },
+					{ agent: "detached-reviewer", task: "review", exitCode: 0, messages: [], usage: emptyUsage, detached: true, progress: detachedProgress },
+				],
+			},
+		}, {}, theme).render(120).join("\n");
+
+		assert.match(summary, /· stopped$/);
+		assert.doesNotMatch(summary, /running/);
 	});
 
 	it("uses shared semantic status presentation for expanded multi-result rows", () => {

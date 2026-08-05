@@ -1618,7 +1618,8 @@ export function renderSubagentSummary(
 	const details = result.details;
 	const results = details?.results ?? [];
 	const hasSingleTerminalResult = results.length === 1 && hasTerminalResultFlag(results[0]!);
-	const running = !hasSingleTerminalResult && (
+	const hasOnlyTerminalResults = results.length > 0 && results.every(hasTerminalResultFlag);
+	const running = !hasSingleTerminalResult && !hasOnlyTerminalResults && (
 		options.isPartial === true
 		|| Boolean(details?.asyncId && details.mode !== "management")
 		|| Boolean(details && detailsHaveRunningResult(details))
