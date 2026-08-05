@@ -416,6 +416,7 @@ describe(
 		before(() => {
 			mockPi = createMockPi();
 			mockPi.install();
+
 		});
 
 		after(() => {
@@ -960,7 +961,7 @@ describe(
 		);
 
 		assert.equal(result.isError, undefined);
-		assert.equal(mockPi.callCount(), 2);
+		assert.equal(mockPi.callCount(), 2, result.content[0]?.text ?? "workflow produced no output");
 		assert.equal(fs.existsSync(path.join(tempDir, "feature-a.txt")), false);
 		assert.equal(fs.existsSync(path.join(tempDir, "feature-b.txt")), false);
 		const output = result.content[0]?.text ?? "";
