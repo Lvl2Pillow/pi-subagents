@@ -1615,6 +1615,7 @@ export function renderSubagentSummary(
 	const details = result.details;
 	const results = details?.results ?? [];
 	const running = options.isPartial === true
+		|| Boolean(details?.asyncId && details.mode !== "management")
 		|| details?.progress?.some((progress) => progress.status === "running")
 		|| results.some((entry) => entry.progress?.status === "running")
 		|| Boolean(details && workflowGraphHasStatus(details, ["running"]));
@@ -1623,9 +1624,9 @@ export function renderSubagentSummary(
 	const paused = results.some((entry) => (entry.interrupted || entry.detached) && entry.progress?.status !== "running")
 		|| Boolean(details && workflowGraphHasStatus(details, ["paused", "detached"]));
 	const failed = result.isError === true
-		|| results.some((entry) => !entry.stopped && entry.exitCode !== 0 && entry.progress?.status !== "running")
+		|| results.some((entry) => !entry.stopped && !entry.interrupted && !entry.detached && entry.exitCode !== 0 && entry.progress?.status !== "running")
 		|| Boolean(details && workflowGraphHasStatus(details, ["failed"]));
-	const state = running ? "running" : stopped ? "stopped" : paused ? "paused" : failed ? "failed" : "completed";
+	const state = running ? "running" : stopped ? "stopped" : failed ? "failed" : paused ? "paused" : "completed";
 	const glyph = state === "running"
 		? theme.fg("accent", STATIC_RUNNING_GLYPH)
 		: state === "completed"

@@ -227,6 +227,14 @@ describe("subagent extension child mode", () => {
 					content: [{ type: "text", text: "partial output that must not appear" }],
 					details: { mode: "single", results: [{ ...base, exitCode: 0, progress: { status: "running", index: 0, agent: "delegate", toolCount: 2, tokens: 300, durationMs: 20_000 } }] },
 				}, { expanded: false, isPartial: true }, theme, { state: {} }).render(120);
+				const asyncSingle = registeredTool.renderResult({
+					content: [{ type: "text", text: "Async: delegate [single-run]" }],
+					details: { mode: "single", runId: "single-run", asyncId: "single-run", asyncDir: "/tmp/single-run", results: [] },
+				}, { expanded: false }, theme, { state: {} }).render(120);
+				const asyncChain = registeredTool.renderResult({
+					content: [{ type: "text", text: "Async chain [chain-run]" }],
+					details: { mode: "chain", runId: "chain-run", asyncId: "chain-run", asyncDir: "/tmp/chain-run", results: [] },
+				}, { expanded: false }, theme, { state: {} }).render(120);
 				const completed = registeredTool.renderResult({
 					content: [{ type: "text", text: "completed output that must not appear" }],
 					details: { mode: "single", results: [{ ...base, exitCode: 0 }] },
@@ -243,11 +251,18 @@ describe("subagent extension child mode", () => {
 					content: [{ type: "text", text: "failed output that must not appear" }],
 					details: { mode: "single", results: [{ ...base, exitCode: 1, stopped: false }] },
 				}, { expanded: true, isPartial: false }, theme, { state: {} }).render(120);
+				const failedWithPaused = registeredTool.renderResult({
+					content: [{ type: "text", text: "aggregate output that must not appear" }],
+					details: { mode: "parallel", results: [{ ...base, agent: "paused", exitCode: 1, interrupted: true }, { ...base, agent: "failed", exitCode: 1, stopped: false }] },
+				}, { expanded: true, isPartial: false }, theme, { state: {} }).render(120);
 				if (running.length !== 1 || running[0] !== "● delegate · running") throw new Error("unexpected running summary: " + JSON.stringify(running));
+				if (asyncSingle.length !== 1 || asyncSingle[0] !== "● single · running") throw new Error("unexpected async single summary: " + JSON.stringify(asyncSingle));
+				if (asyncChain.length !== 1 || asyncChain[0] !== "● chain · running") throw new Error("unexpected async chain summary: " + JSON.stringify(asyncChain));
 				if (completed.length !== 1 || completed[0] !== "✓ delegate · completed") throw new Error("unexpected completed summary: " + JSON.stringify(completed));
 				if (stopped.length !== 1 || stopped[0] !== "■ delegate · stopped") throw new Error("unexpected stopped summary: " + JSON.stringify(stopped));
 				if (paused.length !== 1 || paused[0] !== "■ delegate · paused") throw new Error("unexpected paused summary: " + JSON.stringify(paused));
 				if (failed.length !== 1 || failed[0] !== "✗ delegate · failed") throw new Error("unexpected failed summary: " + JSON.stringify(failed));
+				if (failedWithPaused.length !== 1 || failedWithPaused[0] !== "✗ parallel · failed") throw new Error("unexpected aggregate summary: " + JSON.stringify(failedWithPaused));
 			`;
 			const env = parentToolEnv();
 			env.PI_CODING_AGENT_DIR = agentDir;
