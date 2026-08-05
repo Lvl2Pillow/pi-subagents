@@ -490,6 +490,35 @@ describe("renderSubagentResult fork indicator", () => {
 		}
 	});
 
+	it("keeps aggregate inline summaries running when another child is terminal", () => {
+		const progress = (index: number, agent: string) => ({
+			index,
+			agent,
+			status: "running" as const,
+			task: "review",
+			recentTools: [],
+			recentOutput: [],
+			toolCount: 1,
+			tokens: 42,
+			durationMs: 1_000,
+		});
+		const stoppedProgress = progress(0, "stopped-reviewer");
+		const runningProgress = progress(1, "running-reviewer");
+		const summary = renderSubagentSummary!({
+			content: [{ type: "text", text: "mixed" }],
+			details: {
+				mode: "parallel",
+				progress: [stoppedProgress, runningProgress],
+				results: [
+					{ agent: "stopped-reviewer", task: "review", exitCode: 1, messages: [], usage: emptyUsage, stopped: true, progress: stoppedProgress },
+					{ agent: "running-reviewer", task: "review", exitCode: 0, messages: [], usage: emptyUsage, progress: runningProgress },
+				],
+			},
+		}, {}, theme).render(120).join("\n");
+
+		assert.match(summary, /· running$/);
+	});
+
 	it("uses shared semantic status presentation for expanded multi-result rows", () => {
 		const results = [
 			{
