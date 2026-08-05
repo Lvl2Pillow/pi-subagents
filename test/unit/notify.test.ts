@@ -110,7 +110,7 @@ function completionResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe("registerSubagentNotify", () => {
-	it("uses a fallback summary when a background completion is empty", () => {
+	it("keeps a successful background completion hidden while waking the originating session", () => {
 		const { events, sent } = createPi();
 
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, {
@@ -130,7 +130,7 @@ describe("registerSubagentNotify", () => {
 				content: "Background task completed: **worker**\n\n(no output)",
 				display: false,
 			},
-			options: { triggerTurn: false },
+			options: { triggerTurn: true },
 		});
 	});
 
@@ -139,6 +139,13 @@ describe("registerSubagentNotify", () => {
 		assert.equal(await notifier.deliver(completionResult({ id: "direct-accepted" })), true);
 		assert.equal(sent.length, 1);
 	});
+
+	it("does not wake the session when background delivery explicitly disables triggerTurn", async () => {
+		const { notifier, sent } = createPi("session-a");
+		assert.equal(await notifier.deliver(completionResult({ id: "direct-silent", triggerTurn: false })), true);
+		assert.deepEqual(sent[0]!.options, { triggerTurn: false });
+	});
+
 
 	it("rejects a pending batch when the notifier is disposed", async () => {
 		const clock = createFakeClock();
@@ -213,7 +220,7 @@ describe("registerSubagentNotify", () => {
 				content: `Background task completed: **worker** (2/3)\n\n${summary}`,
 				display: false,
 			},
-			options: { triggerTurn: false },
+			options: { triggerTurn: true },
 		});
 	});
 
@@ -237,7 +244,7 @@ describe("registerSubagentNotify", () => {
 				content: "Background task completed: **worker**\n\nDone\n\nSession file: /tmp/session.jsonl",
 				display: false,
 			},
-			options: { triggerTurn: false },
+			options: { triggerTurn: true },
 		}]);
 	});
 
@@ -326,7 +333,8 @@ describe("registerSubagentNotify", () => {
 			content,
 			display: false,
 		});
-		assert.deepEqual(sent[0].options, { triggerTurn: false });
+		assert.deepEqual(sent[0]!.options, { triggerTurn: true });
+
 	});
 
 	it("ignores successes from other sessions instead of grouping them", () => {

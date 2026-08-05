@@ -176,7 +176,7 @@ function sendCompletion(pi: Pick<ExtensionAPI, "sendMessage">, items: PendingCom
 				content,
 				display,
 			},
-			{ triggerTurn: display && items.some((item) => item.triggerTurn) },
+			{ triggerTurn: items.some((item) => item.triggerTurn) },
 		);
 		return true;
 	} catch {
