@@ -115,6 +115,8 @@ interface AsyncRunListOptions {
 	states?: Array<AsyncRunSummary["state"]>;
 	sessionId?: string;
 	limit?: number;
+	/** Limits status-file reads after candidates are ordered by status mtime. */
+	entryLimit?: number;
 	resultsDir?: string;
 	kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean;
 	now?: () => number;
@@ -373,6 +375,25 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 		throw new Error(`Failed to list async runs in '${asyncDirRoot}': ${getErrorMessage(error)}`, {
 			cause: error instanceof Error ? error : undefined,
 		});
+	}
+
+	if (options.entryLimit !== undefined) {
+		const limit = Math.max(0, Math.floor(options.entryLimit));
+		entries = entries
+			.map((entry) => {
+				try {
+					return { entry, mtimeMs: fs.statSync(path.join(asyncDirRoot, entry, "status.json")).mtimeMs };
+				} catch (error) {
+					if (isNotFoundError(error)) return undefined;
+					throw new Error(`Failed to inspect async status file for '${entry}': ${getErrorMessage(error)}`, {
+						cause: error instanceof Error ? error : undefined,
+					});
+				}
+			})
+			.filter((candidate): candidate is { entry: string; mtimeMs: number } => candidate !== undefined)
+			.sort((left, right) => right.mtimeMs - left.mtimeMs)
+			.slice(0, limit)
+			.map((candidate) => candidate.entry);
 	}
 
 	const allowedStates = options.states ? new Set(options.states) : undefined;

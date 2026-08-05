@@ -52,6 +52,7 @@ import {
 
 const REFRESH_MS = 750;
 const MAX_RECENT_ASYNC_RUNS = 20;
+const MAX_FLEET_HISTORY_CANDIDATES = 100;
 const TRANSCRIPT_LINES = 200;
 
 type Theme = ExtensionContext["ui"]["theme"];
@@ -294,36 +295,33 @@ export function collectFleetSnapshot(
 	try {
 		let runs: AsyncRunSummary[];
 		const descriptions = new Map<string, string>();
+		const tracked = [...(state.fleetJobs ?? state.asyncJobs).values()]
+			.filter((job) => belongsToCurrentSession(job.sessionId, state.currentSessionId));
+		const byUpdate = (left: AsyncJobState, right: AsyncJobState) => (right.updatedAt ?? right.startedAt ?? 0) - (left.updatedAt ?? left.startedAt ?? 0);
+		const active = tracked.filter((job) => job.status === "queued" || job.status === "running").sort(byUpdate);
+		const recent = tracked.filter((job) => job.status !== "queued" && job.status !== "running").sort(byUpdate).slice(0, options.limit ?? MAX_RECENT_ASYNC_RUNS);
+		const trackedRuns: AsyncRunSummary[] = [];
+		for (const job of [...active, ...recent]) {
+			try {
+				trackedRuns.push(trackedJobSummary(job));
+				if (job.description) descriptions.set(job.asyncId, job.description);
+			} catch (cause) {
+				error = `Failed to inspect async run '${job.asyncId}': ${cause instanceof Error ? cause.message : String(cause)}`;
+			}
+		}
 		if (options.asyncDirRoot !== undefined) {
-			runs = listAsyncRuns(options.asyncDirRoot, {
+			const trackedIds = new Set(trackedRuns.map((run) => run.id));
+			const history = listAsyncRuns(options.asyncDirRoot, {
 				...(state.currentSessionId ? { sessionId: state.currentSessionId } : {}),
+				entryLimit: MAX_FLEET_HISTORY_CANDIDATES,
 
 				resultsDir: options.resultsDir ?? DIRS.results,
 				reconcile: false,
-			});
+			}).filter((run) => !trackedIds.has(run.id));
+			runs = [...trackedRuns, ...history];
 		} else {
-			const tracked = [...(state.fleetJobs ?? state.asyncJobs).values()].filter(
-				(job) => belongsToCurrentSession(job.sessionId, state.currentSessionId),
-			);
-			const byUpdate = (left: AsyncJobState, right: AsyncJobState) =>
-				(right.updatedAt ?? right.startedAt ?? 0) -
-				(left.updatedAt ?? left.startedAt ?? 0);
-			const active = tracked
-				.filter((job) => job.status === "queued" || job.status === "running")
-				.sort(byUpdate);
-			const recent = tracked
-				.filter((job) => job.status !== "queued" && job.status !== "running")
-				.sort(byUpdate)
-				.slice(0, options.limit ?? MAX_RECENT_ASYNC_RUNS);
-			runs = [];
-			for (const job of [...active, ...recent]) {
-				try {
-					runs.push(trackedJobSummary(job));
-					if (job.description) descriptions.set(job.asyncId, job.description);
-				} catch (cause) {
-					error = `Failed to inspect async run '${job.asyncId}': ${cause instanceof Error ? cause.message : String(cause)}`;
-				}
-			}
+			runs = trackedRuns;
+
 		}
 		for (const run of orderFleetAsyncRuns(runs, options.limit ?? MAX_RECENT_ASYNC_RUNS)) {
 			items.push(...asyncItems(run, descriptions.get(run.id)));

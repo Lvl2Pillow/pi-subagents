@@ -192,15 +192,46 @@ describe("native subagent fleet", () => {
 		}
 	});
 
-	it("keeps active workflows ahead of older failed terminal history", () => {
+	it("keeps tracked active workflows ahead of older failed terminal history", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-history-"));
 		try {
 			writeAsyncRun(root, { id: "older-failed", state: "failed", lastUpdate: 100 });
 			writeAsyncRun(root, { id: "newer-complete", state: "complete", lastUpdate: 300 });
-			writeAsyncRun(root, { id: "active-workflow", mode: "workflow", state: "running", lastUpdate: 200 });
+			const state = stateForTest();
+			state.fleetJobs = new Map([["active-workflow", {
+				asyncId: "active-workflow",
+				asyncDir: path.join(root, "active-workflow"),
+				sessionId: "session-current",
+				status: "running",
+				mode: "workflow",
+				agents: ["worker"],
+				startedAt: 100,
+				updatedAt: 200,
+			}]]);
+
+			const snapshot = collectFleetSnapshot(state, { asyncDirRoot: root, resultsDir: path.join(root, "results") });
+			assert.deepEqual(snapshot.items.map((item) => ("runId" in item ? item.runId : "")), ["active-workflow", "newer-complete", "older-failed"]);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("bounds Fleet history status-file reads", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-bounded-history-"));
+		try {
+			for (let index = 0; index < 100; index++) {
+				const asyncDir = writeAsyncRun(root, { id: `recent-${index}`, state: "complete", lastUpdate: index });
+				fs.utimesSync(path.join(asyncDir, "status.json"), 1_000 + index, 1_000 + index);
+			}
+			const oldDir = writeAsyncRun(root, { id: "old-invalid", state: "failed", lastUpdate: 0 });
+			fs.writeFileSync(path.join(oldDir, "status.json"), "{not-json", "utf8");
+			fs.utimesSync(path.join(oldDir, "status.json"), 1, 1);
 
 			const snapshot = collectFleetSnapshot(stateForTest(), { asyncDirRoot: root, resultsDir: path.join(root, "results") });
-			assert.deepEqual(snapshot.items.map((item) => ("runId" in item ? item.runId : "")), ["active-workflow", "newer-complete", "older-failed"]);
+			assert.equal(snapshot.error, undefined);
+			assert.equal(snapshot.items.length, 20);
+			assert.ok(!snapshot.items.some((item) => "runId" in item && item.runId === "old-invalid"));
+
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
