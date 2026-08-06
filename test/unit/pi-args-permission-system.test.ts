@@ -69,13 +69,15 @@ describe("resolvePermissionSystemExtension", () => {
 		assert.equal(result, undefined);
 	});
 
-	it("returns undefined when extension dir exists but has no package.json", () => {
+	it("throws when an installed extension dir has no package.json", () => {
 		const { agentDir } = createFixture();
-		process.env.PI_CODING_AGENT_DIR = agentDir;
 		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
+		const pkgPath = path.join(extDir, "package.json");
 		fs.mkdirSync(extDir, { recursive: true });
-		const result = resolvePermissionSystemExtension();
-		assert.equal(result, undefined);
+		assert.throws(
+			() => resolvePermissionSystemExtension(),
+			new RegExp(`Permission-system package manifest is missing at ${pkgPath}`),
+		);
 	});
 
 	it("throws when package.json has no valid pi.extensions entry", () => {
@@ -139,31 +141,36 @@ describe("resolvePermissionSystemExtension", () => {
 		);
 	});
 
-	it("uses a valid fallback installation when the first candidate is malformed", () => {
-		const { agentDir } = createFixture();
-		const primaryDir = path.join(
-			agentDir,
-			"npm",
-			"node_modules",
-			"@gotgenes",
-			"pi-permission-system",
-		);
-		const fallbackDir = path.join(agentDir, "extensions", "pi-permission-system");
-		fs.mkdirSync(primaryDir, { recursive: true });
-		fs.writeFileSync(path.join(primaryDir, "package.json"), "{ malformed");
-		fs.mkdirSync(path.join(fallbackDir, "src"), { recursive: true });
-		fs.writeFileSync(
-			path.join(fallbackDir, "package.json"),
-			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
-		);
-		fs.writeFileSync(
-			path.join(fallbackDir, "src", "index.ts"),
-			"export default () => {};",
-		);
+	it("uses a valid fallback installation when the first candidate is malformed or missing a manifest", () => {
+		for (const primarySetup of [
+			(dir: string) => fs.writeFileSync(path.join(dir, "package.json"), "{ malformed"),
+			() => undefined,
+		]) {
+			const { agentDir } = createFixture();
+			const primaryDir = path.join(
+				agentDir,
+				"npm",
+				"node_modules",
+				"@gotgenes",
+				"pi-permission-system",
+			);
+			const fallbackDir = path.join(agentDir, "extensions", "pi-permission-system");
+			fs.mkdirSync(primaryDir, { recursive: true });
+			primarySetup(primaryDir);
+			fs.mkdirSync(path.join(fallbackDir, "src"), { recursive: true });
+			fs.writeFileSync(
+				path.join(fallbackDir, "package.json"),
+				JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
+			);
+			fs.writeFileSync(
+				path.join(fallbackDir, "src", "index.ts"),
+				"export default () => {};",
+			);
 
-		const result = resolvePermissionSystemExtension();
+			const result = resolvePermissionSystemExtension();
 
-		assert.equal(result, path.join(fallbackDir, "src", "index.ts"));
+			assert.equal(result, path.join(fallbackDir, "src", "index.ts"));
+		}
 	});
 
 	it("returns extension path when fully installed", () => {
@@ -232,7 +239,7 @@ describe("resolvePiLaunchToolPlan with permission system", () => {
 			inheritSkills: false,
 		});
 		const extensionArgs = args.filter(
-			(arg, index) => args[index - 1] === "--extension",
+			(_arg, index) => args[index - 1] === "--extension",
 		);
 		assert.ok(
 			extensionArgs.includes(path.join(extDir, "src", "index.ts")),

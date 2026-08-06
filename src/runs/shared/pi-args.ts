@@ -301,7 +301,10 @@ export function resolvePermissionSystemExtension(): string | undefined {
 	for (const extDir of candidates) {
 		if (!fs.existsSync(extDir)) continue;
 		const pkgPath = path.join(extDir, "package.json");
-		if (!fs.existsSync(pkgPath)) continue;
+		if (!fs.existsSync(pkgPath)) {
+			errors.push(new Error(`Permission-system package manifest is missing at ${pkgPath}.`));
+			continue;
+		}
 		try {
 			let pkg: { pi?: { extensions?: string[] } };
 			const parsed: unknown = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
