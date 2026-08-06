@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { renderWidget, widgetRenderKey } from "../../tui/render.ts";
+import { renderWidget, requestWidgetRender, widgetRenderKey } from "../../tui/render.ts";
 import { formatControlNoticeMessage } from "../shared/subagent-control.ts";
 import {
 	type AsyncJobState,
@@ -33,6 +33,7 @@ const CONTROL_EVENT_READ_CHUNK_BYTES = 64 * 1024;
 const MAX_CONTROL_EVENT_LINE_BYTES = 1024 * 1024;
 const CONTROL_EVENT_SCAN_WINDOW_BYTES = 2 * 1024 * 1024;
 const MAX_RECENT_FLEET_JOBS = 20;
+const WIDGET_ANIMATION_REFRESH_MS = 500;
 
 function rememberFleetJob(state: SubagentState, job: AsyncJobState): void {
 	state.fleetJobs ??= new Map();
@@ -55,9 +56,15 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 	const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
 	const resultsDir = options.resultsDir ?? DIRS.results;
 	const steeringNoticeSeen = new Map<string, number>();
+	let lastWidgetAnimationAt = 0;
+	const requestStatusRender = (ctx: ExtensionContext) => {
+		if (requestWidgetRender()) return;
+		(ctx.ui as { requestRender?: () => void }).requestRender?.();
+	};
 	const rerenderWidget = (ctx: ExtensionContext, jobs = Array.from(state.asyncJobs.values())) => {
 		renderWidget(ctx, options.widgetEnabled === false ? [] : jobs);
-		(ctx.ui as { requestRender?: () => void }).requestRender?.();
+		requestStatusRender(ctx);
+
 	};
 	const rerenderLastWidget = (jobs = Array.from(state.asyncJobs.values())) => {
 		const ctx = state.lastUiContext;
@@ -73,6 +80,14 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 		}
 	};
 	const refreshWidget = (ctx: ExtensionContext) => rerenderWidget(ctx);
+	const hasRunningWidgetJobs = () => options.widgetEnabled !== false && [...state.asyncJobs.values()].some((job) => job.status === "running");
+	const refreshWidgetAnimation = () => {
+		if (!hasRunningWidgetJobs()) return;
+		const now = Date.now();
+		if (now - lastWidgetAnimationAt < WIDGET_ANIMATION_REFRESH_MS) return;
+		lastWidgetAnimationAt = now;
+		requestWidgetRender();
+	};
 	const restoredControlEventCursor = (asyncDir: string) => {
 		try {
 			return fs.statSync(path.join(asyncDir, "events.jsonl")).size;
@@ -391,6 +406,7 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 			}
 
 			if (widgetChanged) rerenderLastWidget();
+			else refreshWidgetAnimation();
 		}, pollIntervalMs);
 		state.poller.unref?.();
 	};

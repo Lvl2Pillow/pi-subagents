@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-const { buildWidgetLines, clearLegacyResultAnimationTimer, renderWidget } = await import("../../src/tui/render.ts") as unknown as {
-	buildWidgetLines: (jobs: Array<Record<string, unknown>>, theme: { fg(name: string, text: string): string; bold(text: string): string }, width?: number, expanded?: boolean) => string[];
+const { buildWidgetLines, clearLegacyResultAnimationTimer, renderWidget, requestWidgetRender } = await import("../../src/tui/render.ts") as unknown as {
+	buildWidgetLines: (jobs: Array<Record<string, unknown>>, theme: { fg(name: string, text: string): string; bold(text: string): string }, width?: number, expanded?: boolean, frame?: number) => string[];
+
 	clearLegacyResultAnimationTimer: (context: { state: { subagentResultAnimationTimer?: ReturnType<typeof setInterval> } }) => void;
 	renderWidget: (ctx: Record<string, unknown>, jobs: Array<Record<string, unknown>>) => void;
+	requestWidgetRender: () => void;
 };
 
 const theme = {
@@ -55,7 +57,7 @@ function createUiContext() {
 }
 
 function renderWidgetLines(widget: unknown, width = 180): string[] {
-	return (widget as (_tui: unknown, widgetTheme: typeof theme) => { render(width: number): string[] })(undefined, theme).render(width);
+	return (widget as (_tui: { requestRender(): void }, widgetTheme: typeof theme) => { render(width: number): string[] })({ requestRender() {} }, theme).render(width);
 }
 
 function restoreDescriptor(target: object, key: string, descriptor: PropertyDescriptor | undefined): void {
@@ -675,6 +677,46 @@ describe("subagent async widget rendering", () => {
 
 		assert.deepEqual(second, first);
 		assert.equal(firstGrapheme(first[1] ?? ""), firstGrapheme(second[1] ?? ""));
+	});
+
+	it("advances component widget glyphs without job data changes", () => {
+		const originalNow = Date.now;
+		let renderRequests = 0;
+		try {
+			Date.now = () => 1_000;
+			const ui = createUiContext();
+			renderWidget(ui.ctx as never, [{
+				asyncId: "run-animated",
+				asyncDir: "/tmp/run",
+				status: "running",
+				mode: "parallel",
+				agents: ["reviewer"],
+				activeParallelGroup: true,
+				runningSteps: 1,
+				completedSteps: 0,
+				stepsTotal: 1,
+				updatedAt: 1_000,
+				steps: [{ index: 0, agent: "reviewer", status: "running" }],
+			}]);
+			const component = (ui.widgets.at(-1) as (_tui: { requestRender(): void }, widgetTheme: typeof theme) => { render(width: number): string[]; dispose?(): void })(
+				{ requestRender: () => { renderRequests += 1; } },
+				theme,
+			);
+			const first = component.render(180).join("\n");
+
+			Date.now = () => 1_600;
+			requestWidgetRender();
+			const second = component.render(180).join("\n");
+
+			assert.equal(renderRequests, 1);
+			assert.notEqual(firstRunningGlyph(first), firstRunningGlyph(second));
+			component.dispose?.();
+			requestWidgetRender();
+			assert.equal(renderRequests, 1, "disposed widget should not accept animation requests");
+		} finally {
+			Date.now = originalNow;
+			renderWidget(createUiContext().ctx as never, []);
+		}
 	});
 
 	it("does not animate queued-only widgets", async () => {
