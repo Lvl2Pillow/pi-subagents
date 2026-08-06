@@ -5,18 +5,71 @@ import { getAgentDir } from "./utils.ts";
 const CLEANUP_MARKER_FILE = ".last-cleanup";
 const PROJECT_ARTIFACT_ROOT = ".pi-subagents";
 
+const PROJECT_ARTIFACT_PATHS = [
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/output.md`,
+	`${PROJECT_ARTIFACT_ROOT}/chain-runs/run.json`,
+];
+
+function globMatchesPath(pattern: string, filePath: string): boolean {
+	let expression = "^";
+	for (let index = 0; index < pattern.length; index += 1) {
+		const character = pattern[index];
+		if (character === undefined) break;
+		if (character === "*" && pattern[index + 1] === "*") {
+			index += 1;
+			if (pattern[index + 1] === "/") {
+				index += 1;
+				expression += "(?:.*/)?";
+			} else {
+				expression += ".*";
+			}
+		} else if (character === "*") {
+			expression += "[^/]*";
+		} else if (character === "?") {
+			expression += "[^/]";
+		} else if (character === "[") {
+			const end = pattern.indexOf("]", index + 1);
+			if (end === -1) expression += "\\[";
+			else {
+				expression += pattern.slice(index, end + 1);
+				index = end;
+			}
+		} else {
+			expression += character.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+		}
+	}
+	return new RegExp(`${expression}$`).test(filePath);
+}
+
+function normalizePattern(pattern: string): string {
+	return pattern.replace(/^\.\//, "").replace(/^\//, "").replace(/\/+$/, "");
+}
+
+function patternMatchesArtifactPath(pattern: string, artifactPath: string): boolean {
+	const normalized = normalizePattern(pattern);
+	return normalized === PROJECT_ARTIFACT_ROOT || globMatchesPath(normalized, artifactPath);
+}
+
+function patternMatchesProjectArtifacts(pattern: string): boolean {
+	return PROJECT_ARTIFACT_PATHS.some((artifactPath) => patternMatchesArtifactPath(pattern, artifactPath));
+}
+
 function ignoreFileExcludesProjectArtifacts(filePath: string): boolean {
 	if (!fs.existsSync(filePath)) return false;
 	try {
-		let excluded = false;
+		const excluded = new Set<string>();
 		for (const rawLine of fs.readFileSync(filePath, "utf-8").split(/\r?\n/)) {
 			const line = rawLine.trim();
 			if (!line || line.startsWith("#")) continue;
 			const negated = line.startsWith("!");
-			const pattern = (negated ? line.slice(1) : line).replace(/^\.\//, "").replace(/^\//, "").replace(/\/+$/, "");
-			if (pattern === PROJECT_ARTIFACT_ROOT || pattern.startsWith(`${PROJECT_ARTIFACT_ROOT}/`)) excluded = !negated;
+			const pattern = negated ? line.slice(1) : line;
+			for (const artifactPath of PROJECT_ARTIFACT_PATHS) {
+				if (!patternMatchesArtifactPath(pattern, artifactPath)) continue;
+				if (negated) excluded.delete(artifactPath);
+				else excluded.add(artifactPath);
+			}
 		}
-		return excluded;
+		return excluded.size === PROJECT_ARTIFACT_PATHS.length;
 	} catch {
 		return false;
 	}
@@ -24,11 +77,7 @@ function ignoreFileExcludesProjectArtifacts(filePath: string): boolean {
 
 function filesAllowProjectArtifacts(files: unknown): boolean {
 	if (!Array.isArray(files)) return true;
-	return files.some((entry) => {
-		if (typeof entry !== "string" || entry.startsWith("!")) return false;
-		const pattern = entry.replace(/^\.\//, "").replace(/\/+$/, "");
-		return pattern === PROJECT_ARTIFACT_ROOT || pattern.startsWith(`${PROJECT_ARTIFACT_ROOT}/`);
-	});
+	return files.some((entry) => typeof entry === "string" && !entry.startsWith("!") && patternMatchesProjectArtifacts(entry));
 }
 
 /** Returns a package-publishing warning when project artifacts can enter npm packages. */

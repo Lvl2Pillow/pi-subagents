@@ -30,8 +30,11 @@ describe("project-local artifact paths", () => {
 
 	it("warns only when package settings can include project artifacts", () => {
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "unsafe" })) ?? "", /\.npmignore/);
-		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "ignored" }, { name: ".gitignore", content: ".pi-subagents/\n" })), undefined);
-		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "restricted", files: ["**"] })), undefined);
+		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "gitignored" }, { name: ".gitignore", content: ".pi-subagents/\n" })), undefined);
+		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "globignored" }, { name: ".npmignore", content: "**/.pi-subagents/**\n" })), undefined);
+		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "classignored" }, { name: ".npmignore", content: "[.]pi-subagents/**\n" })), undefined);
+		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "restricted", files: ["src/**"] })), undefined);
+		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "broad", files: ["**/*"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "included", files: [".pi-subagents/**"] })) ?? "", /artifactDir/);
 	});
 
