@@ -1568,12 +1568,12 @@ async function runSingleStep(
 		? persistStepArtifacts({
 			artifactPaths,
 			artifactConfig: ctx.artifactConfig,
-			output: formatOutputArtifactContent(omitUndefinedProperties({
+			output: formatOutputArtifactContent({
 				output,
 				error: effectiveFinalError,
 				transcriptPath: transcriptWriter ? artifactPaths.transcriptPath : undefined,
 				metadataPath: ctx.artifactConfig?.includeMetadata === false ? undefined : artifactPaths.metadataPath,
-			})),
+			}),
 			metadata: {
 				runId: ctx.id,
 				agent: step.agent,
@@ -1587,29 +1587,6 @@ async function runSingleStep(
 				...(capabilityAudit ? { capabilityCeiling: capabilityAudit.ceiling, capabilityAudit } : {}),
 				launchContractDigest: actualLaunchContractDigest,
 				launchResolvedExtensions,
-				...((finalResult as (RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }) | undefined)?.runtimeAcknowledgedExtensions ? { runtimeAcknowledgedExtensions: (finalResult as RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }).runtimeAcknowledgedExtensions } : {}),
-				...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
-				transcriptError: transcriptWriter?.getError(),
-				skills: step.skills,
-				timestamp: Date.now(),
-			},
-		})
-		: {};
-			})),
-			metadata: {
-				runId: ctx.id,
-				agent: step.agent,
-				task,
-				exitCode: effectiveFinalExitCode,
-				model: finalResult?.model,
-				attemptedModels: attemptedModels.length > 0 ? attemptedModels : undefined,
-				modelAttempts,
-				error: effectiveFinalError,
-				acceptance: effectiveAcceptance,
-				...(capabilityAudit ? { capabilityCeiling: capabilityAudit.ceiling, capabilityAudit } : {}),
-				launchContractDigest: actualLaunchContractDigest,
-				launchResolvedExtensions,
-				...((finalResult as (RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }) | undefined)?.runtimeAcknowledgedExtensions ? { runtimeAcknowledgedExtensions: (finalResult as RunPiStreamingResult & { runtimeAcknowledgedExtensions?: RuntimeAcknowledgedChildExtensionsV1 }).runtimeAcknowledgedExtensions } : {}),
 				...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
 				transcriptError: transcriptWriter?.getError(),
 				skills: step.skills,
