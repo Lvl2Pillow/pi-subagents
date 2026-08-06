@@ -7,6 +7,13 @@ const PROJECT_ARTIFACT_ROOT = ".pi-subagents";
 
 const PROJECT_ARTIFACT_PATHS = [
 	`${PROJECT_ARTIFACT_ROOT}/artifacts/output.md`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/run_worker_input.md`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/run_worker_output.md`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/run_worker.jsonl`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/run_worker_transcript.jsonl`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/run_worker_meta.json`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/progress/run/progress.md`,
+	`${PROJECT_ARTIFACT_ROOT}/artifacts/outputs/output.md`,
 	`${PROJECT_ARTIFACT_ROOT}/chain-runs/run.json`,
 ];
 
@@ -38,7 +45,11 @@ function globMatchesPath(pattern: string, filePath: string): boolean {
 			expression += character.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
 		}
 	}
-	return new RegExp(`${expression}$`).test(filePath);
+	try {
+		return new RegExp(`${expression}$`).test(filePath);
+	} catch {
+		return false;
+	}
 }
 
 function normalizePattern(pattern: string): string {
@@ -47,7 +58,10 @@ function normalizePattern(pattern: string): string {
 
 function patternMatchesArtifactPath(pattern: string, artifactPath: string): boolean {
 	const normalized = normalizePattern(pattern);
-	return normalized === PROJECT_ARTIFACT_ROOT || normalized === "*" || globMatchesPath(normalized, artifactPath);
+	return normalized === PROJECT_ARTIFACT_ROOT
+		|| normalized === "*"
+		|| artifactPath.startsWith(`${normalized}/`)
+		|| globMatchesPath(normalized, artifactPath);
 }
 
 function patternMatchesProjectArtifacts(pattern: string): boolean {
@@ -75,8 +89,8 @@ function ignoreFileExcludesProjectArtifacts(filePath: string): boolean {
 	}
 }
 
-function filesAllowProjectArtifacts(files: unknown): boolean {
-	if (!Array.isArray(files)) return true;
+function filesIncludeProjectArtifacts(files: unknown): boolean | undefined {
+	if (!Array.isArray(files)) return undefined;
 	return files.some((entry) => typeof entry === "string" && !entry.startsWith("!") && patternMatchesProjectArtifacts(entry));
 }
 
@@ -94,9 +108,12 @@ export function getProjectArtifactPackagingWarning(cwd: string): string | undefi
 		return undefined;
 	}
 
+	const filesIncludeArtifacts = filesIncludeProjectArtifacts(packageJson.files);
+	if (filesIncludeArtifacts === false) return undefined;
+
 	const npmIgnorePath = path.join(cwd, ".npmignore");
 	const ignorePath = fs.existsSync(npmIgnorePath) ? npmIgnorePath : path.join(cwd, ".gitignore");
-	if (ignoreFileExcludesProjectArtifacts(ignorePath) || !filesAllowProjectArtifacts(packageJson.files)) return undefined;
+	if (filesIncludeArtifacts === undefined && ignoreFileExcludesProjectArtifacts(ignorePath)) return undefined;
 
 	return "Project-scoped subagent artifacts can be included when this package is published. Add '.pi-subagents/' to .npmignore, restrict package.json files, or set artifactDir to 'session' or 'temp'.";
 }
