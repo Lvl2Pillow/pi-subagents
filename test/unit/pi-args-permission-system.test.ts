@@ -139,6 +139,33 @@ describe("resolvePermissionSystemExtension", () => {
 		);
 	});
 
+	it("uses a valid fallback installation when the first candidate is malformed", () => {
+		const { agentDir } = createFixture();
+		const primaryDir = path.join(
+			agentDir,
+			"npm",
+			"node_modules",
+			"@gotgenes",
+			"pi-permission-system",
+		);
+		const fallbackDir = path.join(agentDir, "extensions", "pi-permission-system");
+		fs.mkdirSync(primaryDir, { recursive: true });
+		fs.writeFileSync(path.join(primaryDir, "package.json"), "{ malformed");
+		fs.mkdirSync(path.join(fallbackDir, "src"), { recursive: true });
+		fs.writeFileSync(
+			path.join(fallbackDir, "package.json"),
+			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
+		);
+		fs.writeFileSync(
+			path.join(fallbackDir, "src", "index.ts"),
+			"export default () => {};",
+		);
+
+		const result = resolvePermissionSystemExtension();
+
+		assert.equal(result, path.join(fallbackDir, "src", "index.ts"));
+	});
+
 	it("returns extension path when fully installed", () => {
 		const { agentDir } = createFixture();
 		process.env.PI_CODING_AGENT_DIR = agentDir;

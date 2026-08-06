@@ -297,35 +297,36 @@ export function resolvePermissionSystemExtension(): string | undefined {
 		// direct extension directory (some layouts)
 		path.join(agentDir, "extensions", "pi-permission-system"),
 	];
+	const errors: Error[] = [];
 	for (const extDir of candidates) {
 		if (!fs.existsSync(extDir)) continue;
 		const pkgPath = path.join(extDir, "package.json");
 		if (!fs.existsSync(pkgPath)) continue;
-		let pkg: { pi?: { extensions?: string[] } };
 		try {
+			let pkg: { pi?: { extensions?: string[] } };
 			const parsed: unknown = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 				throw new Error("manifest root must be an object");
 			}
 			pkg = parsed as typeof pkg;
+			const extensions = pkg.pi?.extensions;
+			const entry = Array.isArray(extensions) ? extensions[0] : undefined;
+			if (typeof entry !== "string" || !entry.trim()) {
+				throw new Error(
+					`Permission-system package manifest at ${pkgPath} must declare pi.extensions[0] as a non-empty string.`,
+				);
+			}
+			const resolved = path.resolve(extDir, entry);
+			if (fs.existsSync(resolved)) return resolved;
+			throw new Error(
+				`Permission-system extension entry ${JSON.stringify(entry)} in ${pkgPath} does not exist at ${resolved}.`,
+			);
 		} catch (error) {
-			throw new Error(
-				`Cannot read permission-system package manifest at ${pkgPath}: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			const message = error instanceof Error ? error.message : String(error);
+			errors.push(message.startsWith("Permission-system") ? new Error(message) : new Error(`Cannot read permission-system package manifest at ${pkgPath}: ${message}`));
 		}
-		const extensions = pkg.pi?.extensions;
-		const entry = Array.isArray(extensions) ? extensions[0] : undefined;
-		if (typeof entry !== "string" || !entry.trim()) {
-			throw new Error(
-				`Permission-system package manifest at ${pkgPath} must declare pi.extensions[0] as a non-empty string.`,
-			);
-		}
-		const resolved = path.resolve(extDir, entry);
-		if (fs.existsSync(resolved)) return resolved;
-		throw new Error(
-			`Permission-system extension entry ${JSON.stringify(entry)} in ${pkgPath} does not exist at ${resolved}.`,
-		);
 	}
+	if (errors.length > 0) throw errors[0]!;
 	return undefined;
 }
 
