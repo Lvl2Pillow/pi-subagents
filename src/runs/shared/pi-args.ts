@@ -303,9 +303,11 @@ export function resolvePermissionSystemExtension(): string | undefined {
 			const pkgPath = path.join(extDir, "package.json");
 			if (!fs.existsSync(pkgPath)) continue;
 			const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-				"pi.extensions"?: string[];
+				pi?: {
+					extensions?: string[];
+				};
 			};
-			const entry = pkg["pi.extensions"]?.[0];
+			const entry = pkg.pi?.extensions?.[0];
 			if (!entry) continue;
 			const resolved = path.resolve(extDir, entry);
 			if (fs.existsSync(resolved)) return resolved;

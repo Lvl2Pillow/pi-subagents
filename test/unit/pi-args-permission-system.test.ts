@@ -98,7 +98,7 @@ describe("resolvePermissionSystemExtension", () => {
 		fs.mkdirSync(extDir, { recursive: true });
 		fs.writeFileSync(
 			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test", "pi.extensions": ["./src/index.ts"] }),
+			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
 		);
 		fs.mkdirSync(path.join(extDir, "src"), { recursive: true });
 		fs.writeFileSync(
@@ -122,7 +122,7 @@ describe("resolvePermissionSystemExtension", () => {
 			path.join(extDir, "package.json"),
 			JSON.stringify({
 				name: "test",
-				"pi.extensions": ["./src/missing.ts"],
+				pi: { extensions: ["./src/missing.ts"] },
 			}),
 		);
 		const result = resolvePermissionSystemExtension();
@@ -142,7 +142,7 @@ describe("resolvePiLaunchToolPlan with permission system", () => {
 		);
 		fs.writeFileSync(
 			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test", "pi.extensions": ["./src/index.ts"] }),
+			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
 		);
 
 		const { args } = buildPiArgs({
@@ -189,7 +189,7 @@ describe("resolvePiLaunchToolPlan with permission system", () => {
 		);
 		fs.writeFileSync(
 			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test", "pi.extensions": ["./src/index.ts"] }),
+			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
 		);
 
 		const plan = resolvePiLaunchToolPlan({
