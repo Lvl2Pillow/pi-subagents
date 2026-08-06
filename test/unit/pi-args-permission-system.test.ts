@@ -78,17 +78,65 @@ describe("resolvePermissionSystemExtension", () => {
 		assert.equal(result, undefined);
 	});
 
-	it("returns undefined when package.json has no pi.extensions", () => {
+	it("throws when package.json has no valid pi.extensions entry", () => {
 		const { agentDir } = createFixture();
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
+		const pkgPath = path.join(extDir, "package.json");
 		fs.mkdirSync(extDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test" }),
+
+		for (const value of [
+			{ name: "test" },
+			{ name: "test", pi: { extensions: "./src/index.ts" } },
+			{ name: "test", pi: { extensions: [123] } },
+		]) {
+			fs.writeFileSync(pkgPath, JSON.stringify(value));
+			assert.throws(
+				() => resolvePermissionSystemExtension(),
+				new RegExp(`Permission-system package manifest at ${pkgPath}`),
+			);
+		}
+	});
+
+	it("throws when package.json is malformed", () => {
+		const { agentDir } = createFixture();
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
+		const pkgPath = path.join(extDir, "package.json");
+		fs.mkdirSync(extDir, { recursive: true });
+		fs.writeFileSync(pkgPath, "{ malformed");
+
+		assert.throws(
+			() => resolvePermissionSystemExtension(),
+			new RegExp(`Cannot read permission-system package manifest at ${pkgPath}`),
 		);
-		const result = resolvePermissionSystemExtension();
-		assert.equal(result, undefined);
+	});
+
+	it("throws when package.json cannot be read", () => {
+		const { agentDir } = createFixture();
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
+		const pkgPath = path.join(extDir, "package.json");
+		fs.mkdirSync(pkgPath, { recursive: true });
+
+		assert.throws(
+			() => resolvePermissionSystemExtension(),
+			new RegExp(`Cannot read permission-system package manifest at ${pkgPath}`),
+		);
+	});
+
+	it("throws with manifest context when package.json is not an object", () => {
+		const { agentDir } = createFixture();
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
+		const pkgPath = path.join(extDir, "package.json");
+		fs.mkdirSync(extDir, { recursive: true });
+		fs.writeFileSync(pkgPath, "null");
+
+		assert.throws(
+			() => resolvePermissionSystemExtension(),
+			new RegExp(`Cannot read permission-system package manifest at ${pkgPath}`),
+		);
 	});
 
 	it("returns extension path when fully installed", () => {
@@ -113,20 +161,24 @@ describe("resolvePermissionSystemExtension", () => {
 		);
 	});
 
-	it("returns undefined when entry file does not exist", () => {
+	it("throws when the configured entry file does not exist", () => {
 		const { agentDir } = createFixture();
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
+		const pkgPath = path.join(extDir, "package.json");
 		fs.mkdirSync(extDir, { recursive: true });
 		fs.writeFileSync(
-			path.join(extDir, "package.json"),
+			pkgPath,
 			JSON.stringify({
 				name: "test",
 				pi: { extensions: ["./src/missing.ts"] },
 			}),
 		);
-		const result = resolvePermissionSystemExtension();
-		assert.equal(result, undefined);
+
+		assert.throws(
+			() => resolvePermissionSystemExtension(),
+			new RegExp(`Permission-system extension entry .* in ${pkgPath} does not exist`),
+		);
 	});
 });
 

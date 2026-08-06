@@ -284,38 +284,49 @@ export function projectLaunchResolvedChildExtensions(
  * to decide whether to include it in child processes.
  */
 export function resolvePermissionSystemExtension(): string | undefined {
-	try {
-		const agentDir = getAgentDir();
-		const candidates = [
-			// npm-scoped package (most common)
-			path.join(
-				agentDir,
-				"npm",
-				"node_modules",
-				"@gotgenes",
-				"pi-permission-system",
-			),
-			// direct extension directory (some layouts)
-			path.join(agentDir, "extensions", "pi-permission-system"),
-		];
-		for (const extDir of candidates) {
-			if (!fs.existsSync(extDir)) continue;
-			const pkgPath = path.join(extDir, "package.json");
-			if (!fs.existsSync(pkgPath)) continue;
-			const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-				pi?: {
-					extensions?: string[];
-				};
-			};
-			const entry = pkg.pi?.extensions?.[0];
-			if (!entry) continue;
-			const resolved = path.resolve(extDir, entry);
-			if (fs.existsSync(resolved)) return resolved;
+	const agentDir = getAgentDir();
+	const candidates = [
+		// npm-scoped package (most common)
+		path.join(
+			agentDir,
+			"npm",
+			"node_modules",
+			"@gotgenes",
+			"pi-permission-system",
+		),
+		// direct extension directory (some layouts)
+		path.join(agentDir, "extensions", "pi-permission-system"),
+	];
+	for (const extDir of candidates) {
+		if (!fs.existsSync(extDir)) continue;
+		const pkgPath = path.join(extDir, "package.json");
+		if (!fs.existsSync(pkgPath)) continue;
+		let pkg: { pi?: { extensions?: string[] } };
+		try {
+			const parsed: unknown = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+				throw new Error("manifest root must be an object");
+			}
+			pkg = parsed as typeof pkg;
+		} catch (error) {
+			throw new Error(
+				`Cannot read permission-system package manifest at ${pkgPath}: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
-		return undefined;
-	} catch {
-		return undefined;
+		const extensions = pkg.pi?.extensions;
+		const entry = Array.isArray(extensions) ? extensions[0] : undefined;
+		if (typeof entry !== "string" || !entry.trim()) {
+			throw new Error(
+				`Permission-system package manifest at ${pkgPath} must declare pi.extensions[0] as a non-empty string.`,
+			);
+		}
+		const resolved = path.resolve(extDir, entry);
+		if (fs.existsSync(resolved)) return resolved;
+		throw new Error(
+			`Permission-system extension entry ${JSON.stringify(entry)} in ${pkgPath} does not exist at ${resolved}.`,
+		);
 	}
+	return undefined;
 }
 
 export function resolvePiLaunchToolPlan(
