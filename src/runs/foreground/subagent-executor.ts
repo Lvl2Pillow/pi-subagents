@@ -2659,8 +2659,6 @@ async function runForegroundParallelTasks(input: ForegroundParallelRunInput): Pr
 					}
 				}
 			},
-			intercomSessionName: input.childIntercomTarget?.(task.agent, index),
-			orchestratorIntercomTarget: input.orchestratorIntercomTarget,
 			nestedRoute: input.foregroundControl?.nestedRoute,
 			modelOverride: input.modelOverrides[index],
 			thinkingOverride: input.thinkingOverrideForTask(task.agent, index, input.modelOverrides[index]),

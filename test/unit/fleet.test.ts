@@ -857,8 +857,9 @@ describe("native subagent fleet", () => {
 						{ initialKey, refreshMs: 60_000, markdownTheme },
 					);
 					try {
+						const lines = component.render(100);
 						assert.ok(
-							component.render(100).some((line) => line.includes(expected)),
+							lines.some((line) => line.includes(expected)),
 							`missing ${expected}`,
 						);
 						if (initialKey.startsWith("foreground-recent:")) {
@@ -940,9 +941,8 @@ describe("native subagent fleet", () => {
 			{ initialKey: "foreground-active:run-worker:0", refreshMs: 60_000 },
 		);
 		try {
-			const selectedLine = component
-				.render(90)
-				.find((line) => line.includes("›"));
+			const lines = component.render(90);
+			const selectedLine = lines.find((line) => line.includes("›"));
 			assert.ok(
 				selectedLine?.includes("run-work"),
 				`unexpected selected row: ${selectedLine}`,
