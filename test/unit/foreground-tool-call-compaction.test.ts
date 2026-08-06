@@ -6,6 +6,7 @@ import { formatToolCall } from "../../src/shared/formatters.ts";
 describe("foreground tool-call compaction", () => {
 	it("stores compact tool-call summaries instead of raw message payloads", () => {
 		const result = compactForegroundResult({
+			index: 0,
 			agent: "tester",
 			task: "run checks",
 			exitCode: 0,
@@ -40,6 +41,7 @@ describe("foreground tool-call compaction", () => {
 
 	it("does not keep an empty toolCalls array after compaction", () => {
 		const result = compactForegroundResult({
+			index: 0,
 			agent: "tester",
 			task: "run checks",
 			exitCode: 0,

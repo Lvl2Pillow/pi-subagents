@@ -21,8 +21,9 @@ function componentText(component: unknown): string {
 	return "";
 }
 
-function result(agent: string, output: string) {
+function result(agent: string, output: string, index = 0) {
 	return {
+		index,
 		agent,
 		task: `${agent} task`,
 		exitCode: 0,

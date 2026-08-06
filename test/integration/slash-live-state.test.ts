@@ -125,6 +125,7 @@ describe("slash live state", { skip: !available ? "slash-live-state.ts not impor
 				details: {
 					mode: "single",
 					results: [{
+						index: 0,
 						agent: "scout",
 						task: "scan codebase",
 						exitCode: 0,

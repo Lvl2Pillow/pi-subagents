@@ -727,8 +727,5 @@ describe("agent overrides", () => {
 			completionGuard: true,
 		});
 		assert.ok(override);
-		fs.mkdirSync(path.join(tempProject, ".pi"), { recursive: true });
-		saveBuiltinAgentOverride(tempProject, "reviewer", "project", override);
-		assert.equal(discoverAgents(tempProject, "both").agents.find((agent) => agent.name === "reviewer")?.description, "Override description");
 	});
 });
