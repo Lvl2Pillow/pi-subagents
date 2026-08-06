@@ -1480,6 +1480,7 @@ export function shouldSuppressRoutineResultIntercom(input: { suppressRoutineResu
 }
 
 
+
 function canonicalizeAgentName(name: string, agents: AgentConfig[]): { name?: string; error?: string } {
 	const resolved = resolveAgentName(name, agents);
 	if (resolved.error) return { error: resolved.error };
@@ -3217,6 +3218,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 		if (foregroundControl) updateForegroundNestedProjection(foregroundControl);
 
 
+
 		const worktreeSuffix = handoff?.suffix ?? "";
 		const ok = results.filter((result) => result.exitCode === 0).length;
 		const downgradeNote = backgroundRequestedWhileClarifying ? " (background requested, but clarify kept this run foreground)" : "";
@@ -3556,6 +3558,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 	const suppressRoutineResultIntercom = shouldSuppressRoutineResultIntercom({ suppressRoutineResultIntercom: params.suppressRoutineResultIntercom, results: [r] });
 	if (!r.detached && !r.interrupted && !suppressRoutineResultIntercom) {
 		if (foregroundControl) updateForegroundNestedProjection(foregroundControl);
+
 	}
 
 	if (r.detached) {
@@ -3603,7 +3606,10 @@ function duplicateSubagentCallResult(params: SubagentParamsLike): AgentToolResul
 }
 
 function workflowChildResult(key: string, result: AgentToolResult<Details>): WorkflowScriptChildResult {
-	const output = result.content.map((part) => part.type === "text" ? part.text : "").filter(Boolean).join("\n");
+	const receiptOutput = result.content.map((part) => part.type === "text" ? part.text : "").filter(Boolean).join("\n");
+	const output = result.details.results.length === 1 && result.details.results[0]?.finalOutput !== undefined
+		? result.details.results[0].finalOutput
+		: receiptOutput;
 	const artifactPaths = new Set<string>();
 	if (result.details.asyncDir) artifactPaths.add(result.details.asyncDir);
 	if (result.details.parallelHandoff?.path) artifactPaths.add(result.details.parallelHandoff.path);
@@ -3618,7 +3624,7 @@ function workflowChildResult(key: string, result: AgentToolResult<Details>): Wor
 		ok: result.isError !== true,
 		...(result.details.runId || result.details.asyncId ? { runId: result.details.runId ?? result.details.asyncId } : {}),
 		output,
-		...(result.isError === true ? { error: output || "Child run failed." } : {}),
+		...(result.isError === true ? { error: receiptOutput || output || "Child run failed." } : {}),
 		...(structured.length === 1 ? { structuredOutput: structured[0] } : structured.length > 1 ? { structuredOutput: structured } : {}),
 		artifactPaths: [...artifactPaths],
 		results: result.details.results,
