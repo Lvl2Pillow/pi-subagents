@@ -289,7 +289,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 		);
 	});
 	for (let taskIndex = 0; taskIndex < input.step.parallel.length; taskIndex++) {
-		const task = input.step.parallel[taskIndex];
+		const task = input.step.parallel[taskIndex]!;
 		input.sessionFileForTask?.(task.agent, input.globalTaskIndex + taskIndex, effectiveModels[taskIndex]);
 	}
 
@@ -326,7 +326,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			}
 
 			const taskTemplate = input.parallelTemplates[taskIndex] ?? "{previous}";
-			const behavior = suppressProgressForReadOnlyTask(input.parallelBehaviors[taskIndex], taskTemplate, input.originalTask);
+			const behavior = suppressProgressForReadOnlyTask(input.parallelBehaviors[taskIndex]!, taskTemplate, input.originalTask);
 			const taskAgentConfig = input.agents.find((agent) => agent.name === task.agent);
 			const templateHasPrevious = taskTemplate.includes("{previous}");
 			const { prefix, suffix } = buildChainInstructions(
@@ -349,10 +349,10 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 			if (toolBudget.error) throw new Error(toolBudget.error);
 
 			const taskCwd = input.worktreeSetup
-				? input.worktreeSetup.worktrees[taskIndex].agentCwd
+				? input.worktreeSetup.worktrees[taskIndex]!.agentCwd
 				: resolveChildCwd(input.cwd ?? input.ctx.cwd, task.cwd);
 
-			const outputPath = typeof behavior.output === "string"
+			const outputPath = typeof behavior!.output === "string"
 				? (path.isAbsolute(behavior.output) ? behavior.output : path.join(input.chainDir, behavior.output))
 				: undefined;
 			taskStr = injectSingleOutputInstruction(taskStr, outputPath, taskAgentConfig);
@@ -617,12 +617,12 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		return buildChainExecutionErrorResult(usageBudgetExceededMessage(state), makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: flatIndex }));
 	};
 
-	const firstStep = chainSteps[0];
+	const firstStep = chainSteps[0]!;
 	const originalTask = params.task
 		?? (isCheckpointStep(firstStep)
 			? undefined
 			: isParallelStep(firstStep)
-				? firstStep.parallel[0].task!
+				? firstStep.parallel[0]!.task!
 				: isDynamicParallelStep(firstStep)
 					? firstStep.parallel.task!
 					: (firstStep).task!);
@@ -673,7 +673,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		}));
 
 		const resolvedBehaviors = agentConfigs.map((config, i) =>
-			resolveStepBehavior(config, stepOverrides[i], chainSkills),
+			resolveStepBehavior(config, stepOverrides[i]!, chainSkills),
 		);
 		const flatTemplates = templates as string[];
 
@@ -684,7 +684,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 					theme,
 					agentConfigs,
 					flatTemplates,
-					originalTask,
+					originalTask!,
 					chainDir,
 					resolvedBehaviors,
 					availableModels,
@@ -742,7 +742,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 	for (let stepIndex = 0; stepIndex < chainSteps.length; stepIndex++) {
 		const budgetError = usageBudgetError(stepIndex, globalTaskIndex);
 		if (budgetError) return budgetError;
-		const step = chainSteps[stepIndex];
+		const step = chainSteps[stepIndex]!;
 		const stepTemplates = templates[stepIndex];
 
 		if (isCheckpointStep(step)) {
@@ -787,11 +787,11 @@ ${step.message}` : ""}` }],
 				const parallelBehaviors = resolveParallelBehaviors(step.parallel, agents, stepIndex, chainSkills)
 					.map((behavior, taskIndex) => suppressProgressForReadOnlyTask(behavior, parallelTemplates[taskIndex] ?? step.parallel[taskIndex]?.task, originalTask));
 				for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
-					const behavior = parallelBehaviors[taskIndex];
-					const outputPath = typeof behavior.output === "string"
+					const behavior = parallelBehaviors[taskIndex]!;
+					const outputPath = typeof behavior!.output === "string"
 						? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 						: undefined;
-					const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Parallel chain step ${stepIndex + 1} task ${taskIndex + 1} (${step.parallel[taskIndex].agent})`);
+					const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Parallel chain step ${stepIndex + 1} task ${taskIndex + 1} (${step.parallel[taskIndex]!.agent})`);
 					if (validationError) return buildChainExecutionErrorResult(validationError, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex + taskIndex }));
 				}
 				progressCreated = ensureParallelProgressFile(chainDir, progressCreated, parallelBehaviors);
@@ -807,7 +807,7 @@ ${step.message}` : ""}` }],
 					modelScope,
 					chainDir,
 					prev,
-					originalTask,
+					originalTask: originalTask!,
 					ctx,
 					intercomEvents,
 					cwd,
@@ -913,7 +913,7 @@ ${step.message}` : ""}` }],
 						isError: true,
 						details: buildChainExecutionDetails(makeDetailsInput({
 							currentStepIndex: stepIndex,
-							currentFlatIndex: globalTaskIndex - step.parallel.length + failures[0].originalIndex,
+							currentFlatIndex: globalTaskIndex - step.parallel.length + failures[0]!.originalIndex,
 						})),
 					};
 				}
@@ -922,7 +922,7 @@ ${step.message}` : ""}` }],
 					.filter(({ result, task }) => isAgentContractV1(task?.agentContract ?? step.agentContract ?? params.agentContract) && (task?.gateOn ?? step.gateOn) === "acceptance" && result.acceptance?.status === "rejected");
 				if (acceptanceFailures.length > 0) {
 					const acceptanceSummary = acceptanceFailures
-						.map(({ result, originalIndex }) => `- Task ${originalIndex + 1} (${result.agent}): ${acceptanceFailureMessage(result.acceptance) ?? "acceptance rejected"}`)
+						.map(({ result, originalIndex }) => `- Task ${originalIndex + 1} (${result.agent}): ${acceptanceFailureMessage(result.acceptance!) ?? "acceptance rejected"}`)
 						.join("\n");
 					const errorMsg = `Parallel step ${stepIndex + 1} acceptance gate failed:\n${acceptanceSummary}`;
 					const summary = buildChainSummary(chainSteps, results, chainDir, "failed", { index: stepIndex, error: errorMsg });
@@ -931,14 +931,14 @@ ${step.message}` : ""}` }],
 						isError: true,
 						details: buildChainExecutionDetails(makeDetailsInput({
 							currentStepIndex: stepIndex,
-							currentFlatIndex: globalTaskIndex - step.parallel.length + acceptanceFailures[0].originalIndex,
+							currentFlatIndex: globalTaskIndex - step.parallel.length + acceptanceFailures[0]!.originalIndex,
 						})),
 					};
 				}
 
 				for (let taskIndex = 0; taskIndex < parallelResults.length; taskIndex++) {
 					const outputName = step.parallel[taskIndex]?.as;
-					if (outputName) outputs[outputName] = outputEntryFromResult(parallelResults[taskIndex], stepIndex);
+					if (outputName) outputs[outputName] = outputEntryFromResult(parallelResults[taskIndex]!, stepIndex);
 				}
 
 				const taskResults: ParallelTaskResult[] = parallelResults.map((result, i) => {
@@ -1018,7 +1018,7 @@ ${step.message}` : ""}` }],
 						cwd: cwd ?? ctx.cwd,
 						reportOptional: isAgentContractV1(step.agentContract ?? params.agentContract),
 					});
-					dynamicGroupStatuses[stepIndex].acceptance = groupAcceptance;
+					dynamicGroupStatuses[stepIndex]!.acceptance = groupAcceptance;
 					const groupAcceptanceFailure = !isAgentContractV1(step.agentContract ?? params.agentContract) || step.gateOn === "acceptance" ? acceptanceFailureMessage(groupAcceptance) : undefined;
 					if (groupAcceptanceFailure) {
 						dynamicGroupStatuses[stepIndex] = { status: "failed", error: groupAcceptanceFailure, acceptance: groupAcceptance };
@@ -1042,11 +1042,11 @@ ${step.message}` : ""}` }],
 				.map((behavior, taskIndex) => suppressProgressForReadOnlyTask(behavior, parallelTemplates[taskIndex] ?? dynamicParallelStep.parallel[taskIndex]?.task, originalTask));
 
 			for (let taskIndex = 0; taskIndex < dynamicParallelStep.parallel.length; taskIndex++) {
-				const behavior = parallelBehaviors[taskIndex];
+				const behavior = parallelBehaviors[taskIndex]!;
 				const outputPath = typeof behavior.output === "string"
 					? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 					: undefined;
-				const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Dynamic chain step ${stepIndex + 1} item ${taskIndex + 1} (${dynamicParallelStep.parallel[taskIndex].agent})`);
+				const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Dynamic chain step ${stepIndex + 1} item ${taskIndex + 1} (${dynamicParallelStep.parallel[taskIndex]!.agent})`);
 				if (validationError) {
 					dynamicGroupStatuses[stepIndex] = { status: "failed", error: validationError };
 					return buildChainExecutionErrorResult(validationError, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex + taskIndex }));
@@ -1065,7 +1065,7 @@ ${step.message}` : ""}` }],
 				modelScope,
 				chainDir,
 				prev,
-				originalTask,
+				originalTask: originalTask!,
 				ctx,
 				intercomEvents,
 				cwd,
@@ -1155,7 +1155,7 @@ ${step.message}` : ""}` }],
 					isError: true,
 					details: buildChainExecutionDetails(makeDetailsInput({
 						currentStepIndex: stepIndex,
-						currentFlatIndex: dynamicStartIndex + failures[0].originalIndex,
+						currentFlatIndex: dynamicStartIndex + failures[0]!.originalIndex,
 					})),
 				};
 			}
@@ -1164,7 +1164,7 @@ ${step.message}` : ""}` }],
 				.filter(({ result, task }) => isAgentContractV1(task?.agentContract ?? dynamicParallelStep.agentContract ?? params.agentContract) && (task?.gateOn ?? dynamicParallelStep.gateOn) === "acceptance" && result.acceptance?.status === "rejected");
 			if (acceptanceFailures.length > 0) {
 				const acceptanceSummary = acceptanceFailures
-					.map(({ result, originalIndex }) => `- Item ${originalIndex + 1} (${result.agent}, key ${materialized.items[originalIndex]?.key ?? originalIndex}): ${acceptanceFailureMessage(result.acceptance) ?? "acceptance rejected"}`)
+					.map(({ result, originalIndex }) => `- Item ${originalIndex + 1} (${result.agent}, key ${materialized.items[originalIndex]?.key ?? originalIndex}): ${acceptanceFailureMessage(result.acceptance!) ?? "acceptance rejected"}`)
 					.join("\n");
 				const errorMsg = `Dynamic step ${stepIndex + 1} acceptance gate failed:\n${acceptanceSummary}`;
 				dynamicGroupStatuses[stepIndex] = { status: "failed", error: errorMsg };
@@ -1172,7 +1172,7 @@ ${step.message}` : ""}` }],
 				return {
 					content: [{ type: "text", text: summary }],
 					isError: true,
-					details: buildChainExecutionDetails(makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: dynamicStartIndex + acceptanceFailures[0].originalIndex })),
+					details: buildChainExecutionDetails(makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: dynamicStartIndex + acceptanceFailures[0]!.originalIndex })),
 				};
 			}
 			try {
@@ -1210,7 +1210,7 @@ ${step.message}` : ""}` }],
 				cwd: cwd ?? ctx.cwd,
 				reportOptional: isAgentContractV1(step.agentContract ?? params.agentContract),
 			});
-			dynamicGroupStatuses[stepIndex].acceptance = groupAcceptance;
+			dynamicGroupStatuses[stepIndex]!.acceptance = groupAcceptance;
 			const groupAcceptanceFailure = effectiveGroupAcceptance.explicit && (!isAgentContractV1(step.agentContract ?? params.agentContract) || step.gateOn === "acceptance") ? acceptanceFailureMessage(groupAcceptance) : undefined;
 			if (groupAcceptanceFailure) {
 				dynamicGroupStatuses[stepIndex] = { status: "failed", error: groupAcceptanceFailure, acceptance: groupAcceptance };
@@ -1266,7 +1266,7 @@ ${step.message}` : ""}` }],
 			);
 
 			let stepTask = resolveOutputReferences(stepTemplate, outputs);
-			stepTask = stepTask.replace(/\{task\}/g, originalTask);
+			stepTask = stepTask.replace(/\{task\}/g, originalTask!);
 			stepTask = stepTask.replace(/\{previous\}/g, prev);
 			stepTask = stepTask.replace(/\{chain_dir\}/g, chainDir);
 			const cleanTask = stepTask;
@@ -1282,7 +1282,7 @@ ${step.message}` : ""}` }],
 				{ scope: modelScope },
 			);
 
-			const outputPath = typeof behavior.output === "string"
+			const outputPath = typeof behavior!.output === "string"
 				? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 				: undefined;
 			stepTask = injectSingleOutputInstruction(stepTask, outputPath, agentConfig);

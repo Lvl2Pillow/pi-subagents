@@ -487,7 +487,7 @@ function applyControlEventToRememberedForegroundRun(state: SubagentState, event:
 	if (!run) return;
 	const index = event.index ?? (run.children.length === 1 ? run.children[0]?.index : undefined);
 	if (index === undefined) return;
-	const child = run.children[index];
+	const child = run.children[index]!;
 	if (!child || child.status !== "detached") return;
 	const updatedAt = event.ts;
 	run.updatedAt = updatedAt;
@@ -593,13 +593,13 @@ function resolveForegroundResumeTarget(params: SubagentParamsLike, state: Subage
 	const matches = direct ? [direct] : sessionRuns.filter((run) => run.runId.startsWith(requested));
 	if (matches.length === 0) return undefined;
 	if (matches.length > 1) throw new Error(`Ambiguous foreground run id prefix '${requested}' matched: ${matches.map((run) => run.runId).join(", ")}. Provide a longer id.`);
-	const run = matches[0];
+	const run = matches[0]!;
 	if (run.children.some((child) => child.status === "detached")) throw new Error(`Foreground run '${run.runId}' is detached for intercom coordination and cannot be revived safely while any child may still be live. Reply to the supervisor request first, then wait with subagent_wait({ id: "${run.runId}" }); use status to recover the result and do not launch a replacement while it remains detached.`);
 	if (run.children.length > 1 && params.index === undefined) throw new Error(`Foreground run '${run.runId}' has ${run.children.length} children. Provide index to choose one.`);
 	const index = params.index ?? 0;
 	if (!Number.isInteger(index)) throw new Error(`Foreground run '${run.runId}' index must be an integer.`);
 	if (index < 0 || index >= run.children.length) throw new Error(`Foreground run '${run.runId}' has ${run.children.length} children. Index ${index} is out of range.`);
-	const child = run.children[index];
+	const child = run.children[index]!;
 	if (!child.sessionFile) throw new Error(`Foreground run '${run.runId}' child ${index} does not have a persisted session file to resume from.`);
 	if (path.extname(child.sessionFile) !== ".jsonl") throw new Error(`Foreground run '${run.runId}' child ${index} session file must be a .jsonl file: ${child.sessionFile}`);
 	const sessionFile = path.resolve(child.sessionFile);
@@ -1501,7 +1501,7 @@ function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentCo
 	if (params.tasks) {
 		const tasks: TaskParam[] = [];
 		for (let index = 0; index < params.tasks.length; index++) {
-			const task = params.tasks[index];
+			const task = params.tasks[index]!;
 			const result = resolve(task.agent, `task ${index + 1}`);
 			if (result.error) return { error: result.error };
 			tasks.push({ ...task, agent: result.name! });
@@ -1511,11 +1511,11 @@ function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentCo
 	if (params.chain) {
 		const chain: ChainStep[] = [];
 		for (let index = 0; index < params.chain.length; index++) {
-			const step: ChainStep = params.chain[index];
+			const step: ChainStep = params.chain[index]!;
 			if (isParallelStep(step)) {
 				const parallel: typeof step.parallel = [];
 				for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
-					const task = step.parallel[taskIndex];
+					const task = step.parallel[taskIndex]!;
 					const result = resolve(task.agent, `step ${index + 1}, task ${taskIndex + 1}`);
 					if (result.error) return { error: result.error };
 					parallel.push({ ...task, agent: result.name! });
@@ -1582,7 +1582,7 @@ function validateExecutionInput(
 
 	if (hasTasks && params.tasks) {
 		for (let i = 0; i < params.tasks.length; i++) {
-			const task = params.tasks[i];
+			const task = params.tasks[i]!;
 			if (!agents.find((agent) => agent.name === task.agent)) {
 				return {
 					content: [{ type: "text", text: `Unknown agent: ${task.agent} (task ${i + 1})` }],
@@ -1601,7 +1601,7 @@ function validateExecutionInput(
 				details: { mode: "chain" as const, results: [] },
 			};
 		}
-		const firstStep = params.chain[0];
+		const firstStep = params.chain[0]!;
 		if (isParallelStep(firstStep)) {
 			const missingTaskIndex = firstStep.parallel.findIndex((t) => !t.task);
 			if (missingTaskIndex !== -1) {
@@ -1625,7 +1625,7 @@ function validateExecutionInput(
 			};
 		}
 		for (let i = 0; i < params.chain.length; i++) {
-			const step = params.chain[i];
+			const step = params.chain[i]!;
 			const stepAgents = getStepAgents(step);
 			for (const agentName of stepAgents) {
 				if (!agents.find((a) => a.name === agentName)) {
@@ -1794,7 +1794,7 @@ function resolveEffectiveToolBudget(input: { stepBudget?: ToolBudgetConfig; runB
 function expandTopLevelTaskCounts(tasks: TaskParam[]): { tasks?: TaskParam[]; error?: string } {
 	const expanded: TaskParam[] = [];
 	for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
-		const task = tasks[taskIndex];
+		const task = tasks[taskIndex]!;
 		const rawCount = (task as TaskParam & { count?: unknown }).count;
 		if (rawCount !== undefined && (typeof rawCount !== "number" || !Number.isInteger(rawCount) || rawCount < 1)) {
 			return { error: `tasks[${taskIndex}].count must be an integer >= 1` };
@@ -1810,14 +1810,14 @@ function expandTopLevelTaskCounts(tasks: TaskParam[]): { tasks?: TaskParam[]; er
 function expandChainParallelCounts(chain: ChainStep[]): { chain?: ChainStep[]; error?: string } {
 	const expandedChain: ChainStep[] = [];
 	for (let stepIndex = 0; stepIndex < chain.length; stepIndex++) {
-		const step = chain[stepIndex];
+		const step = chain[stepIndex]!;
 		if (!isParallelStep(step)) {
 			expandedChain.push(step);
 			continue;
 		}
 		const expandedParallel = [];
 		for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
-			const task = step.parallel[taskIndex];
+			const task = step.parallel[taskIndex]!;
 			const rawCount = (task as typeof task & { count?: unknown }).count;
 			if (rawCount !== undefined && (typeof rawCount !== "number" || !Number.isInteger(rawCount) || rawCount < 1)) {
 				return { error: `chain[${stepIndex}].parallel[${taskIndex}].count must be an integer >= 1` };
@@ -2615,7 +2615,7 @@ function resolveSingleRunOutputBaseDir(deps: ExecutorDeps, artifactsDir: string,
 
 function buildChainWorktreeTaskCwdError(chain: ChainStep[], sharedCwd: string): string | undefined {
 	for (let stepIndex = 0; stepIndex < chain.length; stepIndex++) {
-		const step = chain[stepIndex];
+		const step = chain[stepIndex]!;
 		if (!isParallelStep(step) || !step.worktree) continue;
 		const stepCwd = resolveChildCwd(sharedCwd, step.cwd);
 		const conflict = findWorktreeTaskCwdConflict(step.parallel, stepCwd);
@@ -2632,7 +2632,7 @@ function resolveParallelTaskCwd(
 	worktreeSetup: WorktreeSetup | undefined,
 	index: number,
 ): string {
-	if (worktreeSetup) return worktreeSetup.worktrees[index].agentCwd;
+	if (worktreeSetup) return worktreeSetup.worktrees[index]!.agentCwd;
 	return resolveChildCwd(paramsCwd, task.cwd);
 }
 
@@ -2700,7 +2700,7 @@ function findDuplicateParallelOutputPath(input: {
 	for (let index = 0; index < input.tasks.length; index++) {
 		const behavior = input.behaviors[index];
 		if (!behavior?.output) continue;
-		const task = input.tasks[index];
+		const task = input.tasks[index]!;
 		const taskCwd = resolveParallelTaskCwd(task, input.paramsCwd, input.worktreeSetup, index);
 		const outputPath = resolveSingleOutputPath(behavior.output, input.ctxCwd, taskCwd, input.outputBaseDir);
 		if (!outputPath) continue;
@@ -2717,7 +2717,7 @@ async function runForegroundParallelTasks(input: ForegroundParallelRunInput): Pr
 	// Pre-warm fork session files sequentially before concurrent dispatch to avoid
 	// races where multiple workers simultaneously try to branch the same parent session.
 	for (let i = 0; i < input.tasks.length; i++) {
-		input.sessionFileForTask(input.tasks[i].agent, i, input.modelOverrides[i]);
+		input.sessionFileForTask(input.tasks[i]!.agent, i, input.modelOverrides[i]);
 	}
 	const completedResults: SingleResult[] = [];
 	if (input.foregroundControl) retainForegroundSchedulingOwner(input.foregroundControl);
@@ -2950,7 +2950,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 
 	if (params.clarify === true && ctx.hasUI) {
 		const behaviors = agentConfigs.map((c, i) =>
-			resolveStepBehavior(c, behaviorOverrides[i]),
+			resolveStepBehavior(c, behaviorOverrides[i]!),
 		);
 		const availableSkills = discoverAvailableSkills(effectiveCwd);
 
@@ -2978,17 +2978,17 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 
 		taskTexts = result.templates;
 		for (let i = 0; i < result.behaviorOverrides.length; i++) {
-			const override = result.behaviorOverrides[i];
+			const override = result.behaviorOverrides[i]!;
 			if (override?.model !== undefined) {
 				modelOverrides[i] = resolveEffectiveSubagentModel(override.model, agentConfigs[i]?.model, parentModel, availableModels, currentProvider, { scope: data.modelScope });
-				behaviorOverrides[i].model = override.model;
+				behaviorOverrides[i]!.model = override.model;
 			}
-			if (override?.output !== undefined) behaviorOverrides[i].output = override.output;
-			if (override?.reads !== undefined) behaviorOverrides[i].reads = override.reads;
-			if (override?.progress !== undefined) behaviorOverrides[i].progress = override.progress;
+			if (override?.output !== undefined) behaviorOverrides[i]!.output = override.output;
+			if (override?.reads !== undefined) behaviorOverrides[i]!.reads = override.reads;
+			if (override?.progress !== undefined) behaviorOverrides[i]!.progress = override.progress;
 			if (override?.skills !== undefined) {
 				skillOverrides[i] = override.skills;
-				behaviorOverrides[i].skills = override.skills;
+				behaviorOverrides[i]!.skills = override.skills;
 			}
 		}
 
@@ -3013,7 +3013,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 		permissions: deps.config.permissions,
 			};
 			const parallelTasks = tasks.map((t, i) => {
-				const taskText = shouldForkAgent(contextPolicy, t.agent) ? wrapForkTask(taskTexts[i]) : taskTexts[i];
+				const taskText = shouldForkAgent(contextPolicy, t.agent) ? wrapForkTask(taskTexts[i]!) : taskTexts[i]!;
 				const progress = taskDisallowsFileUpdates(taskText) ? false : behaviorOverrides[i]?.progress;
 				return {
 					agent: t.agent,
@@ -3067,7 +3067,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 	}
 
 	const behaviors = tasks.map((task, index) => {
-		let behavior = suppressProgressForReadOnlyTask(resolveStepBehavior(agentConfigs[index], behaviorOverrides[index]), taskTexts[index]);
+		let behavior = suppressProgressForReadOnlyTask(resolveStepBehavior(agentConfigs[index]!, behaviorOverrides[index]!), taskTexts[index]!);
 		if (behaviorOverrides[index]?.output === undefined && typeof behavior.output === "string" && !path.isAbsolute(behavior.output)) {
 			behavior = { ...behavior, output: path.join("parallel-0", `${index}-${task.agent}`, behavior.output) };
 		}
@@ -3101,9 +3101,9 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 		});
 		if (duplicateOutputError) return buildParallelModeError(duplicateOutputError);
 		for (let index = 0; index < tasks.length; index++) {
-			const taskCwd = resolveParallelTaskCwd(tasks[index], effectiveCwd, worktreeSetup, index);
+			const taskCwd = resolveParallelTaskCwd(tasks[index]!, effectiveCwd, worktreeSetup, index);
 			const outputPath = resolveSingleOutputPath(behaviors[index]?.output, ctx.cwd, taskCwd, outputBaseDir);
-			const validationError = validateFileOnlyOutputMode(behaviors[index]?.outputMode, outputPath, `Parallel task ${index + 1} (${tasks[index].agent})`);
+			const validationError = validateFileOnlyOutputMode(behaviors[index]?.outputMode, outputPath, `Parallel task ${index + 1} (${tasks[index]!.agent})`);
 			if (validationError) return buildParallelModeError(validationError);
 		}
 
@@ -3113,7 +3113,7 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 
 		const taskDescriptions = taskTexts.map((taskText) => taskText.trim());
 		for (let i = 0; i < taskTexts.length; i++) {
-			if (shouldForkAgent(contextPolicy, tasks[i].agent)) taskTexts[i] = wrapForkTask(taskTexts[i]);
+			if (shouldForkAgent(contextPolicy, tasks[i]!.agent)) taskTexts[i] = wrapForkTask(taskTexts[i]!);
 		}
 
 		const deadlineAt = data.deadlineAt ?? (data.timeoutMs !== undefined ? Date.now() + data.timeoutMs : undefined);
@@ -3167,8 +3167,8 @@ async function runParallelPath(data: ExecutionContextData, deps: ExecutorDeps): 
 			agentContract: params.agentContract,
 		});
 		for (let i = 0; i < results.length; i++) {
-			const run = results[i];
-			recordRun(run.agent, taskTexts[i], run.exitCode, run.progressSummary?.durationMs ?? 0);
+			const run = results[i]!;
+			recordRun(run.agent, taskTexts[i]!, run.exitCode, run.progressSummary?.durationMs ?? 0);
 		}
 
 		for (const result of results) {
@@ -3439,7 +3439,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 		: undefined;
 
 	const deadlineAt = data.deadlineAt ?? (data.timeoutMs !== undefined ? Date.now() + data.timeoutMs : undefined);
-	let r: Awaited<ReturnType<typeof runSync>>;
+	let r: Awaited<ReturnType<typeof runSync>> | undefined = undefined;
 	try {
 		r = await runSync(ctx.cwd, agents, params.agent!, task, {
 			permissions: deps.config.permissions,
@@ -3516,14 +3516,14 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			if (foregroundControl) finishForegroundChild(foregroundControl, 0);
 		}
 	}
-	if (!r.detached) {
+	if (r && !r.detached) {
 		recordRun(params.agent!, cleanTask, r.exitCode, r.progressSummary?.durationMs ?? 0);
 	}
 
-	if (r.progress) allProgress.push(r.progress);
-	if (r.artifactPaths) allArtifactPaths.push(r.artifactPaths);
+	if (r?.progress) allProgress.push(r.progress);
+	if (r?.artifactPaths) allArtifactPaths.push(r.artifactPaths);
 
-	const fullOutput = getSingleResultOutput(r);
+	const fullOutput = getSingleResultOutput(r!);
 	const finalizedOutput = finalizeSingleOutput({
 		fullOutput,
 		truncatedOutput: r.truncation?.text,
@@ -4286,7 +4286,9 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 				if (paramsWithResolvedCwd.dir) {
 					try {
 						const location = resolveAsyncRunLocation(paramsWithResolvedCwd, DIRS.async, DIRS.results);
-						return stopAsyncRun(deps.state, location.resolvedId ?? targetRunId ?? path.basename(location.asyncDir ?? paramsWithResolvedCwd.dir), deps.kill, location);
+						const stopResult = stopAsyncRun(deps.state, location.resolvedId ?? targetRunId ?? path.basename(location.asyncDir ?? paramsWithResolvedCwd.dir), deps.kill, location);
+						if (stopResult) return stopResult;
+						return { content: [{ type: "text", text: "No stoppable async run found in this session." }], isError: true, details: { mode: "management", results: [] } };
 					} catch (error) {
 						const text = error instanceof Error ? error.message : String(error);
 						return { content: [{ type: "text", text }], isError: true, details: { mode: "management", results: [] } };

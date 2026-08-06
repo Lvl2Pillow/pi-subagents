@@ -141,7 +141,7 @@ function runningSeed(...values: Array<number | undefined>): number | undefined {
 
 function runningGlyph(seed?: number): string {
 	if (seed === undefined) return STATIC_RUNNING_GLYPH;
-	return RUNNING_FRAMES[Math.abs(seed) % RUNNING_FRAMES.length];
+	return RUNNING_FRAMES[Math.abs(seed) % RUNNING_FRAMES.length]!;
 }
 
 const WIDGET_ANIMATION_FRAME_MS = 500;
@@ -416,7 +416,7 @@ function formatWidgetAgents(agents: string[]): string {
 function widgetJobName(job: AsyncJobState): string {
 	if (job.mode === "parallel") return "parallel";
 	if (job.mode === "chain") return "chain";
-	if (job.mode === "single" && job.agents?.length === 1) return job.agents[0];
+	if (job.mode === "single" && job.agents?.length === 1) return job.agents[0]!;
 	if (job.agents?.length) return formatWidgetAgents(job.agents);
 	return job.mode ?? "subagent";
 }
@@ -717,7 +717,7 @@ function buildMultiProgressLabel(details: Pick<Details, "mode" | "results" | "pr
 			if (progress.index >= 0 && progress.index < totalCount) statuses[progress.index] = progress.status;
 		}
 		for (let i = 0; i < details.results.length; i++) {
-			const result = details.results[i];
+			const result = details.results[i]!;
 			const progressFromArray = details.progress?.find((progress) => progress.index === i)
 				|| details.progress?.find((progress) => progress.agent === result.agent && progress.status === "running");
 			const index = result.progress?.index ?? progressFromArray?.index ?? i;
@@ -989,7 +989,7 @@ function formatNestedWidgetLines(children: NestedRunSummary[] | undefined, theme
 			return;
 		}
 		for (let index = 0; index < items.length; index++) {
-			const child = items[index];
+			const child = items[index]!;
 			if (lines.length >= lineBudget) {
 				const aggregate = formatNestedAggregate(items.slice(index));
 				if (aggregate) lines[lines.length - 1] = theme.fg("dim", `${prefix}↳ ${aggregate}`);
@@ -1428,7 +1428,7 @@ export function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, width = ge
 	}
 
 	for (let i = 0; i < items.length; i++) {
-		const item = items[i];
+		const item = items[i]!;
 		const last = i === items.length - 1;
 		const branch = last ? "└─" : "├─";
 		const continuation = last ? "   " : "│  ";
@@ -1727,7 +1727,7 @@ export function renderSubagentResult(
 	const mdTheme = getMarkdownTheme();
 
 	if (d.mode === "single" && d.results.length === 1) {
-		const r = d.results[0];
+		const r = d.results[0]!;
 		if (!expanded) return renderSingleCompact(d, r, theme, frame);
 		const isRunning = isResultRunning(r);
 		const contextBadge = contextModeBadge(theme, r.context ?? d.context);
