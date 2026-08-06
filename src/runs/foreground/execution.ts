@@ -85,7 +85,7 @@ import {
 	shouldEscalateMutatingFailures,
 	summarizeRecentMutatingFailures,
 } from "../shared/long-running-guard.ts";
-import { acceptanceFailureMessage, buildSkippedAcceptanceLedger, evaluateAcceptance, formatAcceptancePrompt, resolveEffectiveAcceptance, stripAcceptanceReport } from "../shared/acceptance.ts";
+import { acceptanceFailureMessage, buildSkippedAcceptanceLedger, evaluateAcceptance, formatAcceptancePrompt, resolveEffectiveAcceptance, stripAcceptanceReport, validateAcceptanceInput } from "../shared/acceptance.ts";
 import { attachContractProjections, isAgentContractV1 } from "../shared/agent-contract.ts";
 import { appendTurnBudgetSystemPrompt, formatTurnBudgetOutput, initialTurnBudgetState, turnBudgetDecision, turnBudgetDeferredNote, turnBudgetDeferredState, turnBudgetExceededMessage, turnBudgetSoftNote, turnBudgetState } from "../shared/turn-budget.ts";
 import { initialToolBudgetState, toolBudgetState } from "../shared/tool-budget.ts";
@@ -1375,6 +1375,18 @@ async function runSyncCompletion(
 			usage: emptyUsage(),
 			error: error instanceof Error ? error.message : String(error),
 			...(options.capabilityCeiling ? { capabilityCeiling: options.capabilityCeiling } : {}),
+		}, options.context);
+	}
+	const acceptanceErrors = validateAcceptanceInput(options.acceptance);
+	if (acceptanceErrors.length > 0) {
+		return withRunContext({
+			index: options.index ?? 0,
+			agent: agentName,
+			task,
+			exitCode: 1,
+			messages: [],
+			usage: emptyUsage(),
+			error: acceptanceErrors.join(" "),
 		}, options.context);
 	}
 	const outputModeValidationError = validateFileOnlyOutputMode(options.outputMode, options.outputPath, `Single run (${agentName})`);

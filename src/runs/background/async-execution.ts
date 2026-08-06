@@ -26,7 +26,7 @@ import { resolveExpectedWorktreeAgentCwd } from "../shared/worktree.ts";
 import { buildWorkflowGraphSnapshot } from "../shared/workflow-graph.ts";
 import { ChainOutputValidationError, validateChainOutputBindings } from "../shared/chain-outputs.ts";
 import { createStructuredOutputRuntime } from "../shared/structured-output.ts";
-import { resolveEffectiveAcceptance } from "../shared/acceptance.ts";
+import { resolveEffectiveAcceptance, validateAcceptanceInput, validateExecutionAcceptance } from "../shared/acceptance.ts";
 import {
 	type AcceptanceInput,
 	type AgentContract,
@@ -915,6 +915,15 @@ export function executeAsyncChain(
 		nestedRoute,
 	} = params;
 	const resultMode = params.resultMode ?? "chain";
+	const acceptanceErrors = validateExecutionAcceptance({
+		chain: chain.map((step) => {
+			if (isCheckpointStep(step)) return {};
+			if (isParallelStep(step)) return { parallel: step.parallel };
+			if (isDynamicParallelStep(step)) return { acceptance: step.acceptance, parallel: step.parallel };
+			return { acceptance: step.acceptance };
+		}),
+	});
+	if (acceptanceErrors.length > 0) return formatAsyncStartError(resultMode, acceptanceErrors.join(" "));
 	const capabilityCeiling = params.capabilityCeiling ?? resolveCurrentSubagentCapabilityCeiling(ctx.currentSessionId);
 	const inheritedNestedRoute = resolveInheritedNestedRouteFromEnv();
 	const nestedAddress = inheritedNestedRoute ? resolveNestedParentAddressFromEnv() : undefined;
@@ -1156,6 +1165,8 @@ export function executeAsyncSingle(
 		nestedRoute,
 	} = params;
 	const task = params.task ?? "";
+	const acceptanceErrors = validateAcceptanceInput(params.acceptance);
+	if (acceptanceErrors.length > 0) return formatAsyncStartError("single", acceptanceErrors.join(" "));
 	const permissionRules = resolvePermissionRules(ctx.permissions, agentConfig.permissions);
 
 	const capabilityCeiling = intersectSubagentCapabilityCeilings(params.capabilityCeiling ?? resolveCurrentSubagentCapabilityCeiling(ctx.currentSessionId), decodeSubagentCapabilityCeiling(process.env[SUBAGENT_CAPABILITY_CEILING_ENV]));

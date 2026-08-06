@@ -10,6 +10,7 @@
 - Keep async subagent widget spinners moving during quiet running periods without adding extra polling.
 - Preserve workflow child output after grouped intercom delivery, so scripts can consume `runs.run(...).output`. Thanks to @kaushal9696 for #846.
 - Match pi-mcp-adapter cache identities that include `protocolVersion`, so direct MCP tool selections resolve from current adapter caches. Thanks to @ProCleiton for #848.
+- Reject commandless verified acceptance at the runtime launch boundary before a child starts. Use `checked` or provide `acceptance.verify`. Thanks to @simonasr for #849.
 - Let the Fleet inspector use the full 85% terminal-height budget on tall terminals. Thanks to @xz-dev for #839.
 - Launch Herdr inspector panes through a JavaScript bootstrap instead of asking Node to type-strip TypeScript installed under `node_modules`. Thanks to @williamleong for #837.
 - Removed the Pi CLI devDependency from the default install and test against a local runtime shim, so repo audits no longer report the upstream dev-only Undici advisory while real Pi E2E remains optional. Thanks to @dmg-egg for #782.

@@ -1260,11 +1260,26 @@ describe(
 			);
 
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]?.text ?? "", /(?:verified.*object form|verify.*at least one command)/i);
+			assert.match(result.content[0]?.text ?? "", /(?:verified.*object form|verify.*at least one runtime command)/i);
 		}
 		assert.equal(mockPi.callCount(), 0);
 	});
 
+	it("rejects invalid verified async chain acceptance before spawning", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		const executor = makeExecutor([makeAgent("echo")]);
+
+		const result = await executor.execute(
+			"invalid-verified-async-chain-acceptance",
+			{ chain: [{ agent: "echo", task: "Do work", acceptance: { level: "verified", verify: [] } }], async: true },
+			new AbortController().signal,
+			undefined,
+			makeMinimalCtx(tempDir),
+		);
+
+		assert.equal(result.isError, true);
+		assert.match(result.content[0]?.text ?? "", /verify.*at least one runtime command/i);
+		assert.equal(mockPi.callCount(), 0);
+	});
 
 		});
 
