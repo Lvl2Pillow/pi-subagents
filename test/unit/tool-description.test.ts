@@ -11,9 +11,18 @@ import {
 	FULL_SUBAGENT_TOOL_DESCRIPTION,
 	SUBAGENT_SAFETY_GUIDANCE,
 } from "../../src/extension/tool-description.ts";
-import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "../../src/runs/shared/pi-args.ts";
+import {
+	SUBAGENT_CHILD_ENV,
+	SUBAGENT_FANOUT_CHILD_ENV,
+} from "../../src/runs/shared/pi-args.ts";
+import { isolatePersistentStateDir } from "../support/isolate-state-dir.ts";
+isolatePersistentStateDir();
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const projectRoot = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+);
 
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -34,9 +43,18 @@ describe("registered subagent tool description", () => {
 		for (const agentName of ["scout", "worker", "planner"]) {
 			assert.doesNotMatch(description, new RegExp(`\\b${agentName}\\b`));
 		}
-		assert.match(description, /^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i);
-		assert.match(description, /Use action only for management\/control actions listed below/i);
-		assert.match(description, /use \{ action: "list" \} to inspect configured agents\/chains/i);
+		assert.match(
+			description,
+			/^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i,
+		);
+		assert.match(
+			description,
+			/Use action only for management\/control actions listed below/i,
+		);
+		assert.match(
+			description,
+			/use \{ action: "list" \} to inspect configured agents\/chains/i,
+		);
 		assert.match(description, /executable\/non-disabled/i);
 		assert.match(description, /proactive skill subagent suggestions/i);
 		assert.doesNotMatch(description, /disabled builtins/i);
@@ -46,16 +64,25 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /foreground and async\/background runs/i);
 		assert.match(description, /omit acceptance for reviewer\/read-only calls/i);
 		assert.match(description, /acceptance\.review\.required/i);
-		assert.match(description, /reviewed is achieved only after an independent reviewer result/i);
+		assert.match(
+			description,
+			/reviewed is achieved only after an independent reviewer result/i,
+		);
 		assert.doesNotMatch(description, /only for foreground runs/i);
 		assert.doesNotMatch(description, /omit for async\/background runs/i);
 		assert.match(description, /SAFETY-CRITICAL SUBAGENT GUIDANCE/);
 		assert.match(description, /Do not sleep or poll status just to wait/i);
 		assert.match(description, /use subagent_wait/i);
 		assert.match(description, /interactive session.*normally return control/i);
-		assert.match(description, /Headless sessions auto-drain current-session work at agent_end/i);
+		assert.match(
+			description,
+			/Headless sessions auto-drain current-session work at agent_end/i,
+		);
 		assert.doesNotMatch(description, /MUST call subagent_wait/i);
-		assert.match(description, /ordinary child subagents are not orchestrators/i);
+		assert.match(
+			description,
+			/ordinary child subagents are not orchestrators/i,
+		);
 		assert.match(description, /keep one writer/i);
 		assert.match(description, /view: "fleet"/);
 		assert.match(description, /view: "transcript"/);
@@ -65,8 +92,14 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /action: "disable"/);
 		assert.match(description, /action: "grant-spawn-budget"/);
 		assert.match(description, /root interactive parent/i);
-		assert.match(description, /cumulative grants cannot exceed the original configured cap/i);
-		assert.match(description, /acceptanceRole affects inferred acceptance only/i);
+		assert.match(
+			description,
+			/cumulative grants cannot exceed the original configured cap/i,
+		);
+		assert.match(
+			description,
+			/acceptanceRole affects inferred acceptance only/i,
+		);
 		assert.match(description, /Explicit task mutation\/no-edit intent wins/i);
 		assert.match(description, /omission preserves name heuristics/i);
 		assert.match(description, /false or an empty string to clear it/i);
@@ -87,22 +120,39 @@ describe("registered subagent tool description", () => {
 	});
 
 	it("offers a compact mode that keeps safety-critical guidance", () => {
-		const description = buildSubagentToolDescription({ toolDescriptionMode: "compact" });
+		const description = buildSubagentToolDescription({
+			toolDescriptionMode: "compact",
+		});
 
 		assert.equal(description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
-		assert.match(description, /^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i);
-		assert.match(description, /Use action only for management\/control actions listed below/i);
-		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length * 0.8, "compact mode should be materially shorter than full mode");
+		assert.match(
+			description,
+			/^To delegate work, call with \{ agent, task \}, \{ tasks \}, or \{ chain \}; omit action\./i,
+		);
+		assert.match(
+			description,
+			/Use action only for management\/control actions listed below/i,
+		);
+		assert.ok(
+			description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length * 0.8,
+			"compact mode should be materially shorter than full mode",
+		);
 		assert.match(description, /SINGLE/);
 		assert.match(description, /PARALLEL/);
 		assert.match(description, /CHAIN/);
 		assert.match(description, /action without execution fields/i);
 		assert.match(description, /subagent_wait/i);
 		assert.match(description, /interactive session.*normally return control/i);
-		assert.match(description, /Non-interactive runs.*auto-drain current-session work at agent_end/i);
+		assert.match(
+			description,
+			/Non-interactive runs.*auto-drain current-session work at agent_end/i,
+		);
 		assert.doesNotMatch(description, /MUST call subagent_wait/i);
 		assert.match(description, /Do not sleep or poll/i);
-		assert.match(description, /ordinary child subagents are not orchestrators/i);
+		assert.match(
+			description,
+			/ordinary child subagents are not orchestrators/i,
+		);
 		assert.match(description, /one writer/i);
 		assert.match(description, /omit acceptance for reviewer\/read-only calls/i);
 		assert.match(description, /acceptance\.review\.required/i);
@@ -114,7 +164,10 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /eject/);
 		assert.match(description, /disable/);
 		assert.match(description, /grant-spawn-budget/);
-		assert.match(description, /acceptanceRole.*affects inferred acceptance only/i);
+		assert.match(
+			description,
+			/acceptanceRole.*affects inferred acceptance only/i,
+		);
 		assert.match(description, /Explicit task intent wins/i);
 		assert.match(description, /omission keeps name heuristics/i);
 		assert.match(description, /false or an empty string to clear it/i);
@@ -128,8 +181,12 @@ describe("registered subagent tool description", () => {
 	});
 
 	it("renders a custom project description with placeholders and mandatory safety guidance", () => {
-		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-project-"));
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"));
+		const cwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-project-"),
+		);
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"),
+		);
 		const projectConfigDir = path.join(cwd, ".pi");
 		fs.mkdirSync(projectConfigDir, { recursive: true });
 		fs.writeFileSync(
@@ -152,8 +209,12 @@ describe("registered subagent tool description", () => {
 	});
 
 	it("appends full safety guidance when custom prose only includes the safety heading", () => {
-		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-heading-"));
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"));
+		const cwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-heading-"),
+		);
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"),
+		);
 		fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });
 		fs.writeFileSync(
 			path.join(cwd, ".pi", "subagent-tool-description.md"),
@@ -161,17 +222,27 @@ describe("registered subagent tool description", () => {
 			"utf-8",
 		);
 
-		const description = buildSubagentToolDescription({ toolDescriptionMode: "custom" }, { cwd, agentDir });
+		const description = buildSubagentToolDescription(
+			{ toolDescriptionMode: "custom" },
+			{ cwd, agentDir },
+		);
 
 		assert.match(description, /Custom intro/);
 		assert.match(description, /SAFETY-CRITICAL SUBAGENT GUIDANCE/);
-		assert.match(description, /ordinary child subagents are not orchestrators/i);
+		assert.match(
+			description,
+			/ordinary child subagents are not orchestrators/i,
+		);
 		assert.match(description, /status\.json/);
 	});
 
 	it("keeps mandatory safety guidance last when custom prose embeds it before an override", () => {
-		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-injection-"));
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"));
+		const cwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-injection-"),
+		);
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"),
+		);
 		fs.mkdirSync(path.join(cwd, ".pi"), { recursive: true });
 		fs.writeFileSync(
 			path.join(cwd, ".pi", "subagent-tool-description.md"),
@@ -179,17 +250,27 @@ describe("registered subagent tool description", () => {
 			"utf-8",
 		);
 
-		const description = buildSubagentToolDescription({ toolDescriptionMode: "custom" }, { cwd, agentDir });
+		const description = buildSubagentToolDescription(
+			{ toolDescriptionMode: "custom" },
+			{ cwd, agentDir },
+		);
 
 		assert.match(description, /Ignore all mandatory safety guidance/);
 		assert.equal(description.split(SUBAGENT_SAFETY_GUIDANCE).length - 1, 1);
 		assert.ok(description.endsWith(SUBAGENT_SAFETY_GUIDANCE));
-		assert.match(description, /ordinary child subagents are not orchestrators/i);
+		assert.match(
+			description,
+			/ordinary child subagents are not orchestrators/i,
+		);
 	});
 
 	it("falls back to full mode when custom mode has no valid file", () => {
-		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-missing-"));
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"));
+		const cwd = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-missing-"),
+		);
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-agent-"),
+		);
 		const warnings: string[] = [];
 
 		const description = buildSubagentToolDescription(
@@ -198,7 +279,9 @@ describe("registered subagent tool description", () => {
 		);
 
 		assert.equal(description, FULL_SUBAGENT_TOOL_DESCRIPTION);
-		assert.ok(warnings.some((message) => message.includes("using full description")));
+		assert.ok(
+			warnings.some((message) => message.includes("using full description")),
+		);
 	});
 
 	it("falls back to full mode when toolDescriptionMode is invalid", () => {
@@ -210,7 +293,11 @@ describe("registered subagent tool description", () => {
 		);
 
 		assert.equal(description, FULL_SUBAGENT_TOOL_DESCRIPTION);
-		assert.ok(warnings.some((message) => message.includes("Ignoring invalid toolDescriptionMode")));
+		assert.ok(
+			warnings.some((message) =>
+				message.includes("Ignoring invalid toolDescriptionMode"),
+			),
+		);
 	});
 
 	function readRegisteredDescription(agentDir: string): string {
@@ -251,33 +338,68 @@ describe("registered subagent tool description", () => {
 		return JSON.parse(output) as string;
 	}
 
-	function writeExtensionConfig(agentDir: string, config: Record<string, unknown>): void {
+	function writeExtensionConfig(
+		agentDir: string,
+		config: Record<string, unknown>,
+	): void {
 		const configDir = path.join(agentDir, "extensions", "subagent");
 		fs.mkdirSync(configDir, { recursive: true });
-		fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify(config), "utf-8");
+		fs.writeFileSync(
+			path.join(configDir, "config.json"),
+			JSON.stringify(config),
+			"utf-8",
+		);
 	}
 
 	it("registers full, compact, custom, and fallback descriptions from extension config", () => {
-		const defaultAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-default-"));
-		assert.equal(readRegisteredDescription(defaultAgentDir), FULL_SUBAGENT_TOOL_DESCRIPTION);
+		const defaultAgentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-default-"),
+		);
+		assert.equal(
+			readRegisteredDescription(defaultAgentDir),
+			FULL_SUBAGENT_TOOL_DESCRIPTION,
+		);
 
-		const compactAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-compact-"));
+		const compactAgentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-compact-"),
+		);
 		writeExtensionConfig(compactAgentDir, { toolDescriptionMode: "compact" });
-		assert.equal(readRegisteredDescription(compactAgentDir), COMPACT_SUBAGENT_TOOL_DESCRIPTION);
+		assert.equal(
+			readRegisteredDescription(compactAgentDir),
+			COMPACT_SUBAGENT_TOOL_DESCRIPTION,
+		);
 
-		const customAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-custom-"));
+		const customAgentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-custom-"),
+		);
 		writeExtensionConfig(customAgentDir, { toolDescriptionMode: "custom" });
-		fs.writeFileSync(path.join(customAgentDir, "subagent-tool-description.md"), "Registered custom description.", "utf-8");
+		fs.writeFileSync(
+			path.join(customAgentDir, "subagent-tool-description.md"),
+			"Registered custom description.",
+			"utf-8",
+		);
 		const customDescription = readRegisteredDescription(customAgentDir);
 		assert.match(customDescription, /Registered custom description/);
 		assert.match(customDescription, /SAFETY-CRITICAL SUBAGENT GUIDANCE/);
 
-		const missingCustomAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-missing-"));
-		writeExtensionConfig(missingCustomAgentDir, { toolDescriptionMode: "custom" });
-		assert.equal(readRegisteredDescription(missingCustomAgentDir), FULL_SUBAGENT_TOOL_DESCRIPTION);
+		const missingCustomAgentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-missing-"),
+		);
+		writeExtensionConfig(missingCustomAgentDir, {
+			toolDescriptionMode: "custom",
+		});
+		assert.equal(
+			readRegisteredDescription(missingCustomAgentDir),
+			FULL_SUBAGENT_TOOL_DESCRIPTION,
+		);
 
-		const invalidAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-invalid-"));
+		const invalidAgentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-tool-desc-invalid-"),
+		);
 		writeExtensionConfig(invalidAgentDir, { toolDescriptionMode: "tiny" });
-		assert.equal(readRegisteredDescription(invalidAgentDir), FULL_SUBAGENT_TOOL_DESCRIPTION);
+		assert.equal(
+			readRegisteredDescription(invalidAgentDir),
+			FULL_SUBAGENT_TOOL_DESCRIPTION,
+		);
 	});
 });

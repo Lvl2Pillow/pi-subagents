@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "entries": [
+    {
+      "id": "persist-1",
+      "sessionFile": "/Users/lvl2pillow/.pi/agent/extensions/pi-subagents/persistent-sessions/persist-1.jsonl"
+    },
+    {
+      "id": "persist-2",
+      "sessionFile": null
+    },
+    {
+      "id": "persist-3",
+      "sessionFile": null
+    }
+  ],
+  "targetIndex": 0
+}

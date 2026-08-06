@@ -4,9 +4,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import { visibleWidth, type MarkdownTheme } from "@earendil-works/pi-tui";
-import { collectFleetSnapshot, openSubagentFleet, SubagentFleetComponent } from "../../src/tui/fleet.ts";
+import {
+	collectFleetSnapshot,
+	openSubagentFleet,
+	SubagentFleetComponent,
+} from "../../src/tui/fleet.ts";
 import { FLEET_STATUS_WIDGET_KEY } from "../../src/tui/fleet-status.ts";
-import { getArtifactPaths, getArtifactsDir, getProjectArtifactsDir } from "../../src/shared/artifacts.ts";
+import {
+	getArtifactPaths,
+	getArtifactsDir,
+	getProjectArtifactsDir,
+} from "../../src/shared/artifacts.ts";
+import { PersistentChatStore } from "../../src/persistent/store.ts";
 import type { SubagentState } from "../../src/shared/types.ts";
 
 function stateForTest(): SubagentState {
@@ -27,38 +36,72 @@ function stateForTest(): SubagentState {
 	};
 }
 
-function writeAsyncRun(root: string, input: {
-	id: string;
-	sessionId?: string;
-	state?: "running" | "complete";
-	agents?: string[];
-	contexts?: Array<"fresh" | "fork">;
-	output?: string;
-	transcript?: Array<Record<string, unknown>>;
-}): string {
+function writeAsyncRun(
+	root: string,
+	input: {
+		id: string;
+		sessionId?: string;
+		state?: "running" | "complete";
+		agents?: string[];
+		contexts?: Array<"fresh" | "fork">;
+		output?: string;
+		transcript?: Array<Record<string, unknown>>;
+	},
+): string {
 	const asyncDir = path.join(root, input.id);
 	fs.mkdirSync(asyncDir, { recursive: true });
 	const agents = input.agents ?? ["worker"];
-	if (input.output !== undefined) fs.writeFileSync(path.join(asyncDir, "output-0.log"), input.output, "utf-8");
-	const transcriptPath = input.transcript ? path.join(asyncDir, "transcript-0.jsonl") : undefined;
-	if (transcriptPath && input.transcript) fs.writeFileSync(transcriptPath, `${input.transcript.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf-8");
-	fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({
-		runId: input.id,
-		sessionId: input.sessionId ?? "session-current",
-		mode: agents.length > 1 ? "parallel" : "single",
-		state: input.state ?? "running",
-		startedAt: 100,
-		lastUpdate: 200,
-		currentStep: 0,
-		steps: agents.map((agent, index) => ({
-			agent,
-			...(input.contexts?.[index] ? { context: input.contexts[index] } : {}),
-			status: input.state === "complete" ? "complete" : index === 0 ? "running" : "pending",
-			startedAt: 100,
-			...(index === 0 ? { sessionFile: path.join(asyncDir, `${agent}.jsonl`), ...(transcriptPath ? { transcriptPath } : {}) } : {}),
-		})),
-		...(input.output !== undefined ? { outputFile: "output-0.log" } : {}),
-	}, null, 2));
+	if (input.output !== undefined)
+		fs.writeFileSync(
+			path.join(asyncDir, "output-0.log"),
+			input.output,
+			"utf-8",
+		);
+	const transcriptPath = input.transcript
+		? path.join(asyncDir, "transcript-0.jsonl")
+		: undefined;
+	if (transcriptPath && input.transcript)
+		fs.writeFileSync(
+			transcriptPath,
+			`${input.transcript.map((record) => JSON.stringify(record)).join("\n")}\n`,
+			"utf-8",
+		);
+	fs.writeFileSync(
+		path.join(asyncDir, "status.json"),
+		JSON.stringify(
+			{
+				runId: input.id,
+				sessionId: input.sessionId ?? "session-current",
+				mode: agents.length > 1 ? "parallel" : "single",
+				state: input.state ?? "running",
+				startedAt: 100,
+				lastUpdate: 200,
+				currentStep: 0,
+				steps: agents.map((agent, index) => ({
+					agent,
+					...(input.contexts?.[index]
+						? { context: input.contexts[index] }
+						: {}),
+					status:
+						input.state === "complete"
+							? "complete"
+							: index === 0
+								? "running"
+								: "pending",
+					startedAt: 100,
+					...(index === 0
+						? {
+								sessionFile: path.join(asyncDir, `${agent}.jsonl`),
+								...(transcriptPath ? { transcriptPath } : {}),
+							}
+						: {}),
+				})),
+				...(input.output !== undefined ? { outputFile: "output-0.log" } : {}),
+			},
+			null,
+			2,
+		),
+	);
 	return asyncDir;
 }
 
@@ -85,11 +128,49 @@ const markdownTheme: MarkdownTheme = {
 };
 
 describe("native subagent fleet", () => {
+	it("includes all persistent channels with their run state and session file", () => {
+		const state = stateForTest();
+		const store = new PersistentChatStore(2);
+		store.setSessionFile(1, "/tmp/sessions/persist-1.jsonl");
+		store.setRunState(1, "success");
+		store.setRunOutput(1, "final summary text");
+		state.persistent = store;
+
+		const snapshot = collectFleetSnapshot(state, {});
+		const persistent = snapshot.items.filter(
+			(item) => item.kind === "persistent",
+		);
+		assert.equal(persistent.length, 2);
+		assert.deepEqual(
+			persistent.map((item) => item.key),
+			["persistent:1", "persistent:2"],
+		);
+		const first = persistent[0] as {
+			state: string;
+			sessionFile: string;
+			output?: string;
+		};
+		assert.equal(first.state, "success");
+		assert.equal(first.sessionFile, "/tmp/sessions/persist-1.jsonl");
+		assert.equal(first.output, "final summary text");
+		const second = persistent[1] as { state: string; sessionFile: string };
+		assert.equal(second.sessionFile, null);
+		assert.equal(second.state, "idle");
+	});
+
 	it("collects current-session foreground and flattened async children", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-collect-"));
 		try {
-			writeAsyncRun(root, { id: "async-current", agents: ["worker", "reviewer"], output: "CURRENT OUTPUT" });
-			writeAsyncRun(root, { id: "async-other", sessionId: "session-other", output: "OTHER OUTPUT" });
+			writeAsyncRun(root, {
+				id: "async-current",
+				agents: ["worker", "reviewer"],
+				output: "CURRENT OUTPUT",
+			});
+			writeAsyncRun(root, {
+				id: "async-other",
+				sessionId: "session-other",
+				output: "OTHER OUTPUT",
+			});
 			const state = stateForTest();
 			state.foregroundControls.set("foreground-live", {
 				runId: "foreground-live",
@@ -105,7 +186,14 @@ describe("native subagent fleet", () => {
 				cwd: root,
 				sessionId: "session-current",
 				updatedAt: 20,
-				children: [{ agent: "planner", index: 0, status: "completed", finalOutput: "PLAN COMPLETE" }],
+				children: [
+					{
+						agent: "planner",
+						index: 0,
+						status: "completed",
+						finalOutput: "PLAN COMPLETE",
+					},
+				],
 			});
 			state.foregroundRuns!.set("foreground-other", {
 				runId: "foreground-other",
@@ -116,13 +204,19 @@ describe("native subagent fleet", () => {
 				children: [{ agent: "outsider", index: 0, status: "completed" }],
 			});
 
-			const snapshot = collectFleetSnapshot(state, { asyncDirRoot: root, resultsDir: path.join(root, "results") });
-			assert.deepEqual(snapshot.items.map((item) => item.key), [
-				"foreground-active:foreground-live:1",
-				"async:async-current:0",
-				"async:async-current:1",
-				"foreground-recent:foreground-recent:0",
-			]);
+			const snapshot = collectFleetSnapshot(state, {
+				asyncDirRoot: root,
+				resultsDir: path.join(root, "results"),
+			});
+			assert.deepEqual(
+				snapshot.items.map((item) => item.key),
+				[
+					"foreground-active:foreground-live:1",
+					"async:async-current:0",
+					"async:async-current:1",
+					"foreground-recent:foreground-recent:0",
+				],
+			);
 			assert.equal(snapshot.error, undefined);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
@@ -157,25 +251,47 @@ describe("native subagent fleet", () => {
 
 		const snapshot = collectFleetSnapshot(state);
 		assert.equal(snapshot.items.length, 21);
-		assert.equal(snapshot.items[0]?.runId, "active-old");
-		assert.equal(snapshot.items.find((item) => item.runId === "terminal-21")?.state, "complete");
-		assert.ok(!snapshot.items.some((item) => item.runId === "terminal-0"));
+		const runIdOf = (
+			item: (typeof snapshot.items)[number],
+		): string | undefined => ("runId" in item ? item.runId : undefined);
+		assert.equal(runIdOf(snapshot.items[0]), "active-old");
+		assert.equal(
+			snapshot.items.find((item) => runIdOf(item) === "terminal-21")?.state,
+			"complete",
+		);
+		assert.ok(!snapshot.items.some((item) => runIdOf(item) === "terminal-0"));
 	});
 
 	it("renders selectable transcript detail and completed artifact paths within terminal width", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-render-"));
 		try {
-			writeAsyncRun(root, { id: "async-finished", state: "complete", contexts: ["fork"], output: "FINAL ASYNC OUTPUT" });
+			writeAsyncRun(root, {
+				id: "async-finished",
+				state: "complete",
+				contexts: ["fork"],
+				output: "FINAL ASYNC OUTPUT",
+			});
 			const state = stateForTest();
 			let closed = false;
 			let renderRequests = 0;
-			const tui = { terminal: { rows: 32, columns: 100 }, requestRender: () => { renderRequests++; } };
+			const tui = {
+				terminal: { rows: 32, columns: 100 },
+				requestRender: () => {
+					renderRequests++;
+				},
+			};
 			const component = new SubagentFleetComponent(
 				tui,
 				theme as never,
 				state,
-				() => { closed = true; },
-				{ asyncDirRoot: root, resultsDir: path.join(root, "results"), refreshMs: 60_000 },
+				() => {
+					closed = true;
+				},
+				{
+					asyncDirRoot: root,
+					resultsDir: path.join(root, "results"),
+					refreshMs: 60_000,
+				},
 			);
 			try {
 				const lines = component.render(100);
@@ -187,17 +303,34 @@ describe("native subagent fleet", () => {
 					assert.ok(
 						lines.some((line) => {
 							const tokens: string[] = line.match(/\/[^\s│]+/g) ?? [];
-							return tokens.some((token) => fullPath.startsWith(token) || token.startsWith(fullPath));
+							return tokens.some(
+								(token) =>
+									fullPath.startsWith(token) || token.startsWith(fullPath),
+							);
 						}),
 						`${label} should render (full or truncated to panel width)`,
 					);
 				};
-				assertRendered(path.join(root, "async-finished", "output-0.log"), "output artifact path");
-				assert.ok(lines.some((line) => line.includes("worker") && line.includes("[fork]")));
-				assertRendered(path.join(root, "async-finished", "worker.jsonl"), "session artifact path");
-				for (const line of lines) assert.ok(visibleWidth(line) <= 100, `line exceeded width: ${line}`);
+				assertRendered(
+					path.join(root, "async-finished", "output-0.log"),
+					"output artifact path",
+				);
+				assert.ok(
+					lines.some(
+						(line) => line.includes("worker") && line.includes("[fork]"),
+					),
+				);
+				assertRendered(
+					path.join(root, "async-finished", "worker.jsonl"),
+					"session artifact path",
+				);
+				for (const line of lines)
+					assert.ok(visibleWidth(line) <= 100, `line exceeded width: ${line}`);
 				tui.terminal.rows = 10;
-				assert.ok(component.render(100).length <= 8, "short-terminal render should fit the overlay's 85% height cap");
+				assert.ok(
+					component.render(100).length <= 8,
+					"short-terminal render should fit the overlay's 85% height cap",
+				);
 				component.handleInput("\x1b[6~");
 				component.handleInput("r");
 				assert.ok(renderRequests >= 2);
@@ -220,11 +353,30 @@ describe("native subagent fleet", () => {
 				state: "complete",
 				output: "RAW FALLBACK SHOULD NOT RENDER",
 				transcript: [
-					{ recordType: "message", sourceEventType: "initial_prompt", role: "user", text: "injected task" },
-					{ recordType: "tool_start", toolName: "read", argsPreview: "src/tui/fleet.ts" },
+					{
+						recordType: "message",
+						sourceEventType: "initial_prompt",
+						role: "user",
+						text: "injected task",
+					},
+					{
+						recordType: "tool_start",
+						toolName: "read",
+						argsPreview: "src/tui/fleet.ts",
+					},
 					{ recordType: "tool_end", toolName: "read" },
-					{ recordType: "message", role: "toolResult", text: "very large tool payload", message: { toolName: "read", isError: false } },
-					{ recordType: "message", role: "assistant", model: "test-model", text: longResponse },
+					{
+						recordType: "message",
+						role: "toolResult",
+						text: "very large tool payload",
+						message: { toolName: "read", isError: false },
+					},
+					{
+						recordType: "message",
+						role: "assistant",
+						model: "test-model",
+						text: longResponse,
+					},
 				],
 			});
 			const state = stateForTest();
@@ -234,14 +386,31 @@ describe("native subagent fleet", () => {
 				theme as never,
 				state,
 				() => {},
-				{ asyncDirRoot: root, resultsDir: path.join(root, "results"), refreshMs: 60_000, markdownTheme },
+				{
+					asyncDirRoot: root,
+					resultsDir: path.join(root, "results"),
+					refreshMs: 60_000,
+					markdownTheme,
+				},
 			);
 			try {
 				let lines = component.render(100);
-				assert.ok(lines.some((line) => line.includes("Conversation") && line.includes("assistant response")));
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("Conversation") &&
+							line.includes("assistant response"),
+					),
+				);
 				assert.ok(lines.some((line) => line.includes("const fleet = true;")));
-				assert.ok(!lines.some((line) => line.includes("very large tool payload")));
-				assert.ok(!lines.some((line) => line.includes("RAW FALLBACK SHOULD NOT RENDER")));
+				assert.ok(
+					!lines.some((line) => line.includes("very large tool payload")),
+				);
+				assert.ok(
+					!lines.some((line) =>
+						line.includes("RAW FALLBACK SHOULD NOT RENDER"),
+					),
+				);
 				const bottomLines = lines;
 				const realDateNow = Date.now;
 				const laterNow = realDateNow() + 2_000;
@@ -249,21 +418,50 @@ describe("native subagent fleet", () => {
 				try {
 					component.handleInput("K");
 					lines = component.render(100);
-					assert.notDeepEqual(lines, bottomLines, "Shift+K should scroll the conversation up by one line");
+					assert.notDeepEqual(
+						lines,
+						bottomLines,
+						"Shift+K should scroll the conversation up by one line",
+					);
 					component.handleInput("J");
 					lines = component.render(100);
-					assert.deepEqual(lines, bottomLines, "Shift+J should scroll the conversation back down by one line");
+					assert.deepEqual(
+						lines,
+						bottomLines,
+						"Shift+J should scroll the conversation back down by one line",
+					);
 				} finally {
 					Date.now = realDateNow;
 				}
 				for (let page = 0; page < 4; page++) component.handleInput("\x1b[5~");
 				lines = component.render(100);
-				assert.ok(lines.some((line) => line.includes("Conversation") && line.includes("assistant response")), "the conversation header should remain pinned while scrolling");
-				assert.ok(lines.some((line) => line.includes("✓ read") && line.includes("src/tui/fleet.ts")), "page up should reveal compact tool activity");
-				assert.ok(lines.some((line) => line.includes("Assistant") && line.includes("test-model")), "page up should reveal the rendered assistant message header");
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("Conversation") &&
+							line.includes("assistant response"),
+					),
+					"the conversation header should remain pinned while scrolling",
+				);
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("✓ read") && line.includes("src/tui/fleet.ts"),
+					),
+					"page up should reveal compact tool activity",
+				);
+				assert.ok(
+					lines.some(
+						(line) => line.includes("Assistant") && line.includes("test-model"),
+					),
+					"page up should reveal the rendered assistant message header",
+				);
 				for (const renderWidth of [60, 80, 100]) {
 					for (const line of component.render(renderWidth)) {
-						assert.ok(visibleWidth(line) <= renderWidth, `line exceeded ${renderWidth} columns: ${line}`);
+						assert.ok(
+							visibleWidth(line) <= renderWidth,
+							`line exceeded ${renderWidth} columns: ${line}`,
+						);
 					}
 				}
 			} finally {
@@ -282,9 +480,20 @@ describe("native subagent fleet", () => {
 			const artifactsRoot = getProjectArtifactsDir(customCwd);
 			fs.mkdirSync(asyncDir, { recursive: true });
 			fs.mkdirSync(artifactsRoot, { recursive: true });
-			const transcriptPath = path.join(artifactsRoot, "async-custom-cwd_worker_transcript.jsonl");
-			fs.writeFileSync(transcriptPath, `${JSON.stringify({ recordType: "message", role: "assistant", text: "Custom cwd async result" })}\n`, "utf-8");
-			fs.writeFileSync(path.join(asyncDir, "status.json"), "{in-flight status", "utf-8");
+			const transcriptPath = path.join(
+				artifactsRoot,
+				"async-custom-cwd_worker_transcript.jsonl",
+			);
+			fs.writeFileSync(
+				transcriptPath,
+				`${JSON.stringify({ recordType: "message", role: "assistant", text: "Custom cwd async result" })}\n`,
+				"utf-8",
+			);
+			fs.writeFileSync(
+				path.join(asyncDir, "status.json"),
+				"{in-flight status",
+				"utf-8",
+			);
 			const state = stateForTest();
 			state.baseCwd = path.join(root, "parent-cwd");
 			state.asyncJobs.set("async-custom-cwd", {
@@ -296,7 +505,9 @@ describe("native subagent fleet", () => {
 				mode: "single",
 				startedAt: 100,
 				updatedAt: 200,
-				steps: [{ agent: "worker", index: 0, status: "running", transcriptPath }],
+				steps: [
+					{ agent: "worker", index: 0, status: "running", transcriptPath },
+				],
 			});
 			const component = new SubagentFleetComponent(
 				{ terminal: { rows: 28, columns: 100 }, requestRender() {} } as never,
@@ -306,7 +517,11 @@ describe("native subagent fleet", () => {
 				{ refreshMs: 60_000, markdownTheme },
 			);
 			try {
-				assert.ok(component.render(100).some((line) => line.includes("Custom cwd async result")));
+				assert.ok(
+					component
+						.render(100)
+						.some((line) => line.includes("Custom cwd async result")),
+				);
 			} finally {
 				component.dispose();
 			}
@@ -316,44 +531,92 @@ describe("native subagent fleet", () => {
 	});
 
 	it("toggles bounded tool output expansion with x and Ctrl+O", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-tool-toggle-"));
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-fleet-tool-toggle-"),
+		);
 		try {
 			writeAsyncRun(root, {
 				id: "async-tools",
 				state: "complete",
 				transcript: [
-					{ recordType: "tool_start", toolCallId: "read-1", toolName: "read", argsPreview: "src/a.ts", argsPayload: JSON.stringify({ path: "src/a.ts" }), ts: 1 },
-					{ recordType: "tool_end", toolCallId: "read-1", toolName: "read", ts: 2 },
-					{ recordType: "message", role: "toolResult", toolCallId: "read-1", toolName: "read", text: "alpha\nbeta\ngamma", isError: false, ts: 3 },
+					{
+						recordType: "tool_start",
+						toolCallId: "read-1",
+						toolName: "read",
+						argsPreview: "src/a.ts",
+						argsPayload: JSON.stringify({ path: "src/a.ts" }),
+						ts: 1,
+					},
+					{
+						recordType: "tool_end",
+						toolCallId: "read-1",
+						toolName: "read",
+						ts: 2,
+					},
+					{
+						recordType: "message",
+						role: "toolResult",
+						toolCallId: "read-1",
+						toolName: "read",
+						text: "alpha\nbeta\ngamma",
+						isError: false,
+						ts: 3,
+					},
 				],
 			});
 			const state = stateForTest();
 			state.baseCwd = root;
 			let renderRequests = 0;
 			const component = new SubagentFleetComponent(
-				{ terminal: { rows: 32, columns: 100 }, requestRender() { renderRequests++; } } as never,
+				{
+					terminal: { rows: 32, columns: 100 },
+					requestRender() {
+						renderRequests++;
+					},
+				} as never,
 				theme as never,
 				state,
 				() => {},
-				{ asyncDirRoot: root, resultsDir: path.join(root, "results"), refreshMs: 60_000, markdownTheme },
+				{
+					asyncDirRoot: root,
+					resultsDir: path.join(root, "results"),
+					refreshMs: 60_000,
+					markdownTheme,
+				},
 			);
 			try {
 				let lines = component.render(100);
-				assert.ok(lines.some((line) => line.includes("alpha beta gamma") && line.includes("x to expand")));
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("alpha beta gamma") && line.includes("x to expand"),
+					),
+				);
 				component.handleInput("x");
 				lines = component.render(100);
-				assert.ok(lines.some((line) => line.includes("alpha") && !line.includes("beta")));
+				assert.ok(
+					lines.some(
+						(line) => line.includes("alpha") && !line.includes("beta"),
+					),
+				);
 				assert.ok(lines.some((line) => line.includes("x to collapse")));
 				component.handleInput("\x0f");
 				lines = component.render(100);
-				assert.ok(lines.some((line) => line.includes("alpha beta gamma") && line.includes("x to expand")));
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("alpha beta gamma") && line.includes("x to expand"),
+					),
+				);
 				fs.appendFileSync(
 					path.join(root, "async-tools", "transcript-0.jsonl"),
 					`${JSON.stringify({ recordType: "message", role: "assistant", text: "Cache refreshed after append", ts: 4 })}\n`,
 					"utf-8",
 				);
 				lines = component.render(100);
-				assert.ok(lines.some((line) => line.includes("Cache refreshed after append")));
+				assert.ok(
+					lines.some((line) => line.includes("Cache refreshed after append")),
+				);
 				assert.equal(renderRequests, 2);
 			} finally {
 				component.dispose();
@@ -380,28 +643,73 @@ describe("native subagent fleet", () => {
 				currentIndex: 1,
 				description: "Review the active task",
 				activeChildren: new Map([
-					[0, { index: 0, agent: "worker", description: "Implement the active task", startedAt: now - 900, updatedAt: now - 100, tokens: 120 }],
-					[1, { index: 1, agent: "reviewer", description: "Review the active task", startedAt: now - 800, updatedAt: now, tokens: 240 }],
+					[
+						0,
+						{
+							index: 0,
+							agent: "worker",
+							description: "Implement the active task",
+							startedAt: now - 900,
+							updatedAt: now - 100,
+							tokens: 120,
+						},
+					],
+					[
+						1,
+						{
+							index: 1,
+							agent: "reviewer",
+							description: "Review the active task",
+							startedAt: now - 800,
+							updatedAt: now,
+							tokens: 240,
+						},
+					],
 				]),
 			});
 			const artifactsRoot = getProjectArtifactsDir(effectiveCwd);
 			fs.mkdirSync(artifactsRoot, { recursive: true });
-			const transcriptPath = getArtifactPaths(artifactsRoot, "foreground-live", "worker", 0).transcriptPath;
-			fs.writeFileSync(transcriptPath, `${JSON.stringify({ recordType: "message", role: "assistant", model: "test-model", text: "**Worker live result**" })}\n`, "utf-8");
+			const transcriptPath = getArtifactPaths(
+				artifactsRoot,
+				"foreground-live",
+				"worker",
+				0,
+			).transcriptPath;
+			fs.writeFileSync(
+				transcriptPath,
+				`${JSON.stringify({ recordType: "message", role: "assistant", model: "test-model", text: "**Worker live result**" })}\n`,
+				"utf-8",
+			);
 			const component = new SubagentFleetComponent(
 				{ terminal: { rows: 28, columns: 90 }, requestRender() {} } as never,
 				theme as never,
 				state,
 				() => {},
-				{ initialKey: "foreground-active:foreground-live:0", refreshMs: 60_000, markdownTheme },
+				{
+					initialKey: "foreground-active:foreground-live:0",
+					refreshMs: 60_000,
+					markdownTheme,
+				},
 			);
 			try {
 				const lines = component.render(90);
 				assert.ok(lines.some((line) => line.includes("worker")));
 				assert.ok(lines.some((line) => line.includes("reviewer")));
 				assert.ok(lines.some((line) => line.includes("foreground · live")));
-				assert.ok(lines.some((line) => line.includes("Task") && line.includes("Implement the active task")));
-				assert.ok(lines.some((line) => line.includes("Conversation") && line.includes("assistant response")));
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("Task") &&
+							line.includes("Implement the active task"),
+					),
+				);
+				assert.ok(
+					lines.some(
+						(line) =>
+							line.includes("Conversation") &&
+							line.includes("assistant response"),
+					),
+				);
 				assert.ok(lines.some((line) => line.includes("Worker live result")));
 			} finally {
 				component.dispose();
@@ -412,18 +720,38 @@ describe("native subagent fleet", () => {
 	});
 
 	it("renders configured session and temp transcripts for active foreground, completed foreground, and async children", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-artifact-roots-"));
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-fleet-artifact-roots-"),
+		);
 		const createdTranscriptPaths: string[] = [];
 		try {
 			for (const preference of ["session", "temp"] as const) {
 				const baseCwd = path.join(root, `${preference}-cwd`);
-				const sessionFile = path.join(root, `${preference}-session`, "session.jsonl");
+				const sessionFile = path.join(
+					root,
+					`${preference}-session`,
+					"session.jsonl",
+				);
 				const artifactsRoot = getArtifactsDir(sessionFile, baseCwd, preference);
 				const prefix = `${path.basename(root)}-${preference}`;
 				fs.mkdirSync(artifactsRoot, { recursive: true });
-				const transcript = (runId: string, agent: string, index: number, text: string) => {
-					const transcriptPath = getArtifactPaths(artifactsRoot, runId, agent, index).transcriptPath;
-					fs.writeFileSync(transcriptPath, `${JSON.stringify({ recordType: "message", role: "assistant", text })}\n`, "utf-8");
+				const transcript = (
+					runId: string,
+					agent: string,
+					index: number,
+					text: string,
+				) => {
+					const transcriptPath = getArtifactPaths(
+						artifactsRoot,
+						runId,
+						agent,
+						index,
+					).transcriptPath;
+					fs.writeFileSync(
+						transcriptPath,
+						`${JSON.stringify({ recordType: "message", role: "assistant", text })}\n`,
+						"utf-8",
+					);
 					createdTranscriptPaths.push(transcriptPath);
 					return transcriptPath;
 				};
@@ -431,9 +759,24 @@ describe("native subagent fleet", () => {
 				const activeId = `${prefix}-active`;
 				const recentId = `${prefix}-recent`;
 				const asyncId = `${prefix}-async`;
-				transcript(activeId, "worker", 0, `${preference} active foreground transcript`);
-				const recentTranscript = transcript(recentId, "reviewer", 0, `${preference} completed foreground transcript`);
-				const asyncTranscript = transcript(asyncId, "scout", 0, `${preference} async transcript`);
+				transcript(
+					activeId,
+					"worker",
+					0,
+					`${preference} active foreground transcript`,
+				);
+				const recentTranscript = transcript(
+					recentId,
+					"reviewer",
+					0,
+					`${preference} completed foreground transcript`,
+				);
+				const asyncTranscript = transcript(
+					asyncId,
+					"scout",
+					0,
+					`${preference} async transcript`,
+				);
 
 				const state = stateForTest();
 				state.baseCwd = baseCwd;
@@ -454,7 +797,14 @@ describe("native subagent fleet", () => {
 					cwd: baseCwd,
 					sessionId: "session-current",
 					updatedAt: 200,
-					children: [{ agent: "reviewer", index: 0, status: "completed", transcriptPath: recentTranscript }],
+					children: [
+						{
+							agent: "reviewer",
+							index: 0,
+							status: "completed",
+							transcriptPath: recentTranscript,
+						},
+					],
 				});
 				state.asyncJobs.set(asyncId, {
 					asyncId,
@@ -465,30 +815,50 @@ describe("native subagent fleet", () => {
 					mode: "single",
 					startedAt: 100,
 					updatedAt: 250,
-					steps: [{ agent: "scout", index: 0, status: "complete", transcriptPath: asyncTranscript }],
+					steps: [
+						{
+							agent: "scout",
+							index: 0,
+							status: "complete",
+							transcriptPath: asyncTranscript,
+						},
+					],
 				});
 
 				for (const [initialKey, expected] of [
-					[`foreground-active:${activeId}:0`, `${preference} active foreground transcript`],
-					[`foreground-recent:${recentId}:0`, `${preference} completed foreground transcript`],
+					[
+						`foreground-active:${activeId}:0`,
+						`${preference} active foreground transcript`,
+					],
+					[
+						`foreground-recent:${recentId}:0`,
+						`${preference} completed foreground transcript`,
+					],
 					[`async:${asyncId}:0`, `${preference} async transcript`],
 				] as const) {
 					const component = new SubagentFleetComponent(
-						{ terminal: { rows: 28, columns: 100 }, requestRender() {} } as never,
+						{
+							terminal: { rows: 28, columns: 100 },
+							requestRender() {},
+						} as never,
 						theme as never,
 						state,
 						() => {},
 						{ initialKey, refreshMs: 60_000, markdownTheme },
 					);
 					try {
-						assert.ok(component.render(100).some((line) => line.includes(expected)), `missing ${expected}`);
+						assert.ok(
+							component.render(100).some((line) => line.includes(expected)),
+							`missing ${expected}`,
+						);
 					} finally {
 						component.dispose();
 					}
 				}
 			}
 		} finally {
-			for (const transcriptPath of createdTranscriptPaths) fs.rmSync(transcriptPath, { force: true });
+			for (const transcriptPath of createdTranscriptPaths)
+				fs.rmSync(transcriptPath, { force: true });
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
@@ -512,7 +882,10 @@ describe("native subagent fleet", () => {
 			},
 		};
 
-		await assert.rejects(openSubagentFleet(ctx as never, state), /overlay closed/);
+		await assert.rejects(
+			openSubagentFleet(ctx as never, state),
+			/overlay closed/,
+		);
 		assert.equal(hidden, 1);
 		assert.equal(observedOpen, true);
 		assert.equal(state.fleetInspectorOpen, false);
@@ -544,8 +917,13 @@ describe("native subagent fleet", () => {
 			{ initialKey: "foreground-active:run-worker:0", refreshMs: 60_000 },
 		);
 		try {
-			const selectedLine = component.render(90).find((line) => line.includes("›"));
-			assert.ok(selectedLine?.includes("run-work"), `unexpected selected row: ${selectedLine}`);
+			const selectedLine = component
+				.render(90)
+				.find((line) => line.includes("›"));
+			assert.ok(
+				selectedLine?.includes("run-work"),
+				`unexpected selected row: ${selectedLine}`,
+			);
 		} finally {
 			component.dispose();
 		}
@@ -554,9 +932,17 @@ describe("native subagent fleet", () => {
 	it("steers the selected async child with an inline message", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-steer-"));
 		try {
-			const asyncDir = writeAsyncRun(root, { id: "async-steer", agents: ["worker", "reviewer"] });
+			const asyncDir = writeAsyncRun(root, {
+				id: "async-steer",
+				agents: ["worker", "reviewer"],
+			});
 			const state = stateForTest();
-			const calls: Array<{ runId: string; asyncDir: string; index?: number; message: string }> = [];
+			const calls: Array<{
+				runId: string;
+				asyncDir: string;
+				index?: number;
+				message: string;
+			}> = [];
 			const component = new SubagentFleetComponent(
 				{ terminal: { rows: 28, columns: 100 }, requestRender() {} } as never,
 				theme as never,
@@ -580,12 +966,25 @@ describe("native subagent fleet", () => {
 			);
 			try {
 				component.handleInput("s");
-				assert.ok(component.render(100).some((line) => line.includes("Steer message:")));
+				assert.ok(
+					component.render(100).some((line) => line.includes("Steer message:")),
+				);
 				for (const char of "please continue") component.handleInput(char);
 				component.handleInput("\r");
 				await new Promise((resolve) => setImmediate(resolve));
-				assert.deepEqual(calls, [{ runId: "async-steer", asyncDir, index: 0, message: "please continue" }]);
-				assert.ok(component.render(100).some((line) => line.includes("Steering queued.")));
+				assert.deepEqual(calls, [
+					{
+						runId: "async-steer",
+						asyncDir,
+						index: 0,
+						message: "please continue",
+					},
+				]);
+				assert.ok(
+					component
+						.render(100)
+						.some((line) => line.includes("Steering queued.")),
+				);
 			} finally {
 				component.dispose();
 			}
@@ -599,7 +998,8 @@ describe("native subagent fleet", () => {
 		try {
 			const asyncDir = writeAsyncRun(root, { id: "async-stop" });
 			const state = stateForTest();
-			const calls: Array<{ runId: string; asyncDir: string; index?: number }> = [];
+			const calls: Array<{ runId: string; asyncDir: string; index?: number }> =
+				[];
 			const component = new SubagentFleetComponent(
 				{ terminal: { rows: 28, columns: 100 }, requestRender() {} } as never,
 				theme as never,
@@ -622,14 +1022,24 @@ describe("native subagent fleet", () => {
 			);
 			try {
 				component.handleInput("D");
-				assert.ok(component.render(100).some((line) => line.includes("Confirm stop for async run async-stop")));
+				assert.ok(
+					component
+						.render(100)
+						.some((line) =>
+							line.includes("Confirm stop for async run async-stop"),
+						),
+				);
 				component.handleInput("n");
 				assert.deepEqual(calls, []);
 				component.handleInput("D");
 				component.handleInput("y");
 				await new Promise((resolve) => setImmediate(resolve));
 				assert.deepEqual(calls, [{ runId: "async-stop", asyncDir, index: 0 }]);
-				assert.ok(component.render(100).some((line) => line.includes("Stop requested.")));
+				assert.ok(
+					component
+						.render(100)
+						.some((line) => line.includes("Stop requested.")),
+				);
 			} finally {
 				component.dispose();
 			}
@@ -639,7 +1049,9 @@ describe("native subagent fleet", () => {
 	});
 
 	it("explains unavailable controls for completed async children", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-unavailable-"));
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-fleet-unavailable-"),
+		);
 		try {
 			writeAsyncRun(root, { id: "async-complete", state: "complete" });
 			const state = stateForTest();
@@ -664,7 +1076,11 @@ describe("native subagent fleet", () => {
 			);
 			try {
 				component.handleInput("s");
-				assert.ok(component.render(100).some((line) => line.includes("Selected child is complete")));
+				assert.ok(
+					component
+						.render(100)
+						.some((line) => line.includes("Selected child is complete")),
+				);
 			} finally {
 				component.dispose();
 			}
@@ -678,13 +1094,22 @@ describe("native subagent fleet", () => {
 		try {
 			const state = stateForTest();
 			let renderRequests = 0;
-			const tui = { terminal: { rows: 28, columns: 90 }, requestRender: () => { renderRequests++; } };
+			const tui = {
+				terminal: { rows: 28, columns: 90 },
+				requestRender: () => {
+					renderRequests++;
+				},
+			};
 			const component = new SubagentFleetComponent(
 				tui,
 				theme as never,
 				state,
 				() => {},
-				{ asyncDirRoot: root, resultsDir: path.join(root, "results"), refreshMs: 10 },
+				{
+					asyncDirRoot: root,
+					resultsDir: path.join(root, "results"),
+					refreshMs: 10,
+				},
 			);
 			let invalidations = 0;
 			const originalInvalidate = component.invalidate.bind(component);
@@ -693,19 +1118,39 @@ describe("native subagent fleet", () => {
 				originalInvalidate();
 			};
 			try {
-				assert.ok(component.render(90).some((line) => line.includes("No tracked children")));
-				const initialOutput = Array.from({ length: 40 }, (_, index) => `output line ${index}`).join("\n");
-				const asyncDir = writeAsyncRun(root, { id: "appeared-live", output: initialOutput });
+				assert.ok(
+					component
+						.render(90)
+						.some((line) => line.includes("No tracked children")),
+				);
+				const initialOutput = Array.from(
+					{ length: 40 },
+					(_, index) => `output line ${index}`,
+				).join("\n");
+				const asyncDir = writeAsyncRun(root, {
+					id: "appeared-live",
+					output: initialOutput,
+				});
 				await new Promise((resolve) => setTimeout(resolve, 35));
 				let lines = component.render(90);
 				assert.ok(lines.some((line) => line.includes("appeared")));
 				assert.ok(lines.some((line) => line.includes("output line 39")));
-				fs.appendFileSync(path.join(asyncDir, "output-0.log"), "\nLATEST LIVE OUTPUT", "utf-8");
+				fs.appendFileSync(
+					path.join(asyncDir, "output-0.log"),
+					"\nLATEST LIVE OUTPUT",
+					"utf-8",
+				);
 				await new Promise((resolve) => setTimeout(resolve, 35));
 				lines = component.render(90);
-				assert.ok(lines.some((line) => line.includes("LATEST LIVE OUTPUT")), "live transcript should keep following new output");
+				assert.ok(
+					lines.some((line) => line.includes("LATEST LIVE OUTPUT")),
+					"live transcript should keep following new output",
+				);
 				assert.ok(renderRequests > 0);
-				assert.ok(invalidations > 0, "live refresh must invalidate cached TUI frames before rendering");
+				assert.ok(
+					invalidations > 0,
+					"live refresh must invalidate cached TUI frames before rendering",
+				);
 			} finally {
 				component.dispose();
 			}

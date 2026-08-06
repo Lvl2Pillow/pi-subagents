@@ -6,9 +6,18 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { WAIT_TOOL_ENABLED_ENV } from "../../src/runs/background/subagent-wait.ts";
-import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "../../src/runs/shared/pi-args.ts";
+import {
+	SUBAGENT_CHILD_ENV,
+	SUBAGENT_FANOUT_CHILD_ENV,
+} from "../../src/runs/shared/pi-args.ts";
+import { isolatePersistentStateDir } from "../support/isolate-state-dir.ts";
+isolatePersistentStateDir();
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const projectRoot = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+);
 
 function parentToolEnv(): NodeJS.ProcessEnv {
 	const env = { ...process.env };
@@ -167,11 +176,17 @@ describe("subagent extension child mode", () => {
 	});
 
 	it("registers only subagent_wait and honors waitTool disabled config", () => {
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-wait-tool-config-"));
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-wait-tool-config-"),
+		);
 		try {
 			const configDir = path.join(agentDir, "extensions", "subagent");
 			fs.mkdirSync(configDir, { recursive: true });
-			fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ waitTool: { enabled: false } }), "utf-8");
+			fs.writeFileSync(
+				path.join(configDir, "config.json"),
+				JSON.stringify({ waitTool: { enabled: false } }),
+				"utf-8",
+			);
 
 			const script = String.raw`
 				import registerSubagentExtension from "./index.ts";
@@ -223,11 +238,17 @@ describe("subagent extension child mode", () => {
 	});
 
 	it("does not restore the async widget from tool results when asyncWidget is disabled", () => {
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-async-widget-config-"));
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-async-widget-config-"),
+		);
 		try {
 			const configDir = path.join(agentDir, "extensions", "subagent");
 			fs.mkdirSync(configDir, { recursive: true });
-			fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ asyncWidget: false }), "utf-8");
+			fs.writeFileSync(
+				path.join(configDir, "config.json"),
+				JSON.stringify({ asyncWidget: false }),
+				"utf-8",
+			);
 			const script = String.raw`
 				import registerSubagentExtension from "./index.ts";
 				const eventHandlers = new Map();
@@ -257,17 +278,34 @@ describe("subagent extension child mode", () => {
 			`;
 			const env = parentToolEnv();
 			env.PI_CODING_AGENT_DIR = agentDir;
-			execFileSync(process.execPath, ["--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script], { cwd: projectRoot, env, stdio: "pipe" });
+			execFileSync(
+				process.execPath,
+				[
+					"--experimental-strip-types",
+					"--import",
+					"./test/support/register-loader.mjs",
+					"--input-type=module",
+					"--eval",
+					script,
+				],
+				{ cwd: projectRoot, env, stdio: "pipe" },
+			);
 		} finally {
 			fs.rmSync(agentDir, { recursive: true, force: true });
 		}
 	});
 
 	it("disposes pending completion notifications on session shutdown", () => {
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-notify-shutdown-"));
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-notify-shutdown-"),
+		);
 		const configDir = path.join(agentDir, "extensions", "subagent");
 		fs.mkdirSync(configDir, { recursive: true });
-		fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ completionBatch: { enabled: true, debounceMs: 150 } }), "utf-8");
+		fs.writeFileSync(
+			path.join(configDir, "config.json"),
+			JSON.stringify({ completionBatch: { enabled: true, debounceMs: 150 } }),
+			"utf-8",
+		);
 		const script = String.raw`
 			import registerSubagentExtension from "./index.ts";
 			const pendingTimers = new Map();
@@ -328,7 +366,14 @@ describe("subagent extension child mode", () => {
 			env.PI_CODING_AGENT_DIR = agentDir;
 			execFileSync(
 				process.execPath,
-				["--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script],
+				[
+					"--experimental-strip-types",
+					"--import",
+					"./test/support/register-loader.mjs",
+					"--input-type=module",
+					"--eval",
+					script,
+				],
 				{ cwd: projectRoot, env, stdio: "pipe" },
 			);
 		} finally {
@@ -337,10 +382,16 @@ describe("subagent extension child mode", () => {
 	});
 
 	it("disposes pending completion notifications during runtime reload cleanup", () => {
-		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-notify-reload-"));
+		const agentDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "pi-subagents-notify-reload-"),
+		);
 		const configDir = path.join(agentDir, "extensions", "subagent");
 		fs.mkdirSync(configDir, { recursive: true });
-		fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ completionBatch: { enabled: true, debounceMs: 150 } }), "utf-8");
+		fs.writeFileSync(
+			path.join(configDir, "config.json"),
+			JSON.stringify({ completionBatch: { enabled: true, debounceMs: 150 } }),
+			"utf-8",
+		);
 		const script = String.raw`
 			import registerSubagentExtension from "./index.ts";
 			const pendingTimers = new Map();
@@ -422,7 +473,14 @@ describe("subagent extension child mode", () => {
 			env.PI_CODING_AGENT_DIR = agentDir;
 			execFileSync(
 				process.execPath,
-				["--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script],
+				[
+					"--experimental-strip-types",
+					"--import",
+					"./test/support/register-loader.mjs",
+					"--input-type=module",
+					"--eval",
+					script,
+				],
 				{ cwd: projectRoot, env, stdio: "pipe" },
 			);
 		} finally {

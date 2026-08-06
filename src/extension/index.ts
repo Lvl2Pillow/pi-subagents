@@ -17,19 +17,50 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { keyText, type ExtensionAPI, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Box, Container, Spacer, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
+import {
+	keyText,
+	type ExtensionAPI,
+	type ExtensionContext,
+	type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import {
+	Box,
+	Container,
+	Spacer,
+	Text,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+	type Component,
+} from "@earendil-works/pi-tui";
 import { discoverAgents } from "../agents/agents.ts";
 import { ensureAccessibleDir } from "../shared/accessible-dir.ts";
-import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "../shared/artifacts.ts";
+import {
+	cleanupAllArtifactDirs,
+	cleanupOldArtifacts,
+	getArtifactsDir,
+} from "../shared/artifacts.ts";
 import { resolveCurrentSessionId } from "../shared/session-identity.ts";
 import { cleanupOldChainDirs } from "../shared/settings.ts";
-import { clearLegacyResultAnimationTimer, renderSubagentResult } from "../tui/render.ts";
+import {
+	clearLegacyResultAnimationTimer,
+	renderSubagentResult,
+} from "../tui/render.ts";
 import { openSubagentFleet } from "../tui/fleet.ts";
-import { SubagentFleetStatus, resolveFleetViewPlacement } from "../tui/fleet-status.ts";
+import {
+	SubagentFleetStatus,
+	resolveFleetViewPlacement,
+} from "../tui/fleet-status.ts";
 import { SubagentParams } from "./schemas.ts";
 import { validateChainInput } from "./chain-validation.ts";
-import { createSubagentExecutor, type SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
+import {
+	createSubagentExecutor,
+	type SubagentParamsLike,
+} from "../runs/foreground/subagent-executor.ts";
+import { PersistentChatStore } from "../persistent/store.ts";
+import { registerPersistentChat } from "../persistent/register.ts";
+import { logPersistent } from "../persistent/log.ts";
+import { PERSISTENT_STATUS_KEY } from "../persistent/status.ts";
 import { createAsyncJobTracker } from "../runs/background/async-job-tracker.ts";
 import { createResultWatcher } from "../runs/background/result-watcher.ts";
 import { createScheduledRunManager } from "../runs/background/scheduled-runs.ts";
@@ -39,13 +70,31 @@ import { registerMainWatchdog } from "../watchdog/register-main.ts";
 import { registerSlashSubagentBridge } from "../slash/slash-bridge.ts";
 import { createNativeSupervisorChannel } from "../intercom/native-supervisor-channel.ts";
 import { registerSubagentRpcBridge } from "./rpc.ts";
-import { clearSlashSnapshots, getSlashRenderableSnapshot, resolveSlashMessageDetails, restoreSlashFinalSnapshots, type SlashMessageDetails } from "../slash/slash-live-state.ts";
+import {
+	clearSlashSnapshots,
+	getSlashRenderableSnapshot,
+	resolveSlashMessageDetails,
+	restoreSlashFinalSnapshots,
+	type SlashMessageDetails,
+} from "../slash/slash-live-state.ts";
+import { restorePersistentRunSnapshots } from "../persistent/run-message.ts";
 import { resolveWaitToolConfig } from "../runs/background/subagent-wait.ts";
 import { registerWaitTool } from "../runs/background/wait-tool.ts";
 import { drainOutstandingWork } from "../runs/background/auto-drain.ts";
-import registerSubagentNotify, { parseSubagentNotifyContent, type SubagentNotifyDetails } from "../runs/background/notify.ts";
-import { formatSteeringNotice, handleSubagentSteeringNotice, SUBAGENT_STEERING_MESSAGE_TYPE, type SubagentSteeringMessageDetails } from "./steering-notices.ts";
-import { SUBAGENT_CHILD_ENV, SUBAGENT_PARENT_SESSION_ENV } from "../runs/shared/pi-args.ts";
+import registerSubagentNotify, {
+	parseSubagentNotifyContent,
+	type SubagentNotifyDetails,
+} from "../runs/background/notify.ts";
+import {
+	formatSteeringNotice,
+	handleSubagentSteeringNotice,
+	SUBAGENT_STEERING_MESSAGE_TYPE,
+	type SubagentSteeringMessageDetails,
+} from "./steering-notices.ts";
+import {
+	SUBAGENT_CHILD_ENV,
+	SUBAGENT_PARENT_SESSION_ENV,
+} from "../runs/shared/pi-args.ts";
 import { resolveCurrentSubagentCapabilityCeiling } from "../runs/shared/capability-ceiling.ts";
 import { formatDuration, shortenPath } from "../shared/formatters.ts";
 import { loadConfig } from "./config.ts";
@@ -96,17 +145,28 @@ function expandTilde(p: string): string {
 }
 
 function isSlashResultRunning(result: { details?: Details }): boolean {
-	return result.details?.progress?.some((entry) => entry.status === "running")
-		|| result.details?.results.some((entry) => entry.progress?.status === "running")
-		|| false;
+	return (
+		result.details?.progress?.some((entry) => entry.status === "running") ||
+		result.details?.results.some(
+			(entry) => entry.progress?.status === "running",
+		) ||
+		false
+	);
 }
 
 function isSlashResultError(result: { details?: Details }): boolean {
-	return result.details?.results.some((entry) => entry.exitCode !== 0 && entry.progress?.status !== "running") || false;
+	return (
+		result.details?.results.some(
+			(entry) => entry.exitCode !== 0 && entry.progress?.status !== "running",
+		) || false
+	);
 }
 
 function isStaleExtensionContextError(error: unknown): boolean {
-	return error instanceof Error && error.message.includes("Extension context no longer active");
+	return (
+		error instanceof Error &&
+		error.message.includes("Extension context no longer active")
+	);
 }
 
 function rebuildSlashResultContainer(
@@ -117,7 +177,11 @@ function rebuildSlashResultContainer(
 ): void {
 	container.clear();
 	container.addChild(new Spacer(1));
-	const boxTheme = isSlashResultRunning(result) ? "toolPendingBg" : isSlashResultError(result) ? "toolErrorBg" : "toolSuccessBg";
+	const boxTheme = isSlashResultRunning(result)
+		? "toolPendingBg"
+		: isSlashResultError(result)
+			? "toolErrorBg"
+			: "toolSuccessBg";
 	const box = new Box(1, 1, (text: string) => theme.bg(boxTheme, text));
 	box.addChild(renderSubagentResult(result, options, theme));
 	container.addChild(box);
@@ -132,7 +196,10 @@ function createSlashResultComponent(
 	let lastVersion = -1;
 	container.render = (width: number): string[] => {
 		const snapshot = getSlashRenderableSnapshot(details);
-		if (snapshot.version !== lastVersion || isSlashResultRunning(snapshot.result)) {
+		if (
+			snapshot.version !== lastVersion ||
+			isSlashResultRunning(snapshot.result)
+		) {
 			lastVersion = snapshot.version;
 			rebuildSlashResultContainer(container, snapshot.result, options, theme);
 		}
@@ -145,7 +212,10 @@ class SubagentControlNoticeComponent implements Component {
 	private readonly details: SubagentControlMessageDetails;
 	private readonly theme: ExtensionContext["ui"]["theme"];
 
-	constructor(details: SubagentControlMessageDetails, theme: ExtensionContext["ui"]["theme"]) {
+	constructor(
+		details: SubagentControlMessageDetails,
+		theme: ExtensionContext["ui"]["theme"],
+	) {
 		this.details = details;
 		this.theme = theme;
 	}
@@ -160,9 +230,17 @@ class SubagentControlNoticeComponent implements Component {
 		const header = ` ⚠ Subagent ${eventLabel}: ${this.details.event.agent} `;
 		const headerText = truncateToWidth(header, bodyWidth, "");
 		const headerPadding = Math.max(0, bodyWidth - visibleWidth(headerText));
-		const lines = [this.theme.fg("accent", `╭${headerText}${borderChar.repeat(headerPadding)}╮`)];
+		const lines = [
+			this.theme.fg(
+				"accent",
+				`╭${headerText}${borderChar.repeat(headerPadding)}╮`,
+			),
+		];
 
-		for (const line of wrapTextWithAnsi(formatSubagentControlNotice(this.details), bodyWidth)) {
+		for (const line of wrapTextWithAnsi(
+			formatSubagentControlNotice(this.details),
+			bodyWidth,
+		)) {
 			const text = truncateToWidth(line, bodyWidth, "");
 			const padding = Math.max(0, bodyWidth - visibleWidth(text));
 			lines.push(this.theme.fg("accent", `│${text}${" ".repeat(padding)}│`));
@@ -195,8 +273,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const waitToolConfig = resolveWaitToolConfig(config.waitTool);
 	const asyncByDefault = config.asyncByDefault === true;
 	const fleetViewEnabled = config.fleetView !== false;
-	const fleetViewPlacement = resolveFleetViewPlacement(config.fleetViewPlacement);
-	const asyncWidgetEnabled = config.asyncWidget === true || (!fleetViewEnabled && config.asyncWidget !== false);
+	const fleetViewPlacement = resolveFleetViewPlacement(
+		config.fleetViewPlacement,
+	);
+	const asyncWidgetEnabled =
+		config.asyncWidget === true ||
+		(!fleetViewEnabled && config.asyncWidget !== false);
 	const tempArtifactsDir = getArtifactsDir(null);
 	cleanupAllArtifactDirs(DEFAULT_ARTIFACT_CONFIG.cleanupDays);
 
@@ -209,7 +291,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		subagentSpawns: {
 			sessionId: null,
 			count: 0,
-			configuredLimit: resolveMaxSubagentSpawnsPerSession(config.maxSubagentSpawnsPerSession) ?? null,
+			configuredLimit:
+				resolveMaxSubagentSpawnsPerSession(
+					config.maxSubagentSpawnsPerSession,
+				) ?? null,
 			granted: 0,
 			grantHistory: [],
 		},
@@ -229,24 +314,27 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			schedule: () => false,
 			clear: () => {},
 		},
+		persistent: new PersistentChatStore(config.persistentChat?.slotCount),
 	};
 
 	const supervisorChannel = createNativeSupervisorChannel(pi, state);
 	const mainWatchdog = registerMainWatchdog(pi);
-	const completionNotifier = registerSubagentNotify(pi, state, { batchConfig: config.completionBatch });
+	const completionNotifier = registerSubagentNotify(pi, state, {
+		batchConfig: config.completionBatch,
+	});
 	const fleetStatus = fleetViewEnabled
-		? new SubagentFleetStatus(state, async (itemKey) => {
-			const ctx = state.lastUiContext;
-			if (!ctx?.hasUI) return;
-			await openSubagentFleet(ctx, state, { initialKey: itemKey });
-		}, { placement: fleetViewPlacement })
+		? new SubagentFleetStatus(
+				state,
+				async (itemKey) => {
+					const ctx = state.lastUiContext;
+					if (!ctx?.hasUI) return;
+					await openSubagentFleet(ctx, state, { initialKey: itemKey });
+				},
+				{ placement: fleetViewPlacement },
+			)
 		: undefined;
-	const { startResultWatcher, primeExistingResults, stopResultWatcher } = createResultWatcher(
-		pi,
-		state,
-		RESULTS_DIR,
-		10 * 60 * 1000,
-	);
+	const { startResultWatcher, primeExistingResults, stopResultWatcher } =
+		createResultWatcher(pi, state, RESULTS_DIR, 10 * 60 * 1000);
 
 	const runtimeCleanup = () => {
 		stopResultWatcher();
@@ -256,6 +344,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		scheduledRunManager.stop();
 		supervisorChannel.dispose();
 		fleetStatus?.dispose();
+		persistentChat?.dispose();
 		clearPendingForegroundControlNotices(state);
 		if (state.poller) {
 			clearInterval(state.poller);
@@ -264,24 +353,45 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 	globalStore[runtimeCleanupStoreKey] = runtimeCleanup;
 
-	const { ensurePoller, refreshWidget, handleStarted, handleComplete, resetJobs, restoreActiveJobs } = createAsyncJobTracker(pi, state, ASYNC_DIR, {
+	const {
+		ensurePoller,
+		refreshWidget,
+		handleStarted,
+		handleComplete,
+		resetJobs,
+		restoreActiveJobs,
+	} = createAsyncJobTracker(pi, state, ASYNC_DIR, {
 		widgetEnabled: asyncWidgetEnabled,
 	});
 	// eslint-disable-next-line prefer-const -- assigned once after declaration; the launch closure reads it before the assignment, so const would break
-	let executorExecute: ((id: string, params: SubagentParamsLike, signal: AbortSignal, onUpdate: ((r: AgentToolResult<Details>) => void) | undefined, ctx: ExtensionContext) => Promise<AgentToolResult<Details>>) | undefined;
+	let executorExecute:
+		| ((
+				id: string,
+				params: SubagentParamsLike,
+				signal: AbortSignal,
+				onUpdate: ((r: AgentToolResult<Details>) => void) | undefined,
+				ctx: ExtensionContext,
+		  ) => Promise<AgentToolResult<Details>>)
+		| undefined;
 	const scheduledRunManager = createScheduledRunManager({
 		config,
 		launch: (params, ctx, signal) => {
 			if (!executorExecute) {
 				return Promise.resolve({
-					content: [{ type: "text", text: "Scheduled subagent launch is unavailable (executor not ready)." }],
+					content: [
+						{
+							type: "text",
+							text: "Scheduled subagent launch is unavailable (executor not ready).",
+						},
+					],
 					isError: true,
 					details: { mode: "management" as const, results: [] },
 				});
 			}
 			return executorExecute(randomUUID(), params, signal, undefined, ctx);
 		},
-		resolveCapabilityCeiling: (sessionId) => resolveCurrentSubagentCapabilityCeiling(sessionId),
+		resolveCapabilityCeiling: (sessionId) =>
+			resolveCurrentSubagentCapabilityCeiling(sessionId),
 	});
 	const executor = createSubagentExecutor({
 		pi,
@@ -289,7 +399,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		config,
 		asyncByDefault,
 		waitToolEnabled: waitToolConfig.enabled,
-		handleScheduledRunAction: (params, ctx) => scheduledRunManager.handleToolCall(params, ctx),
+		handleScheduledRunAction: (params, ctx) =>
+			scheduledRunManager.handleToolCall(params, ctx),
 		watchdog: mainWatchdog,
 		tempArtifactsDir,
 		getSubagentSessionRoot,
@@ -298,67 +409,111 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	});
 	executorExecute = executor.execute;
 
-	pi.registerMessageRenderer<SlashMessageDetails>(SLASH_RESULT_TYPE, (message, options, theme) => {
-		const details = resolveSlashMessageDetails(message.details);
-		if (!details) return undefined;
-		return createSlashResultComponent(details, options, theme);
-	});
+	pi.registerMessageRenderer<SlashMessageDetails>(
+		SLASH_RESULT_TYPE,
+		(message, options, theme) => {
+			const details = resolveSlashMessageDetails(message.details);
+			if (!details) return undefined;
+			return createSlashResultComponent(details, options, theme);
+		},
+	);
 
-	pi.registerMessageRenderer<undefined>(SLASH_TEXT_RESULT_TYPE, (message, _options, _theme) => {
-		const content = typeof message.content === "string"
-			? message.content
-			: message.content
-				.filter((entry) => entry.type === "text")
-				.map((entry) => entry.text)
-				.join("\n");
-		return new Text(content, 0, 0);
-	});
+	pi.registerMessageRenderer<undefined>(
+		SLASH_TEXT_RESULT_TYPE,
+		(message, _options, _theme) => {
+			const content =
+				typeof message.content === "string"
+					? message.content
+					: message.content
+							.filter((entry) => entry.type === "text")
+							.map((entry) => entry.text)
+							.join("\n");
+			return new Text(content, 0, 0);
+		},
+	);
 
-	pi.registerMessageRenderer<SubagentNotifyDetails>("subagent-notify", (message, options, theme) => {
-		const content = typeof message.content === "string" ? message.content : "";
-		const details = (message.details) ?? parseSubagentNotifyContent(content);
-		if (!details) return new Text(content, 0, 0);
-		const icon = details.status === "completed"
-			? theme.fg("success", "✓")
-			: details.status === "paused"
-				? theme.fg("warning", "■")
-				: theme.fg("error", "✗");
-		const parts: string[] = [];
-		if (details.taskInfo) parts.push(details.taskInfo);
-		if (details.durationMs !== undefined) parts.push(formatDuration(details.durationMs));
-		let text = `${icon} ${theme.bold(details.agent)} ${theme.fg("dim", details.status)}`;
-		if (parts.length > 0) text += ` ${theme.fg("dim", "·")} ${parts.map((part) => theme.fg("dim", part)).join(` ${theme.fg("dim", "·")} `)}`;
-		const trimmedPreview = details.resultPreview.trim();
-		const previewLines = options.expanded
-			? trimmedPreview.split("\n").filter((line) => line.trim())
-			: [trimmedPreview.split("\n", 1)[0] ?? ""].filter((line) => line.trim());
-		for (const line of previewLines.length > 0 ? previewLines : ["(no output)"]) {
-			text += `\n  ${theme.fg("dim", `⎿  ${line}`)}`;
-		}
-		if (!options.expanded && trimmedPreview.includes("\n")) {
-			const expandKey = keyText("app.tools.expand");
-			text += `\n  ${theme.fg("dim", `${expandKey} full notification`)}`;
-		}
-		if (details.sessionLabel && details.sessionValue) {
-			text += `\n  ${theme.fg("muted", `${details.sessionLabel}: ${shortenPath(details.sessionValue)}`)}`;
-		}
-		return new Text(text, 0, 0);
-	});
+	pi.registerMessageRenderer<SubagentNotifyDetails>(
+		"subagent-notify",
+		(message, options, theme) => {
+			const content =
+				typeof message.content === "string" ? message.content : "";
+			const details = message.details ?? parseSubagentNotifyContent(content);
+			if (!details) return new Text(content, 0, 0);
+			const icon =
+				details.status === "completed"
+					? theme.fg("success", "✓")
+					: details.status === "paused"
+						? theme.fg("warning", "■")
+						: theme.fg("error", "✗");
+			const parts: string[] = [];
+			if (details.taskInfo) parts.push(details.taskInfo);
+			if (details.durationMs !== undefined)
+				parts.push(formatDuration(details.durationMs));
+			let text = `${icon} ${theme.bold(details.agent)} ${theme.fg("dim", details.status)}`;
+			if (parts.length > 0)
+				text += ` ${theme.fg("dim", "·")} ${parts.map((part) => theme.fg("dim", part)).join(` ${theme.fg("dim", "·")} `)}`;
+			const trimmedPreview = details.resultPreview.trim();
+			const previewLines = options.expanded
+				? trimmedPreview.split("\n").filter((line) => line.trim())
+				: [trimmedPreview.split("\n", 1)[0] ?? ""].filter((line) =>
+						line.trim(),
+					);
+			for (const line of previewLines.length > 0
+				? previewLines
+				: ["(no output)"]) {
+				text += `\n  ${theme.fg("dim", `⎿  ${line}`)}`;
+			}
+			if (!options.expanded && trimmedPreview.includes("\n")) {
+				const expandKey = keyText("app.tools.expand");
+				text += `\n  ${theme.fg("dim", `${expandKey} full notification`)}`;
+			}
+			if (details.sessionLabel && details.sessionValue) {
+				text += `\n  ${theme.fg("muted", `${details.sessionLabel}: ${shortenPath(details.sessionValue)}`)}`;
+			}
+			return new Text(text, 0, 0);
+		},
+	);
 
-	pi.registerMessageRenderer<SubagentSteeringMessageDetails>(SUBAGENT_STEERING_MESSAGE_TYPE, (message, _options, theme) => {
-		const details = message.details;
-		if (!details) return undefined;
-		return new Text(theme.fg(details.state === "recovered" ? "warning" : "error", formatSteeringNotice(details)), 0, 0);
-	});
+	pi.registerMessageRenderer<SubagentSteeringMessageDetails>(
+		SUBAGENT_STEERING_MESSAGE_TYPE,
+		(message, _options, theme) => {
+			const details = message.details;
+			if (!details) return undefined;
+			return new Text(
+				theme.fg(
+					details.state === "recovered" ? "warning" : "error",
+					formatSteeringNotice(details),
+				),
+				0,
+				0,
+			);
+		},
+	);
 
-	pi.registerMessageRenderer<SubagentControlMessageDetails>(SUBAGENT_CONTROL_MESSAGE_TYPE, (message, _options, theme) => {
-		const details = message.details;
-		if (!details?.event) return undefined;
-		const content = typeof message.content === "string" ? message.content : undefined;
-		return new SubagentControlNoticeComponent({ ...details, noticeText: formatSubagentControlNotice(details, content) }, theme);
-	});
+	pi.registerMessageRenderer<SubagentControlMessageDetails>(
+		SUBAGENT_CONTROL_MESSAGE_TYPE,
+		(message, _options, theme) => {
+			const details = message.details;
+			if (!details?.event) return undefined;
+			const content =
+				typeof message.content === "string" ? message.content : undefined;
+			return new SubagentControlNoticeComponent(
+				{
+					...details,
+					noticeText: formatSubagentControlNotice(details, content),
+				},
+				theme,
+			);
+		},
+	);
 
-	const executeSubagentCollapsed = (id: string, params: SubagentParamsLike, signal: AbortSignal, onUpdate: ((result: AgentToolResult<Details>) => void) | undefined, ctx: ExtensionContext) => {
+	const executeSubagentCollapsed = (
+		id: string,
+		params: SubagentParamsLike,
+		signal: AbortSignal,
+		onUpdate: ((result: AgentToolResult<Details>) => void) | undefined,
+		ctx: ExtensionContext,
+	) => {
 		if (ctx.hasUI) ctx.ui.setToolsExpanded(false);
 		return executor.execute(id, params, signal, onUpdate, ctx);
 	};
@@ -377,21 +532,35 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			executeSubagentCollapsed(requestId, params, signal, onUpdate, ctx),
 		executeVersioned: (requestId, params, signal, ctx, onUpdate) => {
 			if (ctx.hasUI) ctx.ui.setToolsExpanded(false);
-			return executor.executeDelegated(requestId, params, signal, onUpdate, ctx);
+			return executor.executeDelegated(
+				requestId,
+				params,
+				signal,
+				onUpdate,
+				ctx,
+			);
 		},
 	});
 
 	const rpcBridge = registerSubagentRpcBridge({
 		events: pi.events,
 		getContext: () => state.lastUiContext,
-		execute: (id, params, signal, onUpdate, ctx) => executor.execute(id, params, signal, onUpdate, ctx),
+		execute: (id, params, signal, onUpdate, ctx) =>
+			executor.execute(id, params, signal, onUpdate, ctx),
 		state,
 	});
 
-	function effectiveParallelTaskCount(tasks: Array<{ count?: unknown }> | undefined): number {
+	function effectiveParallelTaskCount(
+		tasks: Array<{ count?: unknown }> | undefined,
+	): number {
 		if (!tasks || tasks.length === 0) return 0;
 		return tasks.reduce((total, task) => {
-			const count = typeof task.count === "number" && Number.isInteger(task.count) && task.count >= 1 ? task.count : 1;
+			const count =
+				typeof task.count === "number" &&
+				Number.isInteger(task.count) &&
+				task.count >= 1
+					? task.count
+					: 1;
 			return total + count;
 		}, 0);
 	}
@@ -411,7 +580,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		},
 
 		execute(id, params, signal, onUpdate, ctx) {
-			return executeSubagentCollapsed(id, params as SubagentParamsLike, signal, onUpdate, ctx);
+			return executeSubagentCollapsed(
+				id,
+				params as SubagentParamsLike,
+				signal,
+				onUpdate,
+				ctx,
+			);
 		},
 
 		renderCall(args, theme) {
@@ -419,12 +594,16 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				const target = args.agent || args.chainName || "";
 				return new Text(
 					`${theme.fg("toolTitle", theme.bold("subagent "))}${args.action}${target ? ` ${theme.fg("accent", target)}` : ""}`,
-					0, 0,
+					0,
+					0,
 				);
 			}
 			const isParallel = (args.tasks?.length ?? 0) > 0;
 			const parallelCount = effectiveParallelTaskCount(args.tasks);
-			const asyncLabel = args.async === true && args.clarify !== true ? theme.fg("warning", " [async]") : "";
+			const asyncLabel =
+				args.async === true && args.clarify !== true
+					? theme.fg("warning", " [async]")
+					: "";
 			if (args.chain?.length)
 				return new Text(
 					`${theme.fg("toolTitle", theme.bold("subagent "))}chain (${args.chain.length})${asyncLabel}`,
@@ -448,7 +627,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			clearLegacyResultAnimationTimer(context);
 			return renderSubagentResult(result, options, theme);
 		},
-
 	};
 
 	pi.registerTool(tool);
@@ -461,6 +639,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	});
 
 	registerSlashCommands(pi, state);
+
+	const persistentChat = registerPersistentChat(pi, state, {
+		switchShortcut: config.persistentChat?.switchShortcut,
+	});
 
 	const eventUnsubscribeStoreKey = "__piSubagentEventUnsubscribes";
 	const controlNoticeSeenStoreKey = "__piSubagentVisibleControlNotices";
@@ -476,7 +658,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		}
 	}
 	const existingVisibleControlNotices = globalStore[controlNoticeSeenStoreKey];
-	const visibleControlNotices = existingVisibleControlNotices instanceof Set ? existingVisibleControlNotices as Set<string> : new Set<string>();
+	const visibleControlNotices =
+		existingVisibleControlNotices instanceof Set
+			? (existingVisibleControlNotices as Set<string>)
+			: new Set<string>();
 	globalStore[controlNoticeSeenStoreKey] = visibleControlNotices;
 	const controlEventHandler = (payload: unknown) => {
 		handleSubagentControlNotice({
@@ -487,7 +672,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		});
 	};
 	const steeringNoticeHandler = (payload: unknown) => {
-		handleSubagentSteeringNotice({ pi, state, details: payload as SubagentSteeringMessageDetails });
+		handleSubagentSteeringNotice({
+			pi,
+			state,
+			details: payload as SubagentSteeringMessageDetails,
+		});
 	};
 	const asyncStartedHandler = (payload: unknown) => {
 		handleStarted(payload);
@@ -503,6 +692,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		pi.events.on(SUBAGENT_CONTROL_EVENT, controlEventHandler),
 		pi.events.on(SUBAGENT_STEERING_NOTICE_EVENT, steeringNoticeHandler),
 		rpcBridge.dispose,
+		persistentChat.dispose,
 	];
 	globalStore[eventUnsubscribeStoreKey] = eventUnsubscribes;
 
@@ -522,7 +712,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		try {
 			const sessionFile = ctx.sessionManager.getSessionFile();
 			if (sessionFile) {
-				cleanupOldArtifacts(getArtifactsDir(sessionFile), DEFAULT_ARTIFACT_CONFIG.cleanupDays);
+				cleanupOldArtifacts(
+					getArtifactsDir(sessionFile),
+					DEFAULT_ARTIFACT_CONFIG.cleanupDays,
+				);
 			}
 		} catch {
 			// Cleanup failures should not block session lifecycle events.
@@ -536,10 +729,17 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		state.subagentSpawns = {
 			sessionId: state.currentSessionId,
 			count: 0,
-			configuredLimit: resolveMaxSubagentSpawnsPerSession(config.maxSubagentSpawnsPerSession) ?? null,
+			configuredLimit:
+				resolveMaxSubagentSpawnsPerSession(
+					config.maxSubagentSpawnsPerSession,
+				) ?? null,
 			granted: 0,
 			grantHistory: [],
 		};
+		// state.persistent is NOT reset here: the persistent-chat store
+		// loads its state from disk in registerPersistentChat, and any
+		// subsequent mutations are auto-saved. Resetting here would
+		// clobber the loaded state and re-emit an empty save.
 		// Set PI_SUBAGENT_PARENT_SESSION for permission-system forwarding.
 		// Only set in the root session (the interactive UI session), not in
 		// child subagent processes — children inherit the parent's value
@@ -560,19 +760,41 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		restoreActiveJobs(ctx);
 		scheduledRunManager.bindSession(ctx);
 		restoreSlashFinalSnapshots(ctx.sessionManager.getEntries());
+		restorePersistentRunSnapshots(ctx.sessionManager.getEntries());
 		startResultWatcher();
 		primeExistingResults({ triggerTurn: !recovering });
 		fleetStatus?.setContext(ctx);
 	};
 
+	const logSession = (message: string, data?: unknown): void =>
+		logPersistent("session", message, data);
+
 	pi.on("session_start", (event, ctx) => {
-		const recovering = event.reason === "startup" || event.reason === "reload" || event.reason === "resume";
+		const recovering =
+			event.reason === "startup" ||
+			event.reason === "reload" ||
+			event.reason === "resume";
+		logSession("start", { reason: event.reason });
 		resetSessionState(ctx, recovering);
 		rpcBridge.emitReady(ctx);
 		supervisorChannel.start();
 	});
 
-	pi.on("session_shutdown", () => {
+	pi.on("session_compact", (event) => {
+		// Compaction of the main session can interleave with a persistent
+		// subagent run (the queued-input collision behind "alt+n stopped
+		// switching" after compaction). Log it so the window is visible.
+		logSession("compact", {
+			reason: event.reason,
+			fromExtension: event.fromExtension,
+			willRetry: event.willRetry,
+		});
+	});
+
+	pi.on("session_shutdown", (event) => {
+		logSession("shutdown", {
+			reason: (event as { reason?: string } | undefined)?.reason,
+		});
 		stopResultWatcher();
 		state.currentSessionId = null;
 		state.parentSessionFile = null;
@@ -613,6 +835,13 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			}
 		} catch (error) {
 			if (!isStaleExtensionContextError(error)) throw error;
+		}
+		try {
+			if (state.lastUiContext?.hasUI) {
+				state.lastUiContext.ui.setStatus(PERSISTENT_STATUS_KEY, undefined);
+			}
+		} catch {
+			// Best-effort status clear during shutdown.
 		}
 	});
 }

@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { type AssistantMessage, type Context, type ToolCall } from "@earendil-works/pi-ai";
+import {
+	type AssistantMessage,
+	type Context,
+	type ToolCall,
+} from "@earendil-works/pi-ai";
 import {
 	type FauxContentBlock,
 	type FauxResponseStep,
@@ -19,13 +23,121 @@ import {
 	DefaultResourceLoader,
 	SessionManager,
 	SettingsManager,
+	Theme,
 } from "@earendil-works/pi-coding-agent";
 
-const EXTENSION_PATH = fileURLToPath(new URL("../../src/extension/index.ts", import.meta.url));
-const CHILD_CLI_PATH = fileURLToPath(new URL("./real-session-child-cli.mjs", import.meta.url));
+const EXTENSION_PATH = fileURLToPath(
+	new URL("../../src/extension/index.ts", import.meta.url),
+);
+const CHILD_CLI_PATH = fileURLToPath(
+	new URL("./real-session-child-cli.mjs", import.meta.url),
+);
 
-export type FauxReply = string | FauxContentBlock | FauxContentBlock[] | AssistantMessage;
-export type FauxResponder = (context: Context, state: { callCount: number }) => FauxReply | Promise<FauxReply>;
+const noOpTheme = new Theme(
+	{
+		accent: "#888888",
+		border: "#888888",
+		borderAccent: "#888888",
+		borderMuted: "#888888",
+		success: "#888888",
+		error: "#888888",
+		warning: "#888888",
+		muted: "#888888",
+		dim: "#888888",
+		text: "#888888",
+		thinkingText: "#888888",
+		userMessageText: "#888888",
+		customMessageText: "#888888",
+		customMessageLabel: "#888888",
+		toolTitle: "#888888",
+		toolOutput: "#888888",
+		mdHeading: "#888888",
+		mdLink: "#888888",
+		mdLinkUrl: "#888888",
+		mdCode: "#888888",
+		mdCodeBlock: "#888888",
+		mdCodeBlockBorder: "#888888",
+		mdQuote: "#888888",
+		mdQuoteBorder: "#888888",
+		mdHr: "#888888",
+		mdListBullet: "#888888",
+		toolDiffAdded: "#888888",
+		toolDiffRemoved: "#888888",
+		toolDiffContext: "#888888",
+		syntaxComment: "#888888",
+		syntaxKeyword: "#888888",
+		syntaxFunction: "#888888",
+		syntaxVariable: "#888888",
+		syntaxString: "#888888",
+		syntaxNumber: "#888888",
+		syntaxType: "#888888",
+		syntaxOperator: "#888888",
+		syntaxPunctuation: "#888888",
+		thinkingOff: "#888888",
+		thinkingMinimal: "#888888",
+		thinkingLow: "#888888",
+		thinkingMedium: "#888888",
+		thinkingHigh: "#888888",
+		thinkingXhigh: "#888888",
+		thinkingMax: "#888888",
+		bashMode: "#888888",
+	},
+	{
+		selectedBg: "#000000",
+		userMessageBg: "#000000",
+		customMessageBg: "#000000",
+		toolPendingBg: "#000000",
+		toolSuccessBg: "#000000",
+		toolErrorBg: "#000000",
+	},
+	"256color",
+);
+
+/**
+ * Full no-op UI context (mirrors the runtime's internal noOpUIContext). The
+ * harness binds this so the session has extension bindings, matching real pi
+ * (interactive-mode binds a UI context). Without bindings, session.reload()
+ * skips re-emitting session_start and reload-only behavior can't be tested.
+ */
+const noOpUiContext = {
+	select: async () => undefined,
+	confirm: async () => false,
+	input: async () => undefined,
+	notify: () => {},
+	onTerminalInput: () => () => {},
+	setStatus: () => {},
+	setWorkingMessage: () => {},
+	setWorkingVisible: () => {},
+	setWorkingIndicator: () => {},
+	setHiddenThinkingLabel: () => {},
+	setWidget: () => {},
+	setFooter: () => {},
+	setHeader: () => {},
+	setTitle: () => {},
+	custom: async () => undefined,
+	pasteToEditor: () => {},
+	setEditorText: () => {},
+	getEditorText: () => "",
+	editor: async () => undefined,
+	addAutocompleteProvider: () => {},
+	setEditorComponent: () => {},
+	getEditorComponent: () => undefined,
+	getTheme: () => undefined,
+	getAllThemes: () => [],
+	setTheme: () => ({ success: false, error: "UI not available" }),
+	get theme() {
+		return noOpTheme;
+	},
+	getToolsExpanded: () => false,
+	setToolsExpanded: () => {},
+};
+
+export type FauxReply =
+	string | FauxContentBlock | FauxContentBlock[] | AssistantMessage;
+export type FauxResponder = (
+	context: Context,
+	state: { callCount: number },
+) => FauxReply | Promise<FauxReply>;
 
 export interface RealSessionRunOptions {
 	prompt: string;
@@ -33,7 +145,18 @@ export interface RealSessionRunOptions {
 	respond: FauxResponder;
 	timeoutMs?: number;
 	projectFiles?: Record<string, string>;
+	homeFiles?: Record<string, string>;
 	reportChildTools?: boolean;
+	/** Compaction settings override (default: disabled). */
+	compaction?: { enabled?: boolean; keepRecentTokens?: number };
+	/** Additional prompts delivered after the first, in order. */
+	prompts?: Array<{ text: string; expandPromptTemplates?: boolean }>;
+	/**
+	 * Fixed main-session id (passed to SessionManager.create). Lets a test
+	 * reuse one session scope across two runs (restart survival) or use
+	 * distinct scopes (leak isolation). Random when omitted.
+	 */
+	sessionId?: string;
 }
 
 export interface RealSessionRun {
@@ -43,7 +166,48 @@ export interface RealSessionRun {
 	dispose: () => Promise<void>;
 }
 
-export function subagentCall(args: Record<string, unknown>, id = "call-subagent-e2e"): ToolCall {
+const sleep = (ms: number) =>
+	new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Wait until `expectedCompletions` persistent subagent runs have finalized
+ * (a persist.run message with a non-pending state exists in the session).
+ * Persistent runs execute in the background, so e2e tests must wait for
+ * them instead of assuming the last session.prompt() returned after the
+ * child finished.
+ */
+export async function waitForPersistentRuns(
+	session: AgentSession,
+	options: { expectedCompletions: number; timeoutMs?: number } = {
+		expectedCompletions: 1,
+	},
+): Promise<void> {
+	const { expectedCompletions, timeoutMs = 30_000 } = options;
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		const completions = session.sessionManager
+			.getEntries()
+			.filter(
+				(entry) =>
+					entry.type === "custom_message" &&
+					(entry as { customType?: string }).customType === "persist.run" &&
+					((entry as { details?: { state?: string } }).details?.state ??
+						"pending") !== "pending",
+			).length;
+		if (completions >= expectedCompletions) return;
+		if (Date.now() >= deadline) {
+			throw new Error(
+				`timed out after ${timeoutMs}ms waiting for ${expectedCompletions} persistent run completion(s); found ${completions}`,
+			);
+		}
+		await sleep(25);
+	}
+}
+
+export function subagentCall(
+	args: Record<string, unknown>,
+	id = "call-subagent-e2e",
+): ToolCall {
 	return fauxToolCall("subagent", args, { id });
 }
 
@@ -52,9 +216,17 @@ export function routeParentThroughSubagent(input: {
 	subagentArgs: Record<string, unknown>;
 }): FauxResponder {
 	return (context) => {
-		const isParent = (context.tools ?? []).some((tool) => tool.name === "subagent");
+		const isParent = (context.tools ?? []).some(
+			(tool) => tool.name === "subagent",
+		);
 		if (!isParent) return "Unexpected non-parent model call.";
-		const resultText = latestSubagentToolResultText(context.messages as Array<{ role?: string; toolName?: string; content?: unknown }>);
+		const resultText = latestSubagentToolResultText(
+			context.messages as Array<{
+				role?: string;
+				toolName?: string;
+				content?: unknown;
+			}>,
+		);
 		if (resultText !== undefined) {
 			return `Parent relays: ${resultText.includes(input.childMarker) ? input.childMarker : "CHILD_MISSING"}`;
 		}
@@ -72,7 +244,9 @@ export function subagentToolResults(session: AgentSession): string[] {
 	return results;
 }
 
-function latestSubagentToolResultText(messages: Array<{ role?: string; toolName?: string; content?: unknown }>): string | undefined {
+function latestSubagentToolResultText(
+	messages: Array<{ role?: string; toolName?: string; content?: unknown }>,
+): string | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message.role === "toolResult" && message.toolName === "subagent") {
@@ -85,22 +259,40 @@ function latestSubagentToolResultText(messages: Array<{ role?: string; toolName?
 function textFromContent(content: unknown): string {
 	if (!Array.isArray(content)) return "";
 	return content
-		.map((part) => part && typeof part === "object" && (part as { type?: unknown }).type === "text"
-			? String((part as { text?: unknown }).text ?? "")
-			: "")
+		.map((part) =>
+			part &&
+			typeof part === "object" &&
+			(part as { type?: unknown }).type === "text"
+				? String((part as { text?: unknown }).text ?? "")
+				: "",
+		)
 		.join("");
 }
 
 function toAssistantMessage(reply: FauxReply): AssistantMessage {
-	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false does not narrow `in` checks on unions; the cast is required for the extension tsconfig but looks redundant under eslint's strict program
-	if (reply && typeof reply === "object" && "role" in reply) return reply as unknown as AssistantMessage;
-	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false leaves AssistantMessage in the union after the `in` check, so Array.isArray narrowing is incomplete
-	const content: FauxContentBlock[] = typeof reply === "string" ? [fauxText(reply)] : Array.isArray(reply) ? (reply as unknown as FauxContentBlock[]) : [reply as unknown as FauxContentBlock];
-	const hasToolCall = content.some((block) => (block as { type?: string }).type === "toolCall");
-	return fauxAssistantMessage(content, { stopReason: hasToolCall ? "toolUse" : "stop" });
+	if (reply && typeof reply === "object" && "role" in reply)
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false does not narrow `in` checks on unions; the cast is required for the extension tsconfig but looks redundant under eslint's strict program
+		return reply as unknown as AssistantMessage;
+	const content: FauxContentBlock[] =
+		typeof reply === "string"
+			? [fauxText(reply)]
+			: Array.isArray(reply)
+				? // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false leaves AssistantMessage in the union after the `in` check, so Array.isArray narrowing is incomplete
+					(reply as unknown as FauxContentBlock[])
+				: // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- strict:false leaves AssistantMessage in the union after the `in` check, so Array.isArray narrowing is incomplete
+					[reply as unknown as FauxContentBlock];
+	const hasToolCall = content.some(
+		(block) => (block as { type?: string }).type === "toolCall",
+	);
+	return fauxAssistantMessage(content, {
+		stopReason: hasToolCall ? "toolUse" : "stop",
+	});
 }
 
-function installChildPiShim(childText: string, reportChildTools = false): () => void {
+function installChildPiShim(
+	childText: string,
+	reportChildTools = false,
+): () => void {
 	const rootDir = mkdtempSync(path.join(os.tmpdir(), "pi-real-session-cli-"));
 	const binDir = path.join(rootDir, "bin");
 	const piPackageDir = path.join(rootDir, "pi-package");
@@ -114,7 +306,10 @@ function installChildPiShim(childText: string, reportChildTools = false): () => 
 	writeFileSync(path.join(rootDir, ".keep"), "");
 	mkdirSync(binDir, { recursive: true });
 	mkdirSync(path.dirname(childCliPath), { recursive: true });
-	writeFileSync(childCliPath, `import ${JSON.stringify(pathToFileURL(CHILD_CLI_PATH).href)};\n`);
+	writeFileSync(
+		childCliPath,
+		`import ${JSON.stringify(pathToFileURL(CHILD_CLI_PATH).href)};\n`,
+	);
 	writeFileSync(
 		path.join(piPackageDir, "package.json"),
 		JSON.stringify({ name: "@earendil-works/pi-coding-agent" }),
@@ -143,15 +338,18 @@ function installChildPiShim(childText: string, reportChildTools = false): () => 
 	return () => {
 		if (previousPath === undefined) delete process.env.PATH;
 		else process.env.PATH = previousPath;
-		if (previousPiBinary === undefined) delete process.env.PI_SUBAGENT_PI_BINARY;
+		if (previousPiBinary === undefined)
+			delete process.env.PI_SUBAGENT_PI_BINARY;
 		else process.env.PI_SUBAGENT_PI_BINARY = previousPiBinary;
 		if (process.platform === "win32") {
 			if (previousArgv1 === undefined) delete process.argv[1];
 			else process.argv[1] = previousArgv1;
 		}
-		if (previousChildText === undefined) delete process.env.PI_SUBAGENTS_E2E_CHILD_TEXT;
+		if (previousChildText === undefined)
+			delete process.env.PI_SUBAGENTS_E2E_CHILD_TEXT;
 		else process.env.PI_SUBAGENTS_E2E_CHILD_TEXT = previousChildText;
-		if (previousReportTools === undefined) delete process.env.PI_SUBAGENTS_E2E_REPORT_CHILD_TOOLS;
+		if (previousReportTools === undefined)
+			delete process.env.PI_SUBAGENTS_E2E_REPORT_CHILD_TOOLS;
 		else process.env.PI_SUBAGENTS_E2E_REPORT_CHILD_TOOLS = previousReportTools;
 		rmSync(rootDir, { recursive: true, force: true });
 	};
@@ -166,7 +364,9 @@ function restoreEnv(snapshot: Map<string, string | undefined>): void {
 	for (const [name, value] of snapshot) setEnv(name, value);
 }
 
-export async function runRealSubagentSession(options: RealSessionRunOptions): Promise<RealSessionRun> {
+export async function runRealSubagentSession(
+	options: RealSessionRunOptions,
+): Promise<RealSessionRun> {
 	const cwd = mkdtempSync(path.join(os.tmpdir(), "pi-real-session-cwd-"));
 	const home = mkdtempSync(path.join(os.tmpdir(), "pi-real-session-home-"));
 	const previousCwd = process.cwd();
@@ -181,9 +381,15 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 		["PI_SUBAGENT_MAX_DEPTH", process.env.PI_SUBAGENT_MAX_DEPTH],
 		["PI_SUBAGENT_PARENT_SESSION", process.env.PI_SUBAGENT_PARENT_SESSION],
 		["PI_SUBAGENT_PI_BINARY", process.env.PI_SUBAGENT_PI_BINARY],
-		["PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT", process.env.PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT],
+		[
+			"PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT",
+			process.env.PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT,
+		],
 	]);
-	const uninstallChildPi = installChildPiShim(options.childText, options.reportChildTools);
+	const uninstallChildPi = installChildPiShim(
+		options.childText,
+		options.reportChildTools,
+	);
 	let session: AgentSession | undefined;
 	let disposed = false;
 
@@ -191,7 +397,10 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 		if (disposed) return;
 		disposed = true;
 		try {
-			await session?.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+			await session?.extensionRunner.emit({
+				type: "session_shutdown",
+				reason: "quit",
+			});
 		} catch {}
 		try {
 			session?.dispose();
@@ -217,9 +426,21 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 		delete process.env.PI_SUBAGENT_MAX_DEPTH;
 		delete process.env.PI_SUBAGENT_PARENT_SESSION;
 		delete process.env.PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT;
-		for (const [relativePath, content] of Object.entries(options.projectFiles ?? {})) {
+		for (const [relativePath, content] of Object.entries(
+			options.projectFiles ?? {},
+		)) {
 			const target = path.resolve(cwd, relativePath);
-			if (target !== cwd && !target.startsWith(`${cwd}${path.sep}`)) throw new Error(`E2E project file escapes cwd: ${relativePath}`);
+			if (target !== cwd && !target.startsWith(`${cwd}${path.sep}`))
+				throw new Error(`E2E project file escapes cwd: ${relativePath}`);
+			mkdirSync(path.dirname(target), { recursive: true });
+			writeFileSync(target, content, "utf-8");
+		}
+		for (const [relativePath, content] of Object.entries(
+			options.homeFiles ?? {},
+		)) {
+			const target = path.resolve(home, relativePath);
+			if (target !== home && !target.startsWith(`${home}${path.sep}`))
+				throw new Error(`E2E home file escapes home: ${relativePath}`);
 			mkdirSync(path.dirname(target), { recursive: true });
 			writeFileSync(target, content, "utf-8");
 		}
@@ -243,11 +464,33 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 		const model = modelRuntime.getModel(faux.provider.id, "parent");
 		if (!model) throw new Error("faux parent model was not registered");
 		const respond = options.respond;
-		const responseFactory: FauxResponseStep = async (context, _streamOptions, state) => toAssistantMessage(await respond(context, state));
+		const responseFactory: FauxResponseStep = async (
+			context,
+			_streamOptions,
+			state,
+		) => {
+			const lastUser = [...context.messages]
+				.reverse()
+				.find((m) => (m as { role?: string }).role === "user");
+			const txt = Array.isArray(lastUser?.content)
+				? lastUser.content
+						.map((x: { type?: string; text?: string }) =>
+							x.type === "text" ? x.text : "",
+						)
+						.join(" ")
+				: "";
+			console.error(
+				"DBG-LLM",
+				Date.now(),
+				state.callCount,
+				JSON.stringify(txt).slice(0, 80),
+			);
+			return toAssistantMessage(await respond(context, state));
+		};
 		faux.setResponses(Array.from({ length: 8 }, () => responseFactory));
 
 		const settingsManager = SettingsManager.inMemory({
-			compaction: { enabled: false },
+			compaction: options.compaction ?? { enabled: false },
 			retry: { enabled: false },
 		});
 		const loader = new DefaultResourceLoader({
@@ -259,7 +502,8 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 			noPromptTemplates: true,
 			noThemes: true,
 			noContextFiles: true,
-			systemPrompt: "You are an E2E parent. Delegate with the subagent tool, then report the tool result.",
+			systemPrompt:
+				"You are an E2E parent. Delegate with the subagent tool, then report the tool result.",
 		});
 		await loader.reload();
 
@@ -269,7 +513,11 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 			model,
 			modelRuntime,
 			resourceLoader: loader,
-			sessionManager: SessionManager.create(cwd, path.join(home, "sessions")),
+			sessionManager: SessionManager.create(
+				cwd,
+				path.join(home, "sessions"),
+				options.sessionId ? { id: options.sessionId } : undefined,
+			),
 			settingsManager,
 		});
 		session = created.session;
@@ -278,28 +526,54 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 		let responseText = "";
 		const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
 			if (event.type === "message_start") responseText = "";
-			if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+			if (
+				event.type === "message_update" &&
+				event.assistantMessageEvent.type === "text_delta"
+			) {
 				responseText += event.assistantMessageEvent.delta;
 			}
 		});
 
-		await session.bindExtensions({});
+		await session.bindExtensions({ uiContext: noOpUiContext, mode: "tui" });
 		const timeoutMs = options.timeoutMs ?? 30_000;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		try {
 			await Promise.race([
 				session.prompt(options.prompt, { expandPromptTemplates: false }),
 				new Promise<never>((_, reject) => {
-					timer = setTimeout(() => reject(new Error(`real-session E2E timed out after ${timeoutMs}ms`)), timeoutMs);
+					timer = setTimeout(
+						() =>
+							reject(
+								new Error(`real-session E2E timed out after ${timeoutMs}ms`),
+							),
+						timeoutMs,
+					);
 				}),
 			]);
+			for (const prompt of options.prompts ?? []) {
+				await Promise.race([
+					session.prompt(prompt.text, {
+						expandPromptTemplates: prompt.expandPromptTemplates ?? false,
+					}),
+					new Promise<never>((_, reject) => {
+						timer = setTimeout(
+							() =>
+								reject(
+									new Error(`real-session E2E timed out after ${timeoutMs}ms`),
+								),
+							timeoutMs,
+						);
+					}),
+				]);
+			}
 		} finally {
 			if (timer) clearTimeout(timer);
 			unsubscribe();
 		}
 
 		return {
-			responseText: responseText.trim() || session.getLastAssistantText()?.trim() || "",
+			responseText:
+				responseText.trim() || session.getLastAssistantText()?.trim() || "",
 			parentSession: session,
 			modelCalls: faux.state.callCount,
 			dispose,

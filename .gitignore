@@ -5,3 +5,8 @@ AGENTS.md
 node_modules/
 .fallow/
 tmp/
+.tmp-e2e-state/
+.tmp-e2e-state-persistent-chat/
+.tmp-e2e-state-repro/
+logs/
+sessions/
