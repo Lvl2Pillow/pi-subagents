@@ -4381,13 +4381,7 @@ describe(
 					{
 						action: "append-step",
 						id: "missing-run",
-						chain: [
-							{
-								agent: "echo",
-								task: "Review the previous work",
-								acceptance: { level: "reviewed" },
-							},
-						],
+						step: { agent: "echo", task: "Review the previous work", acceptance: { level: "reviewed" } },
 					},
 					new AbortController().signal,
 					undefined,

@@ -14,6 +14,37 @@ const SLASH_SUBAGENT_REQUEST_EVENT = "subagent:slash:request";
 const SLASH_SUBAGENT_STARTED_EVENT = "subagent:slash:started";
 const SLASH_SUBAGENT_RESPONSE_EVENT = "subagent:slash:response";
 
+/** Write per-id schedule records (current store format: <store>/<id>/schedule.json). */
+function writeScheduleFixture(root: string, jobs: Array<{ id: string; name: string; offsetMs: number; agent: string; task: string }>): void {
+	const storePath = scheduledRunStorePath(root, "session-test");
+	for (const job of jobs) {
+		const now = Date.now();
+		const runAt = new Date(now + job.offsetMs).toISOString();
+		const dir = path.join(storePath, job.id);
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(
+			path.join(dir, "schedule.json"),
+			JSON.stringify(
+				{
+					schemaVersion: 1,
+					id: job.id,
+					name: job.name,
+					cwd: root,
+					trigger: { kind: "once", at: runAt, nextRunAt: runAt },
+					target: { agent: job.agent, task: job.task },
+					overlap: "skip",
+					catchUp: "none",
+					paused: false,
+					createdAt: new Date(now).toISOString(),
+					updatedAt: new Date(now).toISOString(),
+				},
+				null,
+				2,
+			),
+		);
+	}
+}
+
 interface EventBus {
 	on(event: string, handler: (data: unknown) => void): () => void;
 	emit(event: string, data: unknown): void;
@@ -3163,34 +3194,7 @@ describe(
 		it("prints cancel commands for scheduled subagent runs when subagents-stop has no UI", async () => {
 			await withIsolatedHome(async () => {
 				await withTempProject("pi-slash-stop-scheduled-", async (root) => {
-					const storePath = scheduledRunStorePath(root, "session-test");
-					fs.mkdirSync(path.dirname(storePath), { recursive: true });
-					fs.writeFileSync(
-						storePath,
-						JSON.stringify(
-							{
-								version: 1,
-								cwd: root,
-								sessionId: "session-test",
-								jobs: [
-									{
-										id: "job-1",
-										name: "nightly scout",
-										schedule: "+10m",
-										runAt: Date.now() + 600_000,
-										state: "scheduled",
-										createdAt: Date.now(),
-										updatedAt: Date.now(),
-										cwd: root,
-										sessionId: "session-test",
-										params: { agent: "scout", task: "later", async: true },
-									},
-								],
-							},
-							null,
-							2,
-						),
-					);
+					writeScheduleFixture(root, [{ id: "job-1", name: "nightly scout", offsetMs: 600_000, agent: "scout", task: "later" }]);
 					const sent: unknown[] = [];
 					const commands = new Map<string, RegisteredSlashCommand>();
 					const state = createState(root);
@@ -3210,14 +3214,14 @@ describe(
 						.get("subagents-stop")!
 						.handler("", createCommandContext({ cwd: root, hasUI: false }));
 
-					const content = String(
-						(sent[0] as { content?: unknown }).content ?? "",
-					);
-					assert.match(content, /job-1 · nightly scout/);
-					assert.match(
-						content,
-						/cancel scheduled run: subagent\({ action: "schedule-cancel", id: "job-1" }\)/,
-					);
+						const content = String(
+							(sent[0] as { content?: unknown }).content ?? "",
+						);
+						assert.match(content, /job-1 · nightly scout/);
+						assert.match(
+							content,
+							/pause schedule: subagent\({ action: "schedule.pause", id: "job-1" }\)/,
+						);
 					assert.doesNotMatch(content, /\/subagents-stop job-1/);
 				});
 			});
@@ -3228,46 +3232,10 @@ describe(
 				await withTempProject(
 					"pi-slash-stop-selected-scheduled-",
 					async (root) => {
-						const storePath = scheduledRunStorePath(root, "session-test");
-						fs.mkdirSync(path.dirname(storePath), { recursive: true });
-						fs.writeFileSync(
-							storePath,
-							JSON.stringify(
-								{
-									version: 1,
-									cwd: root,
-									sessionId: "session-test",
-									jobs: [
-										{
-											id: "job-1",
-											name: "early scout",
-											schedule: "+5m",
-											runAt: Date.now() + 300_000,
-											state: "scheduled",
-											createdAt: Date.now(),
-											updatedAt: Date.now(),
-											cwd: root,
-											sessionId: "session-test",
-											params: { agent: "scout", task: "soon", async: true },
-										},
-										{
-											id: "job-2",
-											name: "delayed worker",
-											schedule: "+10m",
-											runAt: Date.now() + 600_000,
-											state: "scheduled",
-											createdAt: Date.now(),
-											updatedAt: Date.now(),
-											cwd: root,
-											sessionId: "session-test",
-											params: { agent: "worker", task: "later", async: true },
-										},
-									],
-								},
-								null,
-								2,
-							),
-						);
+						writeScheduleFixture(root, [
+							{ id: "job-1", name: "early scout", offsetMs: 300_000, agent: "scout", task: "soon" },
+							{ id: "job-2", name: "delayed worker", offsetMs: 600_000, agent: "worker", task: "later" },
+						]);
 
 						const commands = new Map<string, RegisteredSlashCommand>();
 						const events = createEventBus();
@@ -3360,7 +3328,7 @@ describe(
 						);
 
 						assert.deepEqual(requestedParams, {
-							action: "schedule-cancel",
+							action: "schedule.pause",
 							id: "job-2",
 						});
 					},
