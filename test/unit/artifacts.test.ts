@@ -39,6 +39,7 @@ describe("project-local artifact paths", () => {
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "broad", files: ["**/*"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "root-wildcard", files: ["*"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "included", files: [".pi-subagents/**"] })) ?? "", /artifactDir/);
+		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "excluded-after-include", files: [".pi-subagents/**", "!.pi-subagents/**"] })), undefined);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "artifacts-included", files: [".pi-subagents/artifacts/**"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "artifacts-directory-included", files: [".pi-subagents/artifacts"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "dynamic-input-included", files: [".pi-subagents/artifacts/*_input.md"] })) ?? "", /artifactDir/);
@@ -47,6 +48,7 @@ describe("project-local artifact paths", () => {
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "dynamic-meta-included", files: [".pi-subagents/artifacts/*_meta.json"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "progress-included", files: [".pi-subagents/artifacts/progress/**"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "outputs-included", files: [".pi-subagents/artifacts/outputs/**"] })) ?? "", /artifactDir/);
+		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "nested-output-included", files: [".pi-subagents/artifacts/outputs/*/*.md"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "chain-runs-included", files: [".pi-subagents/chain-runs/**"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "chain-runs-directory-included", files: [".pi-subagents/chain-runs"] })) ?? "", /artifactDir/);
 	});
