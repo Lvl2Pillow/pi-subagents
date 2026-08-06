@@ -35,6 +35,7 @@ describe("project-local artifact paths", () => {
 		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "classignored" }, { name: ".npmignore", content: "[.]pi-subagents/**\n" })), undefined);
 		assert.equal(getProjectArtifactPackagingWarning(packageDir({ name: "restricted", files: ["src/**"] })), undefined);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "broad", files: ["**/*"] })) ?? "", /artifactDir/);
+		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "root-wildcard", files: ["*"] })) ?? "", /artifactDir/);
 		assert.match(getProjectArtifactPackagingWarning(packageDir({ name: "included", files: [".pi-subagents/**"] })) ?? "", /artifactDir/);
 	});
 

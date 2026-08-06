@@ -47,7 +47,7 @@ function normalizePattern(pattern: string): string {
 
 function patternMatchesArtifactPath(pattern: string, artifactPath: string): boolean {
 	const normalized = normalizePattern(pattern);
-	return normalized === PROJECT_ARTIFACT_ROOT || globMatchesPath(normalized, artifactPath);
+	return normalized === PROJECT_ARTIFACT_ROOT || normalized === "*" || globMatchesPath(normalized, artifactPath);
 }
 
 function patternMatchesProjectArtifacts(pattern: string): boolean {
