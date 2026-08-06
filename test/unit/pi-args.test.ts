@@ -90,6 +90,7 @@ function writeMcpFixture(
 		resources?: Array<{ name: string; uri: string; description?: string }>;
 		configPath?: string;
 		cachedAt?: number;
+		configHash?: string;
 	} = {},
 ): void {
 	const serverName = options.serverName ?? "chrome-devtools";
@@ -104,7 +105,7 @@ function writeMcpFixture(
 		version: 1,
 		servers: {
 			[serverName]: {
-				configHash: computeMcpServerHash(definition),
+				configHash: options.configHash ?? computeMcpServerHash(definition),
 				cachedAt: options.cachedAt ?? Date.now(),
 				tools: options.tools ?? [
 					{ name: "take_screenshot" },
@@ -648,16 +649,20 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(args[args.indexOf("--tools") + 1], "read,bash");
 	});
 
-	it("includes adapter tool filters in MCP cache identity", () => {
+	it("includes adapter tool filters and protocol version in MCP cache identity", () => {
 		const base = { command: "npx", args: ["browser-mcp"] };
 
 		assert.notEqual(
 			computeMcpServerHash(base),
 			computeMcpServerHash({ ...base, includeTools: ["browser_navigate"] }),
 		);
+		assert.notEqual(
+			computeMcpServerHash(base),
+			computeMcpServerHash({ ...base, protocolVersion: "2025-03-26" }),
+		);
 	});
 
-	it("matches pi-mcp-adapter 2.15.0 metadata cache hashes", () => {
+	it("matches pi-mcp-adapter 2.20.1 metadata cache hashes", () => {
 		process.env.MCP_HASH_ROOT = "/tmp/mcp-root";
 		process.env.MCP_HASH_TOKEN = "token-value";
 
@@ -681,9 +686,9 @@ describe("buildPiArgs system prompt mode wiring", () => {
 				computeMcpServerHash({ socket: "{env:MCP_HASH_ROOT}/rmcp.sock" }),
 			],
 			[
-				"8af47bd5a801f42bd252789826df883c6f4db6f1d425b82f8561d75063fbe3a8",
-				"77db141e556d24c3740a4b4f0cd50d8c23309a28062282cc1ca724207359ef5a",
-				"77f7f77a3e8df990d8c78e99ca81508fd8d1f954e814ee7cbfa46719f71eb46b",
+				"e78fc93f972eabed6a17c81a253765e013089b082dc8c0a05e9dfe6cb0cb8248",
+				"90c5d968d664477fe0c72f3978c744ae9e44c8b0adc529685d0c5f337061b4a5",
+				"a1d6c326455134aa82feb4523939d6f987f85577fa4cae410f6fb8408cbf750d",
 			],
 		);
 	});
@@ -706,6 +711,28 @@ describe("buildPiArgs system prompt mode wiring", () => {
 		assert.equal(env.MCP_DIRECT_TOOLS, "chrome-devtools");
 		assert.equal(env[REQUIRED_CHILD_TOOLS_ENV], JSON.stringify(["read", "bash", "chrome_devtools_take_screenshot", "chrome_devtools_click"]));
 		assert.equal(env[MCP_DIRECT_CHILD_TOOLS_ENV], JSON.stringify(["chrome_devtools_take_screenshot", "chrome_devtools_click"]));
+	});
+
+	it("resolves direct MCP tool selections from adapter-style protocol version cache entries", () => {
+		const fixture = createMcpFixture();
+		writeMcpFixture(fixture, {
+			serverName: "github",
+			definition: { command: "github-mcp", protocolVersion: "2025-03-26" },
+			configHash: "25b77b7189f1c5fe80b028cb84eb393532528231ac39081fe97c4e2ee7fa086b",
+			tools: [{ name: "search_repositories" }],
+		});
+
+		const { args } = buildPiArgs({
+			baseArgs: ["-p"],
+			task: "hello",
+			sessionEnabled: false,
+			inheritProjectContext: false,
+			inheritSkills: false,
+			tools: ["read"],
+			mcpDirectTools: ["github/search_repositories"],
+		});
+
+		assert.equal(args[args.indexOf("--tools") + 1], "read,github_search_repositories");
 	});
 
 	it("emits --no-tools for explicit empty tool allowlists", () => {
