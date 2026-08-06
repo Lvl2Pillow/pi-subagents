@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Split the README reference material into focused docs and keep the README as a concise quick-start guide.
+- Verified scripted workflows can mix dynamic parallel and sequential phases with managed worktree isolation.
+
 ### Fixed
 - Let the Fleet inspector use the full 85% terminal-height budget on tall terminals. Thanks to @xz-dev for #839.
 - Launch Herdr inspector panes through a JavaScript bootstrap instead of asking Node to type-strip TypeScript installed under `node_modules`. Thanks to @williamleong for #837.
