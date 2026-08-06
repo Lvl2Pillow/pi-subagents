@@ -2400,7 +2400,7 @@ describe(
 		});
 
 		it(
-			"does not retry a signaled child exit",
+			"does not retry non-SIGKILL signaled child exits",
 			{
 				skip:
 					process.platform === "win32"
@@ -2408,7 +2408,7 @@ describe(
 						: false,
 			},
 			async () => {
-				mockPi.onCall({ signal: "SIGKILL" });
+				mockPi.onCall({ signal: "SIGTERM" });
 				mockPi.onCall({ output: "must not run" });
 				const agents = [makeAgent("worker", { model: "openai/gpt-5-mini" })];
 
@@ -2418,10 +2418,10 @@ describe(
 				});
 
 				assert.equal(result.exitCode, 1);
-				assert.equal(result.processSignal, "SIGKILL");
+				assert.equal(result.processSignal, "SIGTERM");
 				assert.equal(
 					result.error,
-					"Subagent process terminated by signal SIGKILL.",
+					"Subagent process terminated by signal SIGTERM.",
 				);
 				assert.equal(result.modelAttempts?.length, 1);
 				assert.equal(mockPi.callCount(), 1);
