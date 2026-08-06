@@ -11,13 +11,14 @@ class FakeFs {
 	blockedMkdir = new Set<string>();
 	blockedAccess = new Set<string>();
 
-	mkdirSync(dirPath: string): void {
+	mkdirSync(dirPath: string): string {
 		if (this.blockedMkdir.has(dirPath)) {
 			const error = new Error("mkdir blocked") as NodeJS.ErrnoException;
 			error.code = "EPERM";
 			throw error;
 		}
 		this.created.push(dirPath);
+		return dirPath;
 	}
 
 	accessSync(dirPath: string): void {

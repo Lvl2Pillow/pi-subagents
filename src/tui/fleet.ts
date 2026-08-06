@@ -17,7 +17,6 @@ import {
 import { getArtifactPaths, getArtifactsDir } from "../shared/artifacts.ts";
 import {
 	formatDuration,
-	formatModelThinking,
 	formatTokens,
 	shortenPath,
 } from "../shared/formatters.ts";
