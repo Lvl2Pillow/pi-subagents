@@ -310,7 +310,7 @@ Report active tools.`;
 
 				const toolResults = subagentToolResults(run.parentSession);
 				assert.equal(toolResults.length, 1);
-				assert.match(toolResults[0], new RegExp(CHILD_MARKER));
+				assert.match(toolResults[0]!, new RegExp(CHILD_MARKER));
 				assert.match(run.responseText, new RegExp(CHILD_MARKER));
 				assert.doesNotMatch(run.responseText, /CHILD_MISSING/);
 				assert.ok(

@@ -322,7 +322,7 @@ describe("resolveSubagentModelOverride scope enforcement", () => {
 		});
 		assert.equal(resolved, "deepseek/deepseek-v4");
 		assert.equal(warnings.length, 1);
-		assert.match(warnings[0], /outside the configured subagent model scope/);
+		assert.match(warnings[0]!, /outside the configured subagent model scope/);
 	});
 
 	it("warns for an inherited parent-session model that is out of scope", () => {
@@ -378,6 +378,6 @@ describe("resolveSubagentModelOverride scope enforcement", () => {
 		});
 		assert.deepEqual(candidates, ["openai/gpt-5-mini", "deepseek/deepseek-v4"]);
 		assert.equal(warnings.length, 1);
-		assert.match(warnings[0], /deepseek\/deepseek-v4/);
+		assert.match(warnings[0]!, /deepseek\/deepseek-v4/);
 	});
 });

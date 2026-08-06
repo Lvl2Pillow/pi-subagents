@@ -158,7 +158,7 @@ describe(
 			const before = runMessages(run);
 			assert.equal(before.length, 2);
 			assert.equal(
-				(before[1].details as { state: string }).state,
+				(before[1]!.details as { state: string }).state,
 				"success",
 				"final state success before reload",
 			);

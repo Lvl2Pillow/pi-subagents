@@ -16,7 +16,7 @@ export function countNestedRuns(children: NestedRunSummary[] | undefined): Neste
 	const counts: NestedRunCounts = { total: 0, running: 0, paused: 0, complete: 0, failed: 0, stopped: 0, queued: 0 };
 	for (const child of children ?? []) {
 		counts.total++;
-		counts[child.state]++;
+		if (child.state in counts) counts[child.state as keyof NestedRunCounts]++;
 		const nested = countNestedRuns([...(child.children ?? []), ...(child.steps?.flatMap((step) => step.children ?? []) ?? [])]);
 		counts.total += nested.total;
 		counts.running += nested.running;
@@ -45,7 +45,7 @@ export function formatNestedAggregate(children: NestedRunSummary[] | undefined):
 
 function nestedRunLabel(run: NestedRunSummary): string {
 	if (run.agent) return run.agent;
-	if (run.agents?.length) return run.agents.length === 1 ? run.agents[0] : `${run.agents.slice(0, 2).join(", ")}${run.agents.length > 2 ? ` +${run.agents.length - 2}` : ""}`;
+	if (run.agents?.length) return run.agents.length === 1 ? run.agents[0]! : `${run.agents.slice(0, 2).join(", ")}${run.agents.length > 2 ? ` +${run.agents.length - 2}` : ""}`;
 	return run.id;
 }
 
@@ -80,7 +80,7 @@ function formatNestedRunLines(children: NestedRunSummary[] | undefined, options:
 			return;
 		}
 		for (let index = 0; index < items.length; index++) {
-			const child = items[index];
+			const child = items[index]!;
 			if (lines.length >= options.maxLines) {
 				const aggregate = formatNestedAggregate(items.slice(index));
 				if (aggregate) lines[lines.length - 1] = `${indent}↳ ${aggregate}`;

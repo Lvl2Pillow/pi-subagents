@@ -36,7 +36,7 @@ type RenderSubagentSummary = (
 
 let renderSubagentResult: RenderSubagentResult | undefined;
 let renderSubagentSummary: RenderSubagentSummary | undefined;
-({ renderSubagentResult, renderSubagentSummary } = await import("../../src/tui/render.ts") as {
+({ renderSubagentResult, renderSubagentSummary } = await import("../../src/tui/render.ts") as unknown as {
 	renderSubagentResult?: RenderSubagentResult;
 	renderSubagentSummary?: RenderSubagentSummary;
 });
@@ -114,7 +114,7 @@ describe("renderSubagentResult fork indicator", () => {
 			const widget = renderSubagentResult!({ content: [{ type: "text", text: "running" }], details }, { expanded: true }, theme);
 			const text = widget.render(160).join("\n");
 			for (const result of details.results) {
-				assert.match(text, new RegExp(`${result.children[0].id} · running`));
+				assert.match(text, new RegExp(`${result.children[0]!.id} · running`));
 			}
 		}
 	});
@@ -163,11 +163,11 @@ describe("renderSubagentResult fork indicator", () => {
 		}, { expanded: false }, theme);
 
 		const lines = widget.render(120).map((line) => line.trimEnd());
-		assert.match(lines[0], /^\[fork\] Managed agents:/);
-		assert.match(lines[0], /…$/);
+		assert.match(lines[0]!, /^\[fork\] Managed agents:/);
+		assert.match(lines[0]!, /…$/);
 		const hintLineIndex = lines.findIndex((line) => line.includes(expandHint) || (expandKey === "" && line.includes("Press ") && line.includes(" for full output")));
 		assert.ok(hintLineIndex > 0);
-		assert.doesNotMatch(lines[0], /reviewer/);
+		assert.doesNotMatch(lines[0]!, /reviewer/);
 	});
 
 	it("keeps multiline structured zero-result errors visible", () => {
@@ -975,8 +975,8 @@ describe("renderSubagentResult fork indicator", () => {
 		const lines = widget.render(120);
 		const pendingIndex = lines.findIndex((line) => /Step 2: b/.test(line));
 		assert.notEqual(pendingIndex, -1);
-		assert.match(lines[pendingIndex], /◦ Step 2: b · pending/);
-		assert.doesNotMatch(lines[pendingIndex], /0ms/);
+		assert.match(lines[pendingIndex]!, /◦ Step 2: b · pending/);
+		assert.doesNotMatch(lines[pendingIndex]!, /0ms/);
 		assert.doesNotMatch(lines[pendingIndex + 1] ?? "", /Done \(no text output\)/);
 	});
 

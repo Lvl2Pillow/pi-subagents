@@ -185,7 +185,7 @@ describe(
 			await waitFor(() => mockPi.callCount() === 1, "mock child spawned");
 			// The box message is deferred: sending it while streaming would
 			// steer an extra model turn.
-			assert.deepEqual(sent, [], "no box message sent while streaming");
+			assert.deepEqual(sent, [] as { display: boolean; details: { state?: string; text?: string } }[], "no box message sent while streaming");
 
 			// The main agent settles; the agent_settled flush drains the box.
 			idle = true;
@@ -195,10 +195,10 @@ describe(
 				"run finalized",
 			);
 			assert.equal(sent.length, 2, "pending + final box messages sent");
-			assert.equal(sent[0].display, true);
-			assert.equal(sent[0].details.state, "pending");
-			assert.equal(sent[1].display, false);
-			assert.equal(sent[1].details.state, "success");
+			assert.equal(sent[0]!.display, true);
+			assert.equal(sent[0]!.details.state, "pending");
+			assert.equal(sent[1]!.display, false);
+			assert.equal(sent[1]!.details.state, "success");
 		});
 
 		it("launches immediately and renders the box when the main agent is idle", async () => {
@@ -211,8 +211,8 @@ describe(
 			runner!.enqueuePersistentPrompt(pi, store, ctx, "hello sub", tempDir);
 
 			assert.equal(sent.length, 1, "pending box rendered immediately");
-			assert.equal(sent[0].display, true);
-			assert.equal(sent[0].details.state, "pending");
+			assert.equal(sent[0]!.display, true);
+			assert.equal(sent[0]!.details.state, "pending");
 
 			await waitFor(
 				() => mockPi.callCount() === 1,
@@ -223,8 +223,8 @@ describe(
 				"run finalized",
 			);
 			assert.equal(sent.length, 2, "final message sent after the child");
-			assert.equal(sent[1].display, false);
-			assert.equal(sent[1].details.state, "success");
+			assert.equal(sent[1]!.display, false);
+			assert.equal(sent[1]!.details.state, "success");
 		});
 
 		it("streams live output into the store as the child works", async () => {

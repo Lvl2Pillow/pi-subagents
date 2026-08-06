@@ -4,6 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
+// @ts-expect-error — the .mjs loader hook ships without declarations; the test
+// exercises it at runtime only, so a structural type is enough here.
 import { resolve } from "../support/ts-loader.mjs";
 
 describe("ts-loader", () => {

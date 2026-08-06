@@ -72,7 +72,7 @@ let resolveSlashMessageDetails: SlashLiveStateModule["resolveSlashMessageDetails
 let available = true;
 try {
 	({ registerSlashCommands } =
-		(await import("../../src/slash/slash-commands.ts")) as RegisterSlashCommandsModule);
+		(await import("../../src/slash/slash-commands.ts")) as unknown as RegisterSlashCommandsModule);
 	({ registerMainWatchdog } =
 		(await import("../../src/watchdog/register-main.ts")) as WatchdogRegisterModule);
 	({
@@ -111,7 +111,7 @@ function createEventBus(): EventBus {
 function createState(cwd: string) {
 	return {
 		baseCwd: cwd,
-		currentSessionId: null,
+		currentSessionId: null as string | null,
 		asyncJobs: new Map(),
 		foregroundRuns: new Map(),
 		foregroundControls: new Map(),
@@ -1940,7 +1940,7 @@ Gather context
 				const built = params as { chain?: Array<Record<string, unknown>> };
 				assert.equal(built.chain?.[0]?.as, "ctx");
 				assert.equal(built.chain?.[0]?.phase, "recon");
-				const group = built.chain?.[1];
+				const group = built.chain?.[1]!;
 				assert.equal((group.parallel as unknown[]).length, 2);
 				assert.equal(group.concurrency, 2);
 				assert.equal(group.failFast, true);
@@ -3084,7 +3084,7 @@ describe(
 
 			await commands.get("subagents-fleet")!.handler("", ctx);
 			assert.equal(shortcuts.size, 1);
-			const shortcut = [...shortcuts.values()][0];
+			const shortcut = [...shortcuts.values()][0]!;
 			assert.equal(shortcut.description, "Open subagent fleet inspector");
 			await shortcut.handler(ctx);
 

@@ -557,7 +557,7 @@ function normalizeAcceptanceReportValue(value: unknown, pathLabel = ""): { value
 		const record = reportValue as Record<string, unknown>;
 		const wrapperKeys = Object.keys(record).filter((key) => ACCEPTANCE_REPORT_WRAPPERS.has(key));
 		if (wrapperKeys.length > 0) {
-			const wrapperKey = wrapperKeys[0];
+			const wrapperKey = wrapperKeys[0]!;
 			if (wrapperKeys.length > 1) errors.push(`${pathLabel || "acceptance-report"}: multiple acceptance report wrappers are ambiguous`);
 			for (const key of Object.keys(record)) {
 				if (key !== wrapperKey) errors.push(`${pathFor(pathLabel, key)}: unsupported alongside acceptance report wrapper '${wrapperKey}'`);

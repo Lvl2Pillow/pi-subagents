@@ -63,8 +63,8 @@ describe("flattenSteps", () => {
 		];
 		const flat = flattenSteps(steps);
 		assert.equal(flat.length, 2);
-		assert.equal(flat[0].agent, "a");
-		assert.equal(flat[1].agent, "b");
+		assert.equal(flat[0]!.agent, "a");
+		assert.equal(flat[1]!.agent, "b");
 	});
 
 	it("expands parallel groups into individual steps", () => {
@@ -197,8 +197,8 @@ describe("mapConcurrent", () => {
 		});
 
 		// All workers should start nearly simultaneously
-		const d1 = startTimes[1] - startTimes[0];
-		const d2 = startTimes[2] - startTimes[0];
+		const d1 = startTimes[1]! - startTimes[0]!;
+		const d2 = startTimes[2]! - startTimes[0]!;
 		assert.ok(d1 < 20, `worker 1 should start immediately, got ${d1}ms delay`);
 		assert.ok(d2 < 20, `worker 2 should start immediately, got ${d2}ms delay`);
 	});

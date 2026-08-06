@@ -588,7 +588,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 				...(params.attachRoot.outputName ? { as: params.attachRoot.outputName } : {}),
 			}, ...chain]
 		: chain;
-	const firstStep = chain[0];
+	const firstStep = chain[0]!;
 	const originalTask = params.task ?? (firstStep
 		? (isCheckpointStep(firstStep)
 			? undefined
@@ -851,7 +851,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 			}
 			const staticStep = nextFlatStep();
 			return buildSeqStep(s, staticStep.sessionFile, undefined, false, undefined, staticStep.index);
-		});
+		}) as RunnerStep[];
 		const steps = params.attachRoot
 			? [{
 					agent: params.attachRoot.agent,
@@ -872,7 +872,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 			if (!("parallel" in step) || !Array.isArray(step.parallel)) continue;
 			const seen = new Map<string, { index: number; agent: string }>();
 			for (let index = 0; index < step.parallel.length; index++) {
-				const task = step.parallel[index];
+				const task = step.parallel[index]!;
 				if (!task.outputPath) continue;
 				const previous = seen.get(task.outputPath);
 				if (previous) {
@@ -1035,7 +1035,7 @@ export function executeAsyncChain(
 	}
 
 	if (spawnResult.pid) {
-		const eventFirstStep = eventChain[0];
+		const eventFirstStep = eventChain[0]!;
 		const firstAgents = isParallelStep(eventFirstStep)
 			? eventFirstStep.parallel.map((t) => t.agent)
 			: isDynamicParallelStep(eventFirstStep)
@@ -1051,7 +1051,7 @@ export function executeAsyncChain(
 		const flatAgents: string[] = [];
 		let flatStepStart = 0;
 		for (let stepIndex = 0; stepIndex < eventChain.length; stepIndex++) {
-			const step = eventChain[stepIndex];
+			const step = eventChain[stepIndex]!;
 			if (isParallelStep(step)) {
 				parallelGroups.push({ start: flatStepStart, count: step.parallel.length, stepIndex });
 				flatAgents.push(...step.parallel.map((task) => task.agent));
@@ -1239,7 +1239,7 @@ export function executeAsyncSingle(
 		: undefined;
 	const modelCandidates = buildModelCandidates(primaryModel, agentConfig.fallbackModels, availableModels, ctx.currentModelProvider, { scope: ctx.modelScope }).map((candidate) =>
 		applyThinkingSuffix(candidate, effectiveThinking, params.thinkingOverride !== undefined),
-	);
+	).filter((candidate): candidate is string => candidate !== undefined);
 	const effectiveSystemPrompt = appendTurnBudgetSystemPrompt(systemPrompt, params.turnBudget);
 	const toolPlan = resolvePiLaunchToolPlan({
 		tools: agentConfig.tools,

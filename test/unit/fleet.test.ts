@@ -321,7 +321,7 @@ describe("native subagent fleet", () => {
 		const runIdOf = (
 			item: (typeof snapshot.items)[number],
 		): string | undefined => ("runId" in item ? item.runId : undefined);
-		assert.equal(runIdOf(snapshot.items[0]), "active-old");
+		assert.equal(runIdOf(snapshot.items[0]!), "active-old");
 		assert.equal(
 			snapshot.items.find((item) => runIdOf(item) === "terminal-21")?.state,
 			"complete",

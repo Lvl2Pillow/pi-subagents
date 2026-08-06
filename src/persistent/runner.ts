@@ -357,7 +357,7 @@ export function drainDeferredMessageSends(
 ): void {
 	if (!active || !mainIsIdle(ctx)) return;
 	for (let i = 0; i < deferredSends.length; i++) {
-		const send = deferredSends[i];
+		const send = deferredSends[i]!;
 		if (send.kind === "pending") {
 			pi.sendMessage(
 				{
@@ -411,7 +411,7 @@ export function flushPendingRuns(
 	if (!options?.allowWhileStreaming && !mainIsIdle(ctx)) return;
 	drainDeferredMessageSends(pi, ctx);
 	for (let i = 0; i < queuedPrompts.length; i++) {
-		const item = queuedPrompts[i];
+		const item = queuedPrompts[i]!;
 		if (runningSlots.has(item.entryIndex)) continue;
 		const entry = store.getAgent(item.entryIndex);
 		if (!entry) continue;

@@ -146,7 +146,7 @@ export function findWorktreeTaskCwdConflict(
 ): WorktreeTaskCwdConflict | undefined {
 	const normalizedSharedCwd = normalizeComparableCwd(sharedCwd);
 	for (let index = 0; index < tasks.length; index++) {
-		const task = tasks[index];
+		const task = tasks[index]!;
 		if (!task.cwd) continue;
 		const taskCwd = path.isAbsolute(task.cwd) ? task.cwd : path.resolve(sharedCwd, task.cwd);
 		if (normalizeComparableCwd(taskCwd) === normalizedSharedCwd) continue;
@@ -590,7 +590,7 @@ export function diffWorktrees(setup: WorktreeSetup, agents: string[], diffsDir: 
 
 	const diffs: WorktreeDiff[] = [];
 	for (let index = 0; index < setup.worktrees.length; index++) {
-		const worktree = setup.worktrees[index];
+		const worktree = setup.worktrees[index]!;
 		const agent = agents[index] ?? `task-${index + 1}`;
 		const patchPath = path.join(diffsDir, `task-${index}-${safePatchAgentName(agent)}.patch`);
 		try {
@@ -608,7 +608,7 @@ export function diffWorktrees(setup: WorktreeSetup, agents: string[], diffsDir: 
 export function cleanupWorktrees(setup: WorktreeSetup): WorktreeCleanupReport {
 	const tasks: WorktreeCleanupTask[] = [];
 	for (let index = setup.worktrees.length - 1; index >= 0; index--) {
-		tasks.push(cleanupSingleWorktree(setup.cwd, setup.worktrees[index]));
+		tasks.push(cleanupSingleWorktree(setup.cwd, setup.worktrees[index]!));
 	}
 	tasks.sort((left, right) => left.index - right.index);
 	const errors: string[] = [];
@@ -643,7 +643,7 @@ export function formatWorktreeDiffSummary(diffs: WorktreeDiff[]): string {
 		lines.push("");
 	}
 
-	const patchesDir = path.dirname(changed[0].patchPath);
+	const patchesDir = path.dirname(changed[0]!.patchPath);
 	lines.push(`Full patches: ${patchesDir}`);
 	return lines.join("\n").trimEnd();
 }

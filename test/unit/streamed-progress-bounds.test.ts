@@ -23,7 +23,7 @@ describe("streamed progress snapshot bounds", () => {
 		assert.equal(bounded.at(-1)?.endMs, recentTools.at(-1)?.endMs);
 		assert.equal(bounded[0]?.endMs, recentTools.at(-MAX_STREAMED_RECENT_TOOLS)?.endMs);
 		// cloned, not aliased
-		bounded[0].args = "mutated";
+		bounded[0]!.args = "mutated";
 		assert.notEqual(recentTools.at(-MAX_STREAMED_RECENT_TOOLS)?.args, "mutated");
 	});
 
@@ -32,9 +32,9 @@ describe("streamed progress snapshot bounds", () => {
 		const longLine = "x".repeat(MAX_STREAMED_OUTPUT_LINE_CHARS + 5000);
 		const bounded = boundStreamedRecentOutput([shortLine, longLine]);
 		assert.equal(bounded[0], shortLine);
-		assert.ok(bounded[1].length < longLine.length);
-		assert.ok(bounded[1].startsWith("x".repeat(MAX_STREAMED_OUTPUT_LINE_CHARS)));
-		assert.match(bounded[1], /\[truncated\]$/);
+		assert.ok(bounded[1]!.length < longLine.length);
+		assert.ok(bounded[1]!.startsWith("x".repeat(MAX_STREAMED_OUTPUT_LINE_CHARS)));
+		assert.match(bounded[1]!, /\[truncated\]$/);
 	});
 
 	it("prefers an existing toolCalls summary and caps it", () => {
@@ -55,8 +55,8 @@ describe("streamed progress snapshot bounds", () => {
 		] as never;
 		const bounded = boundStreamedToolCalls({ toolCalls: undefined, messages });
 		assert.equal(bounded?.length, 2);
-		assert.match(bounded[0].text, /read/);
-		assert.match(bounded[1].text, /grep/);
+		assert.match(bounded[0]!.text, /read/);
+		assert.match(bounded[1]!.text, /grep/);
 	});
 
 	it("returns undefined when there are no tool calls", () => {

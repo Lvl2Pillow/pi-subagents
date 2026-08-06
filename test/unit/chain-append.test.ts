@@ -64,7 +64,7 @@ describe("chain append requests", () => {
 
 			const consumed = consumeChainAppendRequests(asyncDir);
 			assert.equal(consumed.length, 1);
-			assert.equal(consumed[0].id, result.request.id);
+			assert.equal(consumed[0]!.id, result.request.id);
 			assert.equal(countPendingChainAppendRequests(asyncDir), 0);
 		} finally {
 			removeTempDir(root);
@@ -97,7 +97,7 @@ describe("chain append requests", () => {
 			const pending = readPendingChainAppendRequests(asyncDir);
 
 			assert.equal(pending.length, 1);
-			assert.deepEqual(runnerStepOutputNames(pending[0].steps), ["draft", "review"]);
+			assert.deepEqual(runnerStepOutputNames(pending[0]!.steps), ["draft", "review"]);
 			assert.equal(countPendingChainAppendRequests(asyncDir), 1);
 		} finally {
 			removeTempDir(root);

@@ -117,7 +117,7 @@ describe("acknowledged steering action", () => {
 			const status = runningStatus(runId);
 			projectRequest(status, request, ["routed"]);
 			updateSteeringTarget(status.steering!, request.id, 0, "delivered", Date.now());
-			updateSteeringTarget(status.steps![0].steering!, request.id, 0, "delivered", Date.now());
+			updateSteeringTarget(status.steps![0]!.steering!, request.id, 0, "delivered", Date.now());
 			writeStatus(asyncDir, status);
 			const result = await action;
 			assert.equal(result.isError, undefined);
@@ -190,7 +190,7 @@ describe("acknowledged steering action", () => {
 					const acknowledged = runningStatus(runId);
 					projectRequest(acknowledged, request, ["routed"]);
 					updateSteeringTarget(acknowledged.steering!, request.id, 0, "delivered", committedAt);
-					updateSteeringTarget(acknowledged.steps![0].steering!, request.id, 0, "delivered", committedAt);
+					updateSteeringTarget(acknowledged.steps![0]!.steering!, request.id, 0, "delivered", committedAt);
 					writeStatus(asyncDir, acknowledged);
 				},
 				recover: async () => { recovered = true; return successResult("replacement"); },
@@ -301,7 +301,7 @@ describe("acknowledged steering action", () => {
 				state: "paused",
 				turnBudget: { maxTurns: 10, graceTurns: 2, turnCount: 7, outcome: "within-budget" },
 				toolBudget: { soft: 8, hard: 12, block: ["read"], toolCount: 9, outcome: "soft-reached" },
-				steps: [{ ...routed.steps![0], status: "paused", sessionFile }],
+				steps: [{ ...routed.steps![0]!, status: "paused", sessionFile }],
 			};
 			writeStatus(asyncDir, paused);
 			await new Promise((resolve) => setTimeout(resolve, 30));
@@ -344,7 +344,7 @@ describe("acknowledged steering action", () => {
 			projectRequest(routed, request, ["routed"]);
 			writeStatus(asyncDir, routed);
 			await waitUntil(() => fs.existsSync(interruptRequestPath(asyncDir)) ? true : undefined);
-			writeStatus(asyncDir, { ...routed, state: "paused", endedAt: Date.now(), steps: [{ ...routed.steps![0], status: "paused" }] });
+			writeStatus(asyncDir, { ...routed, state: "paused", endedAt: Date.now(), steps: [{ ...routed.steps![0]!, status: "paused" }] });
 			const result = await action;
 			assert.equal(result.isError, true);
 			assert.equal(recovered, false);

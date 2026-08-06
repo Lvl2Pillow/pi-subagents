@@ -41,7 +41,7 @@ describe("headless background-work auto-drain", () => {
 		});
 		assert.equal(waits.length, 2);
 		assert.ok(waits.every((entry) => entry.all === true && entry.stopOnAttention === false && entry.failOnFailedRuns === true));
-		assert.ok((waits[1].timeoutMs ?? 0) < (waits[0].timeoutMs ?? 0), "each wait must share one absolute deadline");
+		assert.ok((waits[1]!.timeoutMs ?? 0) < (waits[0]!.timeoutMs ?? 0), "each wait must share one absolute deadline");
 	});
 
 	it("preserves wait errors instead of treating them as a successful drain", async () => {

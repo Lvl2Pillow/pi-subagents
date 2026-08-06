@@ -296,7 +296,7 @@ function chainStepWarnings(
 		discoverAvailableSkills(ctx.cwd).map((s) => s.name),
 	);
 	for (let i = 0; i < steps.length; i++) {
-		const s = steps[i];
+		const s = steps[i]!;
 		if (s.model) {
 			const found = ctx.modelRegistry
 				.getAvailable()
@@ -856,7 +856,7 @@ function resolveTarget<
 			true,
 		);
 	}
-	if (mutable.length === 1) return mutable[0];
+	if (mutable.length === 1) return mutable[0]!;
 	const scope = asDisambiguationScope(scopeHint);
 	if (!scope) {
 		const paths = mutable.map((m) => `${m.source}: ${m.filePath}`).join("\n");
@@ -876,7 +876,7 @@ function resolveTarget<
 			`Multiple ${kind}s named '${name}' found in scope '${scope}': ${scoped.map((m) => m.filePath).join(", ")}`,
 			true,
 		);
-	return scoped[0];
+	return scoped[0]!;
 }
 
 function renamePath(
@@ -1058,7 +1058,7 @@ function formatChainDetail(chain: ChainConfig): string {
 	}
 	lines.push("", "Steps:");
 	for (let i = 0; i < chain.steps.length; i++) {
-		lines.push(...formatChainStepDetail(chain.steps[i], i));
+		lines.push(...formatChainStepDetail(chain.steps[i]!, i));
 	}
 	return lines.join("\n");
 }

@@ -132,7 +132,7 @@ interface ChainExecutionModule {
 
 const chainMod = await tryImport<ChainExecutionModule>("./src/runs/foreground/chain-execution.ts");
 const available = !!chainMod;
-const executeChain = chainMod?.executeChain;
+const executeChain = chainMod!.executeChain;
 
 describe("chain execution — sequential", { skip: !available ? "pi packages not available" : undefined }, () => {
 	let tempDir: string;
@@ -232,7 +232,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		], agents));
 
 		assert.equal(result.isError, undefined);
-		assert.match(result.content[0].text, /Chain paused at checkpoint 'review'/);
+		assert.match(result.content[0]!.text, /Chain paused at checkpoint 'review'/);
 		assert.equal(result.details.results.length, 1);
 		assert.equal(result.details.checkpoint?.name, "review");
 		assert.equal(result.details.checkpoint?.status, "pending");
@@ -270,8 +270,8 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
 		assert.equal(result.details.results.length, 2);
-		assert.equal(result.details.results[0].agent, "analyst");
-		assert.equal(result.details.results[1].agent, "reporter");
+		assert.equal(result.details.results[0]!.agent, "analyst");
+		assert.equal(result.details.results[1]!.agent, "reporter");
 		assert.deepEqual(result.details.totalCost, { inputTokens: 200, outputTokens: 100, costUsd: 0.002 });
 	});
 
@@ -524,7 +524,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
 		assert.equal(result.details.results.length, 2);
-		assert.deepEqual(result.details.results[0].attemptedModels, ["openai/gpt-5-mini", "anthropic/claude-sonnet-4"]);
+		assert.deepEqual(result.details.results[0]!.attemptedModels, ["openai/gpt-5-mini", "anthropic/claude-sonnet-4"]);
 		assert.equal(mockPi.callCount(), 3);
 	});
 
@@ -553,8 +553,8 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		);
 
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
-		assert.equal(result.details.results[0].model, "github-copilot/gpt-5-mini");
-		assert.deepEqual(result.details.results[0].attemptedModels, ["github-copilot/gpt-5-mini"]);
+		assert.equal(result.details.results[0]!.model, "github-copilot/gpt-5-mini");
+		assert.deepEqual(result.details.results[0]!.attemptedModels, ["github-copilot/gpt-5-mini"]);
 	});
 
 	it("foreground chains inherit the parent session model when no step or agent model is set", async () => {
@@ -576,7 +576,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
 		const args = readCallArgs(0);
 		assert.equal(args[args.indexOf("--model") + 1], "deepseek/deepseek-v4-flash");
-		assert.equal(result.details.results[0].model, "deepseek/deepseek-v4-flash");
+		assert.equal(result.details.results[0]!.model, "deepseek/deepseek-v4-flash");
 	});
 
 	it("foreground chains treat the inherit model sentinel as the parent session model", async () => {
@@ -598,7 +598,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
 		const args = readCallArgs(0);
 		assert.equal(args[args.indexOf("--model") + 1], "deepseek/deepseek-v4-flash");
-		assert.equal(result.details.results[0].model, "deepseek/deepseek-v4-flash");
+		assert.equal(result.details.results[0]!.model, "deepseek/deepseek-v4-flash");
 	});
 
 	it("suppresses progress for {task} chain templates when the top-level task is review-only", async () => {
@@ -648,7 +648,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		);
 
 		assert.ok(!result.isError);
-		const step2Task = result.details.results[1].task;
+		const step2Task = result.details.results[1]!.task!;
 		assert.ok(
 			step2Task.includes("MARKER_ABC_123"),
 			`step 2 task should contain step 1 output via {previous}: ${step2Task.slice(0, 200)}`,
@@ -817,7 +817,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
 		const explorerResults = result.details.results.filter((child) => child.agent === "explorer");
-		assert.deepEqual(explorerResults.map((child) => child.acceptance?.effectiveAcceptance.level), ["attested", "attested"]);
+		assert.deepEqual(explorerResults.map((child) => child.acceptance?.effectiveAcceptance?.level), ["attested", "attested"]);
 		const dynamicNode = result.details.workflowGraph?.nodes[1];
 		assert.equal(dynamicNode?.acceptanceStatus, "attested");
 		assert.deepEqual(dynamicNode?.children?.map((child) => child.acceptanceStatus), ["attested", "attested"]);
@@ -849,7 +849,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 
 		assert.ok(!result.isError, `chain should succeed: ${JSON.stringify(result.content)}`);
 		const explorerResults = result.details.results.filter((child) => child.agent === "explorer");
-		assert.deepEqual(explorerResults.map((child) => child.acceptance?.effectiveAcceptance.level), ["checked", "checked"]);
+		assert.deepEqual(explorerResults.map((child) => child.acceptance?.effectiveAcceptance?.level), ["checked", "checked"]);
 		const dynamicNode = result.details.workflowGraph?.nodes[1];
 		assert.equal(dynamicNode?.acceptanceStatus, "rejected");
 		assert.deepEqual(dynamicNode?.children?.map((child) => child.acceptanceStatus), ["rejected", "rejected"]);
@@ -1115,7 +1115,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		);
 
 		assert.ok(!result.isError);
-		const workerTask = result.details.results[0].task;
+		const workerTask = result.details.results[0]!.task!;
 		assert.ok(
 			workerTask.includes("the authentication module"),
 			`should substitute {task}: ${workerTask.slice(0, 200)}`,
@@ -1134,7 +1134,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		);
 
 		assert.ok(!result.isError);
-		const summary = result.content[0].text;
+		const summary = result.content[0]!.text;
 		assert.ok(summary.includes("✅ Chain completed:"), `missing completion marker: ${summary}`);
 		assert.ok(summary.includes("📁 Artifacts:"), `missing artifacts marker: ${summary}`);
 	});
@@ -1152,7 +1152,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 
 		assert.ok(result.isError, "chain should fail");
 		assert.equal(result.details.results.length, 1, "only step1 should have run");
-		assert.equal(result.details.results[0].exitCode, 1);
+		assert.equal(result.details.results[0]!.exitCode, 1);
 	});
 
 	it("agent contract v1 chain defaults to execution gating after acceptance rejection", async () => {
@@ -1263,7 +1263,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		);
 
 		assert.ok(result.isError);
-		assert.ok(result.content[0].text.includes("Unknown agent"));
+		assert.ok(result.content[0]!.text.includes("Unknown agent"));
 	});
 
 	it("resolves relative step cwd values against the chain cwd for skills", async () => {
@@ -1336,7 +1336,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 			);
 
 			assert.ok(!result.isError);
-			assert.deepEqual(JSON.parse(result.details.results[0].finalOutput ?? "{}"), {
+			assert.deepEqual(JSON.parse(result.details.results[0]!.finalOutput ?? "{}"), {
 				PI_SUBAGENT_DEPTH: "1",
 				PI_SUBAGENT_MAX_DEPTH: "1",
 			});
@@ -1489,11 +1489,11 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 		const handoff = JSON.parse(fs.readFileSync(result.details.parallelHandoff.path, "utf-8")) as {
 			groups: Array<{ stepIndex: number; children: Array<{ agent: string; patch: { path: string } }>; cleanup: { state: string } }>;
 		};
-		assert.equal(handoff.groups[0].stepIndex, 0);
-		assert.equal(handoff.groups[0].children[0].agent, "reviewer-a");
-		assert.equal(handoff.groups[0].cleanup.state, "complete");
-		assert.equal(fs.existsSync(handoff.groups[0].children[0].patch.path), true);
-		assert.match(handoff.groups[0].children[0].patch.path, /worktree-diffs\/foreground-chain-handoff\/step-0\//);
+		assert.equal(handoff.groups[0]!.stepIndex, 0);
+		assert.equal(handoff.groups[0]!.children[0]!.agent, "reviewer-a");
+		assert.equal(handoff.groups[0]!.cleanup.state, "complete");
+		assert.equal(fs.existsSync(handoff.groups[0]!.children[0]!.patch.path), true);
+		assert.match(handoff.groups[0]!.children[0]!.patch.path, /worktree-diffs\/foreground-chain-handoff\/step-0\//);
 	});
 
 	it("aggregates parallel outputs for next sequential step", async () => {
@@ -1517,7 +1517,7 @@ describe("chain execution — parallel steps", { skip: !available ? "pi packages
 
 		assert.ok(!result.isError);
 		assert.equal(result.details.results.length, 3);
-		const synthTask = result.details.results[2].task;
+		const synthTask = result.details.results[2]!.task!;
 		assert.ok(
 			synthTask.includes("=== Parallel Task 1 (reviewer-a) ==="),
 			"synthesizer should include reviewer-a output block",

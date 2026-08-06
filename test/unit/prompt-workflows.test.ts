@@ -19,7 +19,7 @@ function makeCtx(cwd: string) {
 		hasUI: true,
 		ui: {
 			notifications: [] as Array<{ message: string; level: string }>,
-			notify(message: string, level: string) {
+			notify(this: { notifications: Array<{ message: string; level: string }> }, message: string, level: string) {
 				this.notifications.push({ message, level });
 			},
 		},

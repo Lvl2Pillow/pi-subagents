@@ -65,7 +65,7 @@ function agentChoices(agents: AgentConfig[]): Map<string, AgentConfig> {
 	for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
 	return new Map(
 		agents.map((agent, index) => {
-			const label = labels[index];
+			const label = labels[index]!;
 			return [
 				counts.get(label) === 1 ? label : `${label} · ${agent.filePath}`,
 				agent,
@@ -209,7 +209,7 @@ async function selectAgent(
 		const matches = agents.filter((agent) =>
 			agentMatches(agent, requestedName),
 		);
-		if (matches.length === 1) return { kind: "selected", agent: matches[0] };
+		if (matches.length === 1) return { kind: "selected", agent: matches[0]! };
 		if (matches.length > 1 && !ctx.hasUI)
 			return { kind: "ambiguous", requestedName, matches };
 		if (matches.length > 1) {

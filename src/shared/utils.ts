@@ -209,7 +209,7 @@ export function findLatestSessionFile(sessionDir: string): string | null {
 			};
 		})
 		.sort((a, b) => b.mtime - a.mtime);
-	return files.length > 0 ? files[0].path : null;
+	return files.length > 0 ? files[0]!.path : null;
 }
 
 // ============================================================================
@@ -222,7 +222,7 @@ export function findLatestSessionFile(sessionDir: string): string | null {
 export function getFinalOutput(messages: Message[]): string {
 	const validTextParts: string[] = [];
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
+		const msg = messages[i]!;
 		if (msg.role !== "assistant") continue;
 		const hasAssistantError = ("errorMessage" in msg && typeof msg.errorMessage === "string" && msg.errorMessage.length > 0)
 			|| ("stopReason" in msg && msg.stopReason === "error");
@@ -232,7 +232,7 @@ export function getFinalOutput(messages: Message[]): string {
 			.map((part) => part.type === "text" ? part.text : "")
 			.join("\n");
 		for (let j = msg.content.length - 1; j >= 0; j--) {
-			const part = msg.content[j];
+			const part = msg.content[j]!;
 			if (part.type !== "text" || part.text.trim().length === 0) continue;
 			validTextParts.push(part.text);
 			if (/```acceptance[-_]report\s*\n[\s\S]*?```/i.test(part.text)) return messageText;
@@ -423,7 +423,7 @@ export function hasEmptyTerminalAssistantResponse(messages: Message[]): boolean 
 export function detectSubagentError(messages: Message[]): ErrorInfo {
 	let lastAssistantTextIndex = -1;
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
+		const msg = messages[i]!;
 		if (msg.role === "assistant") {
 			const hasText = Array.isArray(msg.content) && msg.content.some(
 				(c) => c.type === "text" && "text" in c && typeof c.text === "string" && c.text.trim().length > 0,
@@ -438,7 +438,7 @@ export function detectSubagentError(messages: Message[]): ErrorInfo {
 	const scanStart = lastAssistantTextIndex >= 0 ? lastAssistantTextIndex + 1 : 0;
 
 	for (let i = messages.length - 1; i >= scanStart; i--) {
-		const msg = messages[i];
+		const msg = messages[i]!;
 		if (msg.role !== "toolResult") continue;
 		const toolName = "toolName" in msg && typeof msg.toolName === "string" ? msg.toolName : undefined;
 		const isError = "isError" in msg && msg.isError === true;
@@ -450,7 +450,7 @@ export function detectSubagentError(messages: Message[]): ErrorInfo {
 		const exitMatch = details?.match(/exit(?:ed)?\s*(?:with\s*)?(?:code|status)?\s*[:\s]?\s*(\d+)/i);
 		return {
 			hasError: true,
-			exitCode: exitMatch ? parseInt(exitMatch[1], 10) : 1,
+			exitCode: exitMatch ? parseInt(exitMatch[1]!, 10) : 1,
 			errorType: toolName || "tool",
 			details: details?.slice(0, 200),
 		};

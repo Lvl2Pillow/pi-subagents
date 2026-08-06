@@ -50,8 +50,8 @@ describe("logPersistent", () => {
 			.trim()
 			.split("\n");
 		assert.equal(lines.length, 2);
-		assert.equal((JSON.parse(lines[0]) as { data: { n: number } }).data.n, 1);
-		assert.equal((JSON.parse(lines[1]) as { data: { n: number } }).data.n, 2);
+		assert.equal((JSON.parse(lines[0]!) as { data: { n: number } }).data.n, 1);
+		assert.equal((JSON.parse(lines[1]!) as { data: { n: number } }).data.n, 2);
 	});
 
 	it("omits the data key when no payload is given", () => {

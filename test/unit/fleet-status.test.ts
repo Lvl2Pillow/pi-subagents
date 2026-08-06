@@ -695,13 +695,13 @@ describe("below-editor subagent FleetView", () => {
 
 			await Promise.resolve();
 			assert.deepEqual(opened, ["foreground-active:run-worker:0"]);
-			assert.equal(widgetFactory, undefined, "the widget should unregister while the inspector owns the viewport");
+			assert.ok(!widgetFactory, "the widget should unregister while the inspector owns the viewport");
 
 			closeInspector!();
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.ok(widgetFactory, "closing should restore the FleetView widget");
+			assert.notEqual(widgetFactory, undefined, "closing should restore the FleetView widget");
 			assert.notEqual(widgetFactory, component, "restoration should install a new component factory");
-			const restoredComponent = widgetFactory!(tui, theme);
+			const restoredComponent = (widgetFactory as unknown as (tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] })(tui, theme);
 			assert.ok(restoredComponent.render(100).some((line) => line.includes("> worker")), "closing should restore the prior selected roster row");
 			assert.deepEqual(inputHandler!("\x1b"), { consume: true });
 			assert.equal(restoredComponent.render(100).length, 1, "Escape should return to the compact summary");

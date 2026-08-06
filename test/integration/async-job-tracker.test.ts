@@ -34,7 +34,7 @@ const available = !!trackerMod;
 function createState() {
 	return {
 		baseCwd: "/repo",
-		currentSessionId: null,
+		currentSessionId: null as string | null,
 		asyncJobs: new Map(),
 		fleetJobs: new Map(),
 		foregroundRuns: new Map(),

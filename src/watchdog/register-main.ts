@@ -155,7 +155,7 @@ export function buildWatchdogStatus(snapshot: ReturnType<MainWatchdogRuntime["ge
 function parseTestCommand(input: string): { severity: "concern" | "blocker"; text: string } | undefined {
 	const match = input.match(/^test\s+(concern|blocker)\s+([\s\S]+)$/);
 	if (!match) return undefined;
-	return { severity: match[1] as "concern" | "blocker", text: match[2].trim() };
+	return { severity: match[1] as "concern" | "blocker", text: match[2]!.trim() };
 }
 
 function formatThinking(value: ThinkingLevel | false | undefined): string {
@@ -184,7 +184,7 @@ function resolveModelCommandValue(ctx: ExtensionCommandContext, raw: string): { 
 	const resolved = resolveWatchdogModelInput(ctx, value);
 	return {
 		model: resolved.model,
-		thinking: resolved.thinking,
+		thinking: resolved.thinking ?? null,
 		description: `${resolved.model}${resolved.thinking ? `:${resolved.thinking}` : ""}`,
 	};
 }

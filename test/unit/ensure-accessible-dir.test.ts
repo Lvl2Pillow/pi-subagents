@@ -5,24 +5,27 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 import { ensureAccessibleDir } from "../../src/shared/accessible-dir.ts";
 import { DIRS } from "../../src/shared/types.ts";
+import type { PathLike } from "node:fs";
 
 class FakeFs {
 	created: string[] = [];
 	blockedMkdir = new Set<string>();
 	blockedAccess = new Set<string>();
 
-	mkdirSync(dirPath: string): string {
-		if (this.blockedMkdir.has(dirPath)) {
+	mkdirSync(dirPath: PathLike): string {
+		const pathStr = String(dirPath);
+		if (this.blockedMkdir.has(pathStr)) {
 			const error = new Error("mkdir blocked") as NodeJS.ErrnoException;
 			error.code = "EPERM";
 			throw error;
 		}
-		this.created.push(dirPath);
-		return dirPath;
+		this.created.push(pathStr);
+		return pathStr;
 	}
 
-	accessSync(dirPath: string): void {
-		if (this.blockedAccess.has(dirPath)) {
+	accessSync(dirPath: PathLike): void {
+		const pathStr = String(dirPath);
+		if (this.blockedAccess.has(pathStr)) {
 			const error = new Error("access blocked") as NodeJS.ErrnoException;
 			error.code = "EPERM";
 			throw error;
@@ -83,8 +86,8 @@ describe("ensureAccessibleDir", () => {
 
 			const fsImpl = {
 				mkdirSync: fs.mkdirSync,
-				accessSync(target: string, mode?: number): void {
-					if (target === dirPath) {
+				accessSync(target: PathLike, mode?: number): void {
+					if (String(target) === dirPath) {
 						const error = new Error("access blocked") as NodeJS.ErrnoException;
 						error.code = "EPERM";
 						throw error;

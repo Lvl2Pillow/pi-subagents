@@ -287,7 +287,7 @@ function summarizeTerminalRuns(runs: AsyncRunSummary[], providerFinishedCount = 
 	if (runs.length === 0 && providerFinishedCount === 0) return "";
 	const counts = { complete: 0, failed: 0, paused: 0 } as Record<string, number>;
 	for (const run of runs) {
-		if (run.state in counts) counts[run.state] += 1;
+		if (run.state in counts) counts[run.state] = (counts[run.state] ?? 0) + 1;
 	}
 	const parts: string[] = [];
 	if (counts.complete) parts.push(`${counts.complete} complete`);
@@ -535,7 +535,7 @@ export async function waitForSubagents(
 			? `No active run matched "${params.id}". Nothing to wait for.`
 			: "No active async runs or registered provider work in this session. Nothing to wait for.");
 	}
-	const waitParams = params.id ? { ...params, id: active[0].id } : params;
+	const waitParams = params.id ? { ...params, id: active[0]!.id } : params;
 	const initialAsyncIds = new Set(active.map((run) => run.id));
 	const initialProviderIds = new Set(providerActive.map(backgroundWorkIdentity));
 	const initialProviderNames = new Set(providerActive.map((item) => item.provider));

@@ -50,11 +50,11 @@ describe("dynamic fanout helpers", () => {
 			/requires structured output/,
 		);
 		assert.throws(
-			() => materializeDynamicParallelStep(base, { targets: { ...outputs.targets, structured: { items: [{ path: "x" }, { path: "x" }] } } }, 1),
+			() => materializeDynamicParallelStep(base, { targets: { ...outputs.targets!, structured: { items: [{ path: "x" }, { path: "x" }] } } }, 1),
 			/duplicate item key/,
 		);
 		assert.throws(
-			() => materializeDynamicParallelStep(base, { targets: { ...outputs.targets, structured: { items: [{ path: "a/b" }, { path: "a-b" }] } } }, 1),
+			() => materializeDynamicParallelStep(base, { targets: { ...outputs.targets!, structured: { items: [{ path: "a/b" }, { path: "a-b" }] } } }, 1),
 			/colliding item id/,
 		);
 		assert.throws(
@@ -83,10 +83,10 @@ describe("dynamic fanout helpers", () => {
 			{ agent: "scout", task: "Return targets", as: "targets", outputSchema: { type: "object" } },
 			base,
 		], { maxItems: 4 }));
-		const empty = materializeDynamicParallelStep(base, { targets: { ...outputs.targets, structured: { items: [] } } }, 1, { maxItems: 4 });
+		const empty = materializeDynamicParallelStep(base, { targets: { ...outputs.targets!, structured: { items: [] } } }, 1, { maxItems: 4 });
 		assert.equal(empty.parallel.length, 0);
 		assert.throws(
-			() => materializeDynamicParallelStep({ ...base, expand: { ...base.expand, onEmpty: "fail" } }, { targets: { ...outputs.targets, structured: { items: [] } } }, 1, { maxItems: 4 }),
+			() => materializeDynamicParallelStep({ ...base, expand: { ...base.expand, onEmpty: "fail" } }, { targets: { ...outputs.targets!, structured: { items: [] } } }, 1, { maxItems: 4 }),
 			/source array is empty/,
 		);
 	});
@@ -160,7 +160,7 @@ describe("dynamic fanout helpers", () => {
 		];
 		assert.throws(() => validateChainOutputBindings(chain), ChainOutputValidationError);
 		assert.throws(
-			() => validateChainOutputBindings([chain[1]]),
+			() => validateChainOutputBindings([chain[1]!]),
 			/unknown output 'targets'/,
 		);
 	});

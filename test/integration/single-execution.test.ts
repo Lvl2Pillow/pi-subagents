@@ -373,8 +373,8 @@ const executorMod = await tryImport<ExecutorModule>(
 );
 const available = !!(execution && utils);
 
-const runSync = execution?.runSync;
-const getFinalOutput = utils?.getFinalOutput;
+const runSync = execution?.runSync!;
+const getFinalOutput = utils?.getFinalOutput!;
 const createSubagentExecutor = executorMod?.createSubagentExecutor;
 
 function escapeRegExp(value: string): string {
@@ -629,10 +629,10 @@ describe(
 		);
 
 		assert.equal(result.isError, undefined);
-		assert.equal(result.details.mode, "workflow");
-		assert.equal(result.details.asyncId, runId);
+		assert.equal(result.details!.mode, "workflow");
+		assert.equal(result.details!.asyncId, runId);
 		assert.match(result.content[0]?.text ?? "", /Async workflow/);
-		const statusPath = path.join(result.details.asyncDir!, "status.json");
+		const statusPath = path.join(result.details!.asyncDir!, "status.json");
 		let status: { state?: string; workflow?: { value?: unknown; emits?: unknown[]; trace?: Array<{ key?: string; state?: string }> } } = {};
 		for (let attempt = 0; attempt < 100; attempt++) {
 			status = JSON.parse(fs.readFileSync(statusPath, "utf-8"));
@@ -647,7 +647,7 @@ describe(
 		assert.equal(persistedResult.agent, "workflow");
 		assert.match(persistedResult.summary ?? "", /Return: \{\n  "answer": 42\n\}/);
 		assert.deepEqual(persistedResult.workflow?.value, { answer: 42 });
-		fs.rmSync(result.details.asyncDir!, { recursive: true, force: true });
+		fs.rmSync(result.details!.asyncDir!, { recursive: true, force: true });
 		fs.rmSync(path.join(DIRS.results, `${runId}.json`), { force: true });
 	});
 
@@ -666,7 +666,7 @@ describe(
 
 		assert.equal(result.isError, true);
 		assert.match(result.content[0]?.text ?? "", /usageBudget\.tokens\.hard must be a positive number/);
-		assert.equal(result.details.asyncId, undefined);
+		assert.equal(result.details!.asyncId, undefined);
 		assert.equal(asyncJobs.has(runId), false);
 		assert.equal(fs.existsSync(path.join(DIRS.async, runId)), false);
 		assert.equal(fs.existsSync(path.join(DIRS.results, `${runId}.json`)), false);
@@ -687,7 +687,7 @@ describe(
 		);
 
 		assert.equal(started.isError, undefined);
-		assert.equal(started.details.asyncId, runId);
+		assert.equal(started.details!.asyncId, runId);
 		const resultPath = path.join(DIRS.results, `${runId}.json`);
 		let persisted: { state?: string; summary?: string; results?: Array<{ success?: boolean; output?: string }> } = {};
 		for (let attempt = 0; attempt < 100; attempt++) {
@@ -701,7 +701,7 @@ describe(
 		assert.equal(persisted.results?.[0]?.success, false);
 		assert.match(persisted.results?.[0]?.output ?? "", /workflow usageBudget does not support async runs\.run launches/);
 		assert.equal(mockPi.callCount(), 0);
-		fs.rmSync(started.details.asyncDir!, { recursive: true, force: true });
+		fs.rmSync(started.details!.asyncDir!, { recursive: true, force: true });
 		fs.rmSync(resultPath, { force: true });
 	});
 
@@ -751,7 +751,7 @@ describe(
 		const childResult = JSON.parse(fs.readFileSync(childResultPath, "utf-8")) as { parentWorkflowRunId?: string; workflowKey?: string };
 		assert.equal(childResult.parentWorkflowRunId, workflowRunId);
 		assert.equal(childResult.workflowKey, "background");
-		fs.rmSync(started.details.asyncDir!, { recursive: true, force: true });
+		fs.rmSync(started.details!.asyncDir!, { recursive: true, force: true });
 		fs.rmSync(workflowResultPath, { force: true });
 		fs.rmSync(childDir, { recursive: true, force: true });
 		fs.rmSync(path.join(DIRS.results, `${childRunId}.json`), { force: true });
@@ -835,9 +835,9 @@ describe(
 
 		assert.equal(result.isError, undefined);
 		assert.match(result.content[0]?.text ?? "", /reviewed auth/);
-		assert.equal(result.details.mode, "workflow");
-		assert.equal(result.details.results.length, 2);
-		assert.deepEqual(result.details.workflow?.trace.filter((entry) => entry.state === "completed").map((entry) => entry.key), ["scan", "review"]);
+		assert.equal(result.details!.mode, "workflow");
+		assert.equal(result.details!.results!.length, 2);
+		assert.deepEqual(result.details!.workflow?.trace.filter((entry) => entry.state === "completed").map((entry) => entry.key), ["scan", "review"]);
 	});
 
 		it(
@@ -886,7 +886,7 @@ describe(
 		assert.equal(mockPi.callCount(), 1);
 		assert.equal(fs.existsSync(path.join(tempDir, "feature.txt")), false);
 		const handoffPath = (result.content[0]?.text ?? "").match(/([^\s]+\/handoffs\/[^\s]+\.json)/)?.[1];
-		assert.ok(handoffPath, result.content[0]?.text);
+		assert.ok(handoffPath, result.content[0]?.text ?? "");
 		const handoff = JSON.parse(fs.readFileSync(handoffPath, "utf-8")) as {
 			groups: Array<{
 				cleanup: { state: string; tasks: Array<{ worktreeRemoved: boolean }> };
@@ -921,14 +921,14 @@ describe(
 
 		assert.equal(result.isError, undefined, result.content[0]?.text ?? "workflow failed");
 		assert.equal(mockPi.callCount(), 2);
-		const value = result.details.workflow?.value as Array<{ key: string; ok: boolean; error?: string }>;
+		const value = result.details!.workflow?.value as Array<{ key: string; ok: boolean; error?: string }>;
 		assert.deepEqual(value.map(({ key }) => key), ["first", "second"]);
 		assert.deepEqual(value.map(({ ok }) => ok).sort(), [false, true]);
 		const failed = value.find(({ ok }) => !ok);
 		const succeeded = value.find(({ ok }) => ok);
 		assert.match(failed?.error ?? "", /first child failed/);
 		assert.equal(succeeded?.error, undefined);
-		assert.deepEqual(result.details.workflow?.trace.filter((entry) => entry.state !== "started").map(({ state }) => state).sort(), ["completed", "failed"]);
+		assert.deepEqual(result.details!.workflow?.trace.filter((entry) => entry.state !== "started").map(({ state }) => state).sort(), ["completed", "failed"]);
 	});
 
 
@@ -1119,9 +1119,9 @@ describe(
 
 		assert.equal(result.isError, true);
 		assert.match(result.content[0]?.text ?? "", /Usage budget exhausted/);
-		assert.equal(result.details.mode, "workflow");
+		assert.equal(result.details!.mode, "workflow");
 		assert.equal(mockPi.callCount(), 1);
-		assert.equal(result.details.usageBudget?.exhausted, true);
+		assert.equal(result.details!.usageBudget?.exhausted, true);
 	});
 
 		it(
@@ -2007,7 +2007,7 @@ describe(
 
 				assert.equal(result.isError, undefined);
 				assert.equal(mockPi.callCount(), 1);
-				assert.equal(result.details?.results.length, 2);
+				assert.equal(result.details?.results?.length, 2);
 				assert.equal(result.details?.results[1]?.skipped, true);
 				assert.match(
 					result.details?.results[1]?.error ?? "",
@@ -2531,7 +2531,7 @@ describe(
 				);
 
 				assert.equal(result.isError, undefined);
-				assert.equal(result.details?.results[0]?.agent, "worker");
+				assert.equal(result.details?.results?.[0]?.agent, "worker");
 				assert.match(result.content[0]?.text ?? "", /Implemented/);
 			},
 		);
@@ -2749,11 +2749,11 @@ describe(
 				[false, true],
 			);
 			assert.match(
-				result.progress.recentOutput.join("\n"),
+				result.progress.recentOutput!.join("\n"),
 				/\[startup-retry\].*same model/i,
 			);
 			assert.equal(
-				result.progress.recentOutput.filter((line) =>
+				result.progress.recentOutput!.filter((line) =>
 					line.startsWith("[startup-retry]"),
 				).length,
 				1,
@@ -3893,7 +3893,7 @@ describe(
 				result.transcriptPath,
 				"should expose transcript path on the result",
 			);
-			assert.equal(result.transcriptPath, result.artifactPaths.transcriptPath);
+			assert.equal(result.transcriptPath, result.artifactPaths!.transcriptPath);
 			assert.ok(
 				fs.existsSync(result.transcriptPath),
 				"transcript should be written",
@@ -3916,7 +3916,7 @@ describe(
 			assert.equal(result.transcriptError, undefined);
 			assert.ok(fs.existsSync(artifactsDir), "artifacts dir should exist");
 			const metadata = JSON.parse(
-				fs.readFileSync(result.artifactPaths.metadataPath, "utf-8"),
+				fs.readFileSync(result.artifactPaths!.metadataPath!, "utf-8"),
 			) as {
 				launchContractDigest?: string;
 				launchResolvedExtensions?: LaunchResolvedExtensions;
@@ -3979,7 +3979,7 @@ describe(
 				);
 				assert.equal(
 					fs.readFileSync(
-						result.details.artifacts.files[0].outputPath,
+						result.details!.artifacts!.files[0]!.outputPath,
 						"utf-8",
 					),
 					"session artifact result",
@@ -4019,7 +4019,7 @@ describe(
 				"should expose an output artifact path",
 			);
 			const artifact = fs.readFileSync(
-				result.artifactPaths.outputPath,
+				result.artifactPaths!.outputPath,
 				"utf-8",
 			);
 			assert.match(artifact, /Subagent run failed before producing output\./);
@@ -4053,11 +4053,11 @@ describe(
 				"should have metadata path",
 			);
 			const metadata = JSON.parse(
-				fs.readFileSync(result.artifactPaths.metadataPath, "utf-8"),
+				fs.readFileSync(result.artifactPaths!.metadataPath!, "utf-8"),
 			) as { transcriptPath?: string; transcriptError?: string };
 			assert.equal(metadata.transcriptPath, undefined);
 			assert.equal(metadata.transcriptError, undefined);
-			assert.equal(fs.existsSync(result.artifactPaths.transcriptPath!), false);
+			assert.equal(fs.existsSync(result.artifactPaths!.transcriptPath!), false);
 		});
 
 		it("preserves agent-written output files instead of overwriting them with the final receipt", async () => {
@@ -4088,7 +4088,7 @@ describe(
 			assert.equal(fs.readFileSync(outputPath, "utf-8"), "real file content");
 			assert.ok(result.artifactPaths, "should have artifact paths");
 			assert.equal(
-				fs.readFileSync(result.artifactPaths.outputPath, "utf-8"),
+				fs.readFileSync(result.artifactPaths!.outputPath, "utf-8"),
 				"real file content",
 			);
 		});
@@ -4545,7 +4545,7 @@ describe(
 				);
 				assert.equal(
 					defaulted.details?.results?.[0]?.acceptance?.effectiveAcceptance
-						.reason,
+						?.reason,
 					"lightweight response",
 				);
 
@@ -4697,7 +4697,7 @@ describe(
 			);
 			assert.ok(result.artifactPaths, "should have artifact paths");
 			assert.equal(
-				fs.readFileSync(result.artifactPaths.outputPath, "utf-8"),
+				fs.readFileSync(result.artifactPaths!.outputPath, "utf-8"),
 				"full saved output\nwith details",
 			);
 		});
@@ -5475,7 +5475,7 @@ describe(
 				runId: "contact_supervisor-detach",
 				allowIntercomDetach: true,
 				intercomEvents: eventBus,
-				onUpdate: (update) => {
+				onUpdate: (update: unknown) => {
 					if (detachEmitted) return;
 					const progress = (
 						update as {
@@ -5537,7 +5537,7 @@ describe(
 					allowIntercomDetach: true,
 					intercomEvents: eventBus,
 					acceptance: false,
-					onUpdate: (update) => {
+					onUpdate: (update: unknown) => {
 						if (detachEmitted) return;
 						const progress = (
 							update as {
@@ -5556,7 +5556,7 @@ describe(
 							requestId: "detached-protocol-request",
 						});
 					},
-					onDetachedExit: (postExit) => {
+					onDetachedExit: (postExit: unknown) => {
 						recoveredResult = postExit as RunSyncResult;
 					},
 				},
@@ -5596,7 +5596,7 @@ describe(
 				intercomEvents: eventBus,
 				outputPath,
 				outputMode: "file-only",
-				onUpdate: (update) => {
+				onUpdate: (update: unknown) => {
 					if (detachEmitted) return;
 					const progress = (
 						update as {
@@ -5648,7 +5648,7 @@ describe(
 				intercomEvents: eventBus,
 				outputPath,
 				outputMode: "file-only",
-				onUpdate: (update) => {
+				onUpdate: (update: unknown) => {
 					if (detachEmitted) return;
 					const progress = (
 						update as {
@@ -5665,7 +5665,7 @@ describe(
 						requestId: "file-only-post-exit-detach",
 					});
 				},
-				onDetachedExit: (postExit) => {
+				onDetachedExit: (postExit: unknown) => {
 					recoveredResult = postExit as RunSyncResult;
 				},
 			});
@@ -5713,7 +5713,7 @@ describe(
 				runId: "contact-supervisor-abort-without-handoff",
 				allowIntercomDetach: true,
 				signal: controller.signal,
-				onUpdate: (update) => {
+				onUpdate: (update: unknown) => {
 					if (aborted) return;
 					const progress = (
 						update as {
@@ -5850,7 +5850,7 @@ describe(
 					runId: "active-supervisor",
 					allowIntercomDetach: true,
 					intercomEvents: eventBus,
-					onUpdate: (update) => {
+					onUpdate: (update: unknown) => {
 						if (detachEmitted) return;
 						const progress = (
 							update as {

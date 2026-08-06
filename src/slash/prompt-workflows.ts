@@ -176,7 +176,7 @@ function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?:
 	let fresh = false;
 	let bg = false;
 	for (let i = 0; i < words.length; i++) {
-		const word = words[i];
+		const word = words[i]!;
 		if (word === "--fork") {
 			fork = true;
 			continue;
@@ -190,12 +190,12 @@ function parseRuntimeOptions(words: string[]): { args: string[]; agentOverride?:
 			continue;
 		}
 		if (word === "--subagent") {
-			agentOverride = words[++i];
+			agentOverride = words[++i]!;
 			continue;
 		}
 		const eq = word.match(/^--subagent(?:=|:)(.+)$/);
 		if (eq) {
-			agentOverride = eq[1];
+			agentOverride = eq[1]!;
 			continue;
 		}
 		args.push(word);

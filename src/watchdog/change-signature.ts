@@ -144,7 +144,7 @@ function parsePorcelainZ(raw: string): Array<{ status: string; paths: string[] }
 	const tokens = raw.split("\0").filter(Boolean);
 	const entries: Array<{ status: string; paths: string[] }> = [];
 	for (let index = 0; index < tokens.length; index++) {
-		const token = tokens[index];
+		const token = tokens[index]!;
 		if (token.length < 4) continue;
 		const status = token.slice(0, 2);
 		const relPath = token.slice(3);

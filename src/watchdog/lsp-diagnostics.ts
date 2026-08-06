@@ -219,7 +219,7 @@ export function watchdogWarningFromLspDiagnostics(result: WatchdogLspResult): Wa
 		confidence: "high",
 		source: "lsp",
 		summary: `LSP found ${count} ${kind}${count === 1 ? "" : "s"} in changed ${count === 1 ? "file" : "files"}.`,
-		evidence: evidence || formatDiagnostic(primary),
+		evidence: evidence || formatDiagnostic(primary!),
 		recommendedAction: "Fix the reported diagnostics or explain why they are expected before accepting the change.",
 	};
 }

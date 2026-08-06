@@ -218,12 +218,12 @@ describe(
 				"command finalized",
 			);
 			assert.equal(sent.length, 2, "pending + final box messages");
-			assert.equal(sent[0].display, true);
-			assert.equal(sent[0].details.state, "pending");
-			assert.equal(sent[0].details.text, "/compact");
-			assert.equal(sent[1].display, false);
-			assert.equal(sent[1].details.state, "success");
-			assert.match(sent[1].details.text ?? "", /COMMAND_OK/);
+			assert.equal(sent[0]!.display, true);
+			assert.equal(sent[0]!.details.state, "pending");
+			assert.equal(sent[0]!.details.text, "/compact");
+			assert.equal(sent[1]!.display, false);
+			assert.equal(sent[1]!.details.state, "success");
+			assert.match(sent[1]!.details.text ?? "", /COMMAND_OK/);
 		});
 
 		it("passes command args through as a single argv element", async () => {

@@ -298,7 +298,7 @@ export function registerSteeringInbox(
 		try {
 			const requests = consumeSteerRequestsFromDir(steerInbox);
 			for (let index = 0; index < requests.length; index++) {
-				const request = requests[index];
+				const request = requests[index]!;
 				if (!canSteer || typeof sendUserMessage !== "function") {
 					acknowledge(request, "failed", "Child Pi session does not support sendUserMessage steering.");
 					continue;
@@ -445,25 +445,27 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 		});
 	}
 
-	onRuntimeEvent("context", (event: { messages: unknown[] }) => {
-		const messages = stripParentOnlySubagentMessages(event.messages);
-		if (messages === event.messages) return undefined;
+	onRuntimeEvent("context", (event) => {
+		const contextEvent = event as { messages: unknown[] };
+		const messages = stripParentOnlySubagentMessages(contextEvent.messages);
+		if (messages === contextEvent.messages) return undefined;
 		return { messages };
 	});
 
-	onRuntimeEvent("before_agent_start", async (event: { systemPrompt: string }) => {
+	onRuntimeEvent("before_agent_start", async (event) => {
+		const startEvent = event as { systemPrompt: string };
 		const inheritProjectContext = readBooleanEnv(SUBAGENT_INHERIT_PROJECT_CONTEXT_ENV);
 		const inheritSkills = readBooleanEnv(SUBAGENT_INHERIT_SKILLS_ENV);
 		const fanoutChild = readBooleanEnv(SUBAGENT_FANOUT_CHILD_ENV);
-		let rewritten = event.systemPrompt;
+		let rewritten = startEvent.systemPrompt;
 		if (inheritProjectContext !== undefined || inheritSkills !== undefined || fanoutChild !== undefined) {
-			rewritten = rewriteSubagentPrompt(event.systemPrompt, {
+			rewritten = rewriteSubagentPrompt(startEvent.systemPrompt, {
 				inheritProjectContext: inheritProjectContext ?? true,
 				inheritSkills: inheritSkills ?? true,
 				fanoutChild: fanoutChild === true,
 			});
 		}
-		if (rewritten === event.systemPrompt) return;
+		if (rewritten === startEvent.systemPrompt) return;
 		return { systemPrompt: rewritten };
 	});
 }

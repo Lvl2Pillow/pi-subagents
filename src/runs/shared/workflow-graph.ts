@@ -80,7 +80,7 @@ export function buildWorkflowGraphSnapshot(input: WorkflowGraphBuildInput): Work
 	let currentNodeId: string | undefined;
 
 	for (let stepIndex = 0; stepIndex < input.steps.length; stepIndex++) {
-		const step = input.steps[stepIndex];
+		const step = input.steps[stepIndex]!;
 		if (isCheckpointStep(step)) {
 			const status = normalizeStatus(input.stepStatuses?.[flatIndex]?.status)
 				?? (input.currentStepIndex === stepIndex ? "paused" : "pending");
@@ -108,7 +108,7 @@ export function buildWorkflowGraphSnapshot(input: WorkflowGraphBuildInput): Work
 			const children: WorkflowGraphNode[] = [];
 			const childStatuses: WorkflowNodeStatus[] = [];
 			for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
-				const task = step.parallel[taskIndex];
+				const task = step.parallel[taskIndex]!;
 				const status = nodeStatus(input, flatIndex);
 				childStatuses.push(status);
 				const childId = `step-${stepIndex}-agent-${taskIndex}`;
@@ -151,7 +151,7 @@ export function buildWorkflowGraphSnapshot(input: WorkflowGraphBuildInput): Work
 			const children: WorkflowGraphNode[] = [];
 			const childStatuses: WorkflowNodeStatus[] = [];
 			for (let taskIndex = 0; taskIndex < materialized.length; taskIndex++) {
-				const task = materialized[taskIndex];
+				const task = materialized[taskIndex]!;
 				const status = nodeStatus(input, task.flatIndex);
 				childStatuses.push(status);
 				const childId = `step-${stepIndex}-item-${task.itemKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;

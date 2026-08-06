@@ -247,8 +247,8 @@ describe("subagent async widget rendering", () => {
 
 			renderWidget(ui.ctx, [
 				{ ...jobs[0], status: "complete", currentTool: undefined },
-				jobs[1],
-				jobs[2],
+				jobs[1]!,
+				jobs[2]!,
 			]);
 			const updatedText = renderWidgetLines(ui.widgets.at(-1)).join("\n");
 			assert.match(updatedText, /second/);

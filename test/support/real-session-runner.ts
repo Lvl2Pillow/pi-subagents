@@ -114,7 +114,7 @@ const noOpUiContext = {
 	setFooter: () => {},
 	setHeader: () => {},
 	setTitle: () => {},
-	custom: async () => undefined,
+	custom: async <T,>() => undefined as T,
 	pasteToEditor: () => {},
 	setEditorText: () => {},
 	getEditorText: () => "",
@@ -248,7 +248,7 @@ function latestSubagentToolResultText(
 	messages: Array<{ role?: string; toolName?: string; content?: unknown }>,
 ): string | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const message = messages[i];
+		const message = messages[i]!;
 		if (message.role === "toolResult" && message.toolName === "subagent") {
 			return textFromContent(message.content);
 		}

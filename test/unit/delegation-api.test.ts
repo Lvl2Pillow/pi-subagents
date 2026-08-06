@@ -319,7 +319,7 @@ describe("public subagent delegation contract", () => {
 		releases.get("first")?.();
 		releases.get("second")?.();
 		while (responses.length < 2) await tick();
-		assert.deepEqual(responses.map(({ ownerRunId, nodeId, status }) => ({ ownerRunId, nodeId, status })).sort((a, b) => a.ownerRunId.localeCompare(b.ownerRunId)), [
+		assert.deepEqual(responses.map(({ ownerRunId, nodeId, status }) => ({ ownerRunId, nodeId, status })).sort((a, b) => a.ownerRunId!.localeCompare(b.ownerRunId!)), [
 			{ ownerRunId: "owner-1", nodeId: "node-1", status: "completed" },
 			{ ownerRunId: "owner-2", nodeId: "node-2", status: "completed" },
 		]);

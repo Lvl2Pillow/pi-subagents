@@ -24,7 +24,7 @@ interface ExecutorModule {
 			id: string,
 			params: Record<string, unknown>,
 			signal: AbortSignal,
-			onUpdate: ((result: unknown) => void) | undefined,
+			onUpdate: ((result: ProgressUpdate) => void) | undefined,
 			ctx: unknown,
 		) => Promise<{
 			isError?: boolean;
@@ -61,7 +61,7 @@ const asyncExecutionMod = await tryImport<AsyncExecutionModule>(
 	"./src/runs/background/async-execution.ts",
 );
 const available = !!executorMod;
-const createSubagentExecutor = executorMod?.createSubagentExecutor;
+const createSubagentExecutor = executorMod!.createSubagentExecutor!;
 const asyncAvailable = asyncExecutionMod?.isAsyncAvailable?.() === true;
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
@@ -884,7 +884,7 @@ describe(
 				assert.equal(result.isError, undefined);
 				assert.equal(warnings.length, 1);
 				assert.match(
-					warnings[0],
+					warnings[0]!,
 					/outside the configured subagent model scope/,
 				);
 				const args = readCallArgs();
@@ -1852,7 +1852,7 @@ describe(
 				path.join(tempDir, "parent.jsonl"),
 			);
 			assert.ok(args[sessionIndex + 1]);
-			assert.equal(fs.existsSync(args[sessionIndex + 1]), true);
+			assert.equal(fs.existsSync(args[sessionIndex + 1]!), true);
 		});
 
 		it("creates isolated forked sessions per parallel task", async () => {
@@ -2268,7 +2268,7 @@ describe(
 					assert.ok(result.details?.asyncId);
 					assert.equal(warnings.length, 1);
 					assert.match(
-						warnings[0],
+						warnings[0]!,
 						/outside the configured subagent model scope/,
 					);
 				} finally {

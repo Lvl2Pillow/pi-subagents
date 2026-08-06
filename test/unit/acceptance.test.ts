@@ -918,7 +918,7 @@ describe("acceptance gates", () => {
 
 			const inline = await evaluateAcceptance({
 				acceptance,
-				output: malformedReports[0],
+				output: malformedReports[0]!,
 				fileOutput: { content: report({ notes: "valid file report" }), path: "/tmp/report.md" },
 				cwd,
 			});

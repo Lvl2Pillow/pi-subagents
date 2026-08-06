@@ -105,10 +105,10 @@ describe("parallel handoff", () => {
 			assert.equal(manifest.createdAt, 100);
 			assert.equal(manifest.updatedAt, 200);
 			assert.deepEqual(manifest.groups.map((group) => group.stepIndex), [1, 2]);
-			assert.equal(manifest.groups[0].children[0].index, 1);
-			assert.equal(manifest.groups[1].children[0].index, 3);
-			assert.deepEqual(manifest.groups[1].children[0].structuredOutput, { ok: true });
-			assert.equal(manifest.groups[1].children[0].patch.changed, true);
+			assert.equal(manifest.groups[0]!.children[0]!.index, 1);
+			assert.equal(manifest.groups[1]!.children[0]!.index, 3);
+			assert.deepEqual(manifest.groups[1]!.children[0]!.structuredOutput, { ok: true });
+			assert.equal(manifest.groups[1]!.children[0]!.patch.changed, true);
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
@@ -137,7 +137,7 @@ describe("parallel handoff", () => {
 			assert.equal(reference.childCount, 1);
 			assert.equal(reference.changedPatches, 0);
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as ParallelHandoffManifest;
-			const patch = manifest.groups[0].children[0].patch;
+			const patch = manifest.groups[0]!.children[0]!.patch;
 			assert.equal(patch.changed, false);
 			assert.match(patch.error ?? "", /diff artifact unavailable/);
 			assert.equal(path.basename(patch.path), "missing-diff-step-0-task-0-bad_name_agent.patch");

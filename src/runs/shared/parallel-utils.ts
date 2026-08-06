@@ -185,12 +185,12 @@ export async function mapConcurrent<T, R>(
 				if (globalSemaphore) {
 					await globalSemaphore.acquire();
 					try {
-						results[i] = await fn(items[i], i);
+						results[i] = await fn(items[i]!, i);
 					} finally {
 						globalSemaphore.release();
 					}
 				} else {
-					results[i] = await fn(items[i], i);
+					results[i] = await fn(items[i]!, i);
 				}
 			}
 		} finally {

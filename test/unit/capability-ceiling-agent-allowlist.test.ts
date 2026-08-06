@@ -23,7 +23,7 @@ function readText(result: {
 	assert.ok(first);
 	assert.equal(first.type, "text");
 	assert.equal(typeof first.text, "string");
-	return first.text;
+	return first.text!;
 }
 
 function agent(name: string): AgentConfig {

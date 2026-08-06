@@ -234,7 +234,7 @@ const makeAgentCompletions =
 		)
 			return null;
 
-		const lastWord = (segment.match(/(\S*)$/) || ["", ""])[1];
+		const lastWord = (segment.match(/(\S*)$/) || ["", ""])[1]!;
 		let beforeLastWord = prefix.slice(0, prefix.length - lastWord.length);
 		// A bare `->` or `|` just typed (no trailing space) needs a separating space;
 		// `(` glues naturally to the agent name.
@@ -453,7 +453,7 @@ class SubagentsStopSelector implements Component {
 			index < Math.min(this.targets.length, start + maxRows);
 			index++
 		) {
-			const target = this.targets[index];
+			const target = this.targets[index]!;
 			const selected = index === this.selected;
 			const marker = selected ? "›" : " ";
 			const actionLabel = target.actionLabel;
@@ -480,7 +480,7 @@ class SubagentsStopSelector implements Component {
 			);
 		lines.push("");
 		if (this.confirming) {
-			const target = this.targets[this.selected];
+			const target = this.targets[this.selected]!;
 			lines.push(
 				this.theme.fg(
 					"warning",
@@ -744,7 +744,7 @@ const mapSavedChainSteps = (
 			skill: sequential.skills,
 			model: sequential.model,
 		};
-	});
+	}) as ChainStep[];
 };
 
 async function requestSlashRun(
@@ -1506,7 +1506,7 @@ export function buildChainExpressionSteps(
 			return null;
 		}
 	}
-	const firstStep = expression.steps[0];
+	const firstStep = expression.steps[0]!;
 	const firstHasTask =
 		firstStep.kind === "group"
 			? firstStep.tasks.some((t) => Boolean(t.task))
@@ -1861,7 +1861,7 @@ export function registerSlashCommands(
 				ctx.ui.notify("Subagent session cwd is not initialized yet", "error");
 				return;
 			}
-			const agent = parts[0];
+			const agent = parts[0]!;
 			if (!discoveredAgentNames(state.baseCwd).includes(agent)) {
 				ctx.ui.notify(`Unknown agent: ${agent}`, "error");
 				return;

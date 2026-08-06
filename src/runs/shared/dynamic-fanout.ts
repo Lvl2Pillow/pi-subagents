@@ -154,8 +154,8 @@ function assertOnlyKeys(value: unknown, allowed: Set<string>, label: string): vo
 
 export function assertNoUnresolvedItemReferences(template: string, itemName: string, label: string): void {
 	for (const match of template.matchAll(/\{([^{}]*)\}/g)) {
-		const raw = match[0];
-		const reference = match[1];
+		const raw = match[0]!;
+		const reference = match[1]!;
 		if (reference === itemName || reference.startsWith(`${itemName}.`)) {
 			if (!ITEM_REF_PATTERN.test(raw) || reference === `${itemName}.` || reference.includes("..")) {
 				throw new DynamicFanoutError(`Invalid item reference '${raw}' in ${label}.`);

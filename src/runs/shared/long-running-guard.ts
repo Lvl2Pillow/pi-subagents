@@ -86,9 +86,9 @@ function hasUnquotedFileRedirection(command: string): boolean {
 		if (command[i - 1] === "-") continue;
 		const isDouble = command[i + 1] === ">";
 		let cursor = i + (isDouble ? 2 : 1);
-		while (cursor < command.length && /\s/.test(command[cursor])) cursor++;
+		while (cursor < command.length && /\s/.test(command[cursor]!)) cursor++;
 		if (cursor >= command.length) continue;
-		const targetStart = command[cursor];
+		const targetStart = command[cursor]!;
 		if (targetStart === "&" || targetStart === "|" || targetStart === ";") continue;
 		if (targetStart === "(" || targetStart === ")") continue;
 		return true;
