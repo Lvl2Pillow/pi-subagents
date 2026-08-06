@@ -5,6 +5,53 @@ import { getAgentDir } from "./utils.ts";
 const CLEANUP_MARKER_FILE = ".last-cleanup";
 const PROJECT_ARTIFACT_ROOT = ".pi-subagents";
 
+function ignoreFileExcludesProjectArtifacts(filePath: string): boolean {
+	if (!fs.existsSync(filePath)) return false;
+	try {
+		let excluded = false;
+		for (const rawLine of fs.readFileSync(filePath, "utf-8").split(/\r?\n/)) {
+			const line = rawLine.trim();
+			if (!line || line.startsWith("#")) continue;
+			const negated = line.startsWith("!");
+			const pattern = (negated ? line.slice(1) : line).replace(/^\.\//, "").replace(/^\//, "").replace(/\/+$/, "");
+			if (pattern === PROJECT_ARTIFACT_ROOT || pattern.startsWith(`${PROJECT_ARTIFACT_ROOT}/`)) excluded = !negated;
+		}
+		return excluded;
+	} catch {
+		return false;
+	}
+}
+
+function filesAllowProjectArtifacts(files: unknown): boolean {
+	if (!Array.isArray(files)) return true;
+	return files.some((entry) => {
+		if (typeof entry !== "string" || entry.startsWith("!")) return false;
+		const pattern = entry.replace(/^\.\//, "").replace(/\/+$/, "");
+		return pattern === PROJECT_ARTIFACT_ROOT || pattern.startsWith(`${PROJECT_ARTIFACT_ROOT}/`);
+	});
+}
+
+/** Returns a package-publishing warning when project artifacts can enter npm packages. */
+export function getProjectArtifactPackagingWarning(cwd: string): string | undefined {
+	const packagePath = path.join(cwd, "package.json");
+	if (!fs.existsSync(packagePath)) return undefined;
+
+	let packageJson: Record<string, unknown>;
+	try {
+		const parsed: unknown = JSON.parse(fs.readFileSync(packagePath, "utf-8"));
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+		packageJson = parsed as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+
+	const npmIgnorePath = path.join(cwd, ".npmignore");
+	const ignorePath = fs.existsSync(npmIgnorePath) ? npmIgnorePath : path.join(cwd, ".gitignore");
+	if (ignoreFileExcludesProjectArtifacts(ignorePath) || !filesAllowProjectArtifacts(packageJson.files)) return undefined;
+
+	return "Project-scoped subagent artifacts can be included when this package is published. Add '.pi-subagents/' to .npmignore, restrict package.json files, or set artifactDir to 'session' or 'temp'.";
+}
+
 export function getProjectSubagentsDir(cwd: string): string {
 	return path.join(cwd, PROJECT_ARTIFACT_ROOT);
 }
