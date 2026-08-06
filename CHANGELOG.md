@@ -5,6 +5,7 @@
 ### Added
 - Split the README reference material into focused docs and keep the README as a concise quick-start guide.
 - Verified scripted workflows can mix dynamic parallel and sequential phases with managed worktree isolation.
+- Added native `@gotgenes/pi-permission-system` compatibility for child processes. Thanks to @jagaliano for #847.
 
 ### Fixed
 - Keep async subagent widget spinners moving during quiet running periods without adding extra polling.

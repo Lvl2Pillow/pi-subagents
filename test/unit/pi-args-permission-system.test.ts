@@ -98,7 +98,7 @@ describe("resolvePermissionSystemExtension", () => {
 		fs.mkdirSync(extDir, { recursive: true });
 		fs.writeFileSync(
 			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
+			JSON.stringify({ name: "test", "pi.extensions": ["./src/index.ts"] }),
 		);
 		fs.mkdirSync(path.join(extDir, "src"), { recursive: true });
 		fs.writeFileSync(
@@ -122,7 +122,7 @@ describe("resolvePermissionSystemExtension", () => {
 			path.join(extDir, "package.json"),
 			JSON.stringify({
 				name: "test",
-				pi: { extensions: ["./src/missing.ts"] },
+				"pi.extensions": ["./src/missing.ts"],
 			}),
 		);
 		const result = resolvePermissionSystemExtension();
@@ -131,7 +131,7 @@ describe("resolvePermissionSystemExtension", () => {
 });
 
 describe("resolvePiLaunchToolPlan with permission system", () => {
-	it("appends permission system to runtimeExtensions when installed", () => {
+	it("adds the permission system extension to buildPiArgs when installed", () => {
 		const { agentDir } = createFixture();
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		const extDir = path.join(agentDir, "extensions", "pi-permission-system");
@@ -142,16 +142,22 @@ describe("resolvePiLaunchToolPlan with permission system", () => {
 		);
 		fs.writeFileSync(
 			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
+			JSON.stringify({ name: "test", "pi.extensions": ["./src/index.ts"] }),
 		);
 
-		const plan = resolvePiLaunchToolPlan({});
-		const permExt = plan.runtimeExtensions.find((e) =>
-			e.includes("pi-permission-system"),
+		const { args } = buildPiArgs({
+			baseArgs: ["-p"],
+			task: "test task",
+			sessionEnabled: false,
+			inheritProjectContext: false,
+			inheritSkills: false,
+		});
+		const extensionArgs = args.filter(
+			(arg, index) => args[index - 1] === "--extension",
 		);
 		assert.ok(
-			permExt,
-			"permission system extension should be in runtimeExtensions",
+			extensionArgs.includes(path.join(extDir, "src", "index.ts")),
+			"permission system extension should be emitted as an extension argument",
 		);
 	});
 
@@ -183,7 +189,7 @@ describe("resolvePiLaunchToolPlan with permission system", () => {
 		);
 		fs.writeFileSync(
 			path.join(extDir, "package.json"),
-			JSON.stringify({ name: "test", pi: { extensions: ["./src/index.ts"] } }),
+			JSON.stringify({ name: "test", "pi.extensions": ["./src/index.ts"] }),
 		);
 
 		const plan = resolvePiLaunchToolPlan({
