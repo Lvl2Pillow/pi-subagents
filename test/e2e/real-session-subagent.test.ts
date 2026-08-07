@@ -204,6 +204,9 @@ Report active tools.`;
 			run = await runRealSubagentSession({
 				prompt: "Delegate to a worker and report its exact result.",
 				childText: CHILD_MARKER,
+				projectFiles: {
+					".pi/agents/worker.md": `---\nname: worker\ndescription: Relays the faux child marker\n---\nReturn the exact child result.`,
+				},
 				respond: routeParentThroughSubagent({
 					childMarker: CHILD_MARKER,
 					subagentArgs: {

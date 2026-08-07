@@ -4,9 +4,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
-	buildBuiltinOverrideConfig,
+	buildBuiltinOverrideConfig as buildOverrideConfig,
 	discoverAgents,
-	discoverAgentsAll,
 } from "../../src/agents/agents.ts";
 import { handleUpdate } from "../../src/agents/agent-management.ts";
 
@@ -27,6 +26,16 @@ function writeProjectAgent(name: string, extensions?: string): void {
 	fs.writeFileSync(
 		filePath,
 		`---\nname: ${name}\ndescription: Test agent${extensions === undefined ? "" : `\nextensions:${extensions ? ` ${extensions}` : ""}`}\n---\n\nTest agent.\n`,
+		"utf-8",
+	);
+}
+
+function writeUserAgent(name: string): void {
+	const filePath = path.join(tempHome, ".pi", "agent", "agents", `${name}.md`);
+	fs.mkdirSync(path.dirname(filePath), { recursive: true });
+	fs.writeFileSync(
+		filePath,
+		`---\nname: ${name}\ndescription: Test agent\n---\n\nTest agent.\n`,
 		"utf-8",
 	);
 }
@@ -52,21 +61,6 @@ describe("subagents.defaultExtensions", () => {
 		else process.env.PI_CODING_AGENT_DIR = originalPiCodingAgentDir;
 		fs.rmSync(tempHome, { recursive: true, force: true });
 		fs.rmSync(tempProject, { recursive: true, force: true });
-	});
-
-	it("preserves ambient discovery when omitted and disables it when empty", () => {
-		let scout = discoverAgentsAll(tempProject).builtin.find(
-			(agent) => agent.name === "scout",
-		);
-		assert.equal(scout?.extensions, undefined);
-
-		writeJson(path.join(tempHome, ".pi", "agent", "settings.json"), {
-			subagents: { defaultExtensions: [] },
-		});
-		scout = discoverAgentsAll(tempProject).builtin.find(
-			(agent) => agent.name === "scout",
-		);
-		assert.deepEqual(scout?.extensions, []);
 	});
 
 	it("applies the allowlist only when an agent has no extensions field", () => {
@@ -105,6 +99,7 @@ describe("subagents.defaultExtensions", () => {
 		});
 		writeProjectAgent("inherited");
 		writeProjectAgent("explicit", "./frontmatter.ts");
+		writeProjectAgent("scout");
 
 		const agents = discoverAgents(tempProject, "both").agents;
 		assert.deepEqual(
@@ -155,19 +150,17 @@ describe("subagents.defaultExtensions", () => {
 	});
 
 	it("persists per-agent extension overrides", () => {
-		const override = buildBuiltinOverrideConfig(
+		const override = buildOverrideConfig(
 			{
 				systemPromptMode: "replace",
 				inheritProjectContext: true,
 				inheritSkills: false,
-				systemPrompt: "Test agent",
 				extensions: [],
 			},
 			{
 				systemPromptMode: "replace",
 				inheritProjectContext: true,
 				inheritSkills: false,
-				systemPrompt: "Test agent",
 				extensions: ["./agent.ts"],
 			},
 		);
@@ -182,6 +175,8 @@ describe("subagents.defaultExtensions", () => {
 		writeJson(path.join(tempProject, ".pi", "settings.json"), {
 			subagents: { defaultExtensions: [] },
 		});
+		writeUserAgent("scout");
+		writeProjectAgent("scout");
 
 		assert.deepEqual(
 			discoverAgents(tempProject, "both").agents.find(

@@ -798,26 +798,26 @@ function formatModelSource(agent: AgentConfig, currentModel: ParentModel | undef
 	if (currentModel) return "inherits current session model";
 	return "inherit requested, but no current session model is available";
 }
-
 function handleModels(params: ManagementParams, ctx: ManagementContext): AgentToolResult<Details> {
 	const requestedAgent = params.agent?.trim();
-	if (requestedAgent && !(BUILTIN_AGENT_NAMES as readonly string[]).includes(requestedAgent)) {
-		return result(`Builtin agent '${requestedAgent}' not found. Available: ${BUILTIN_AGENT_NAMES.join(", ")}.`, true);
-	}
 
 	const discovered = discoverAgentsAll(ctx.cwd);
-	const builtinByName = new Map(discovered.builtin.map((agent) => [agent.name, agent]));
+	const byName = new Map<string, AgentConfig>();
+	for (const scope of ["package", "user", "project"] as const) {
+		for (const agent of discovered[scope]) byName.set(agent.name, agent);
+	}
 	const availableModels = ctx.modelRegistry.getAvailable().map(toModelInfo);
 	const currentModel = ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined;
 	const preferredProvider = ctx.model?.provider;
-	const names = requestedAgent ? [requestedAgent] : [...BUILTIN_AGENT_NAMES];
+	const names = requestedAgent ? [requestedAgent] : [...byName.keys()];
 
 	if (requestedAgent) {
-		const agent = builtinByName.get(requestedAgent);
-		if (!agent) return result(`Builtin agent '${requestedAgent}' not found.`, true);
+		const agent = byName.get(requestedAgent);
+		if (!agent)
+			return result(`Agent '${requestedAgent}' not found. Available: ${[...byName.keys()].join(", ") || "none"}.`, true);
 		const resolvedModel = resolveSubagentModelOverride(agent.model, currentModel, availableModels, preferredProvider);
 		const lines = [
-			"Builtin subagent model",
+			"Agent model mapping",
 			"",
 			`Agent: ${requestedAgent}`,
 			"Effective model:",
@@ -839,7 +839,7 @@ function handleModels(params: ManagementParams, ctx: ManagementContext): AgentTo
 	}
 
 	const lines = [
-		"Builtin subagent models",
+		"Agent model mappings",
 		"",
 		"Current session model:",
 		`  ${currentModel ? `${currentModel.provider}/${currentModel.id}` : "(unavailable)"}`,
@@ -847,11 +847,11 @@ function handleModels(params: ManagementParams, ctx: ManagementContext): AgentTo
 	];
 
 	for (const name of names) {
-		const agent = builtinByName.get(name);
+		const agent = byName.get(name);
 		if (!agent) {
 			lines.push(name);
 			lines.push("  model:");
-			lines.push("    (builtin definition not found)");
+			lines.push("    (agent definition not found)");
 			lines.push("  source: missing");
 			lines.push("");
 			continue;

@@ -1857,12 +1857,21 @@ describe("fork context execution wiring", { skip: !available ? "subagent executo
 		assert.deepEqual(result.details?.results?.[0]?.skills, ["parallel-step-skill"]);
 	});
 
-	it("uses request cwd for project builtin overrides during management", async () => {
+	it("uses request cwd for project overrides during management", async () => {
 		const tempHome = createTempDir("pi-subagent-home-");
 		process.env.HOME = tempHome;
 		process.env.USERPROFILE = tempHome;
 		const worktreeDir = path.join(tempDir, "worktree");
 		fs.mkdirSync(worktreeDir, { recursive: true });
+		for (const root of [tempDir, worktreeDir]) {
+			const agentsDir = path.join(root, ".pi", "agents");
+			fs.mkdirSync(agentsDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(agentsDir, "reviewer.md"),
+				"---\nname: reviewer\ndescription: Project reviewer\n---\n\nReview.\n",
+				"utf-8",
+			);
+		}
 		writeProjectOverride(tempDir, "reviewer", "openai/gpt-5-main");
 		writeProjectOverride(worktreeDir, "reviewer", "openai/gpt-5-worktree");
 		const executor = makeExecutor();
