@@ -18,7 +18,7 @@
  */
 
 import * as fs from "node:fs";
-import * as path from "node:path";
+import { writeAtomicJson } from "../shared/atomic-json.ts";
 
 /** Bumped when the on-disk format changes incompatibly. */
 const STATE_VERSION = 2;
@@ -146,8 +146,6 @@ export function saveState(
 	targetIndex: number,
 ): void {
 	try {
-		const dir = path.dirname(filePath);
-		fs.mkdirSync(dir, { recursive: true });
 		const state: PersistedState = {
 			version: STATE_VERSION,
 			entries: entries.map((entry) => {
@@ -160,9 +158,9 @@ export function saveState(
 			}),
 			targetIndex,
 		};
-		const tmp = `${filePath}.tmp`;
-		fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf-8");
-		fs.renameSync(tmp, filePath);
+		// Shared atomic JSON writer: unique temp file, rename with retry, and
+		// cleanup — same crash-safe write upstream uses for leases/settings.
+		writeAtomicJson(filePath, state);
 	} catch {
 		// Best-effort: never crash the extension on disk I/O failure.
 	}

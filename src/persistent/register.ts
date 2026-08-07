@@ -25,6 +25,7 @@ import { loadConfig } from "../extension/config.ts";
 import { loadState, saveState } from "./persistence.ts";
 import { restoreLastOutputsFromSessions } from "./session-read.ts";
 import { resolvePersistentStateRoot } from "./session-scope.ts";
+import { registerPersistentExternalRuns } from "./external-runs.ts";
 import { decideInputAction } from "./routing.ts";
 import {
 	decideTerminalInterception,
@@ -112,6 +113,14 @@ export function registerPersistentChat(
 	// session_start). Used to detect a switch to a new session so the
 	// store can be repopulated for it.
 	let boundSessionId: string | null | undefined;
+
+	// Observability seam: channel activity is exposed through upstream's
+	// read-only external-runs registry (consumers: host FleetView, Herdr,
+	// third-party tooling). Idle channels are omitted.
+	const unregisterExternalRuns = registerPersistentExternalRuns({
+		store,
+		getSessionId: () => boundSessionId ?? undefined,
+	});
 
 	/**
 	 * Bind the persistent-chat subsystem to the current main-agent session:
@@ -456,6 +465,7 @@ export function registerPersistentChat(
 
 	return {
 		dispose: () => {
+			unregisterExternalRuns();
 			unsubscribe();
 			terminalInputDisposer?.();
 			terminalInputDisposer = undefined;
