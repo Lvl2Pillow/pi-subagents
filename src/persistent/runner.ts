@@ -27,7 +27,7 @@
 
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { rmSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -35,6 +35,11 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { runSync } from "../runs/foreground/execution.ts";
+import {
+	acquireSessionLease,
+	SessionLeaseConflictError,
+	type SessionLeaseHandle,
+} from "../runs/shared/session-lease.ts";
 import { createForkContextResolver } from "../shared/fork-context.ts";
 import { buildPersistentSpawnAgent, persistentSessionFile } from "./spawn.ts";
 import {
@@ -74,6 +79,14 @@ const runningSlots = new Set<number>();
 
 /** Per-slot AbortController for Esc-to-interrupt (mirrors main's Esc abort). */
 const interruptControllers = new Map<number, AbortController>();
+
+/**
+ * Session leases held per slot while a run/command child writes the channel
+ * session file. Cross-process exclusive: a stale child from a previous pi
+ * process (or another instance) cannot be clobbered by a new writer on the
+ * same session file. Released in the finalize paths and on session shutdown.
+ */
+const slotLeases = new Map<number, SessionLeaseHandle>();
 
 /** In-flight scoped-command children, tracked so Esc//new can stop them too. */
 const commandChildren = new Map<number, ChildProcess>();
@@ -126,6 +139,14 @@ export function setPersistentRunnerActive(value: boolean): void {
 			}
 		}
 		commandChildren.clear();
+		for (const lease of slotLeases.values()) {
+			try {
+				lease.release();
+			} catch {
+				// Best-effort.
+			}
+		}
+		slotLeases.clear();
 		pendingChannelResets.clear();
 		deferredSends.length = 0;
 	}
@@ -489,6 +510,36 @@ async function launchRun(
 			return;
 		}
 
+		// The lease keys on the canonical session-file path, so the file must
+		// exist before acquiring. An empty file is a valid fresh session.
+		try {
+			mkdirSync(dirname(sessionFile), { recursive: true });
+			closeSync(openSync(sessionFile, "a"));
+		} catch (error) {
+			finalizeFail(error);
+			return;
+		}
+		// Cross-process exclusive guard on the channel session file: refuse to
+		// launch if a live writer from another process still owns the lease
+		// (e.g. a stale child from before a restart).
+		let lease: SessionLeaseHandle | undefined;
+		try {
+			lease = acquireSessionLease({
+				sessionFile,
+				runId: requestId,
+				sourceRunId: requestId,
+				parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+			});
+			slotLeases.set(entry.index, lease);
+		} catch (error) {
+			finalizeFail(
+				error instanceof SessionLeaseConflictError
+					? `Another process still owns this channel's session. ${error.message}`
+					: error,
+			);
+			return;
+		}
+
 		const agent = buildPersistentSpawnAgent();
 		const startedAt = Date.now();
 		// Live streaming: every child progress event (assistant message, tool
@@ -576,6 +627,15 @@ async function launchRun(
 	} finally {
 		interruptControllers.delete(entry.index);
 		runningSlots.delete(entry.index);
+		const lease = slotLeases.get(entry.index);
+		if (lease) {
+			try {
+				lease.release();
+			} catch {
+				// Best-effort.
+			}
+			slotLeases.delete(entry.index);
+		}
 		// A /new requested while this run was in flight: the child is dead now,
 		// so it is safe to clear the session file.
 		if (pendingChannelResets.delete(entry.index)) {
@@ -716,6 +776,71 @@ async function launchCommand(
 	});
 	drainDeferredMessageSends(pi, ctx);
 
+	// Cross-process exclusive guard: refuse the command child if a live writer
+	// from another process still owns this channel's session file. The file
+	// must exist for the lease's canonical-path key, so ensure it.
+	try {
+		mkdirSync(dirname(sessionFile), { recursive: true });
+		closeSync(openSync(sessionFile, "a"));
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		logPersistent("command", "blocked", {
+			requestId,
+			index: entry.index,
+			command,
+			error: truncateText(message),
+		});
+		runningSlots.delete(entry.index);
+		setPersistentRunState(requestId, "fail", message, entry.index);
+		store.setRunState(entry.index, "fail");
+		store.setRunOutput(entry.index, message);
+		deferredSends.push({
+			kind: "final",
+			requestId,
+			entryIndex: entry.index,
+			state: "fail",
+			text: message,
+		});
+		drainDeferredMessageSends(pi, ctx);
+		return;
+	}
+	let lease: SessionLeaseHandle | undefined;
+	try {
+		lease = acquireSessionLease({
+			sessionFile,
+			runId: requestId,
+			sourceRunId: requestId,
+			parentSessionId: ctx.sessionManager.getSessionId() ?? undefined,
+		});
+		slotLeases.set(entry.index, lease);
+	} catch (error) {
+		const message =
+			error instanceof SessionLeaseConflictError
+				? `Another process still owns this channel's session. ${error.message}`
+				: error instanceof Error
+					? error.message
+					: String(error);
+		logPersistent("command", "blocked", {
+			requestId,
+			index: entry.index,
+			command,
+			error: truncateText(message),
+		});
+		runningSlots.delete(entry.index);
+		setPersistentRunState(requestId, "fail", message, entry.index);
+		store.setRunState(entry.index, "fail");
+		store.setRunOutput(entry.index, message);
+		deferredSends.push({
+			kind: "final",
+			requestId,
+			entryIndex: entry.index,
+			state: "fail",
+			text: message,
+		});
+		drainDeferredMessageSends(pi, ctx);
+		return;
+	}
+
 	const spawnSpec = resolveCommandSpawn([
 		"--session-file",
 		sessionFile,
@@ -728,6 +853,13 @@ async function launchCommand(
 		env: process.env,
 		stdio: ["ignore", "pipe", "pipe"],
 	});
+	if (child.pid) {
+		try {
+			lease.updateWriter({ state: "running", pid: child.pid });
+		} catch {
+			// Best-effort: the lease is still held by this process.
+		}
+	}
 	commandChildren.set(entry.index, child);
 	let stdout = "";
 	let stderr = "";
@@ -765,6 +897,14 @@ async function launchCommand(
 		if (!active || finalized) return;
 		finalized = true;
 		runningSlots.delete(entry.index);
+		if (lease) {
+			try {
+				lease.release();
+			} catch {
+				// Best-effort.
+			}
+			slotLeases.delete(entry.index);
+		}
 		// A /new requested while this command child was in flight: the child is
 		// dead now, so it is safe to clear the session file.
 		if (pendingChannelResets.delete(entry.index)) {

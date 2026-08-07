@@ -261,10 +261,13 @@ Scope rules and edge behavior:
   (prompt routed fine, run completed) — no extension-level bug found in pi 0.83.0
   static analysis; recovery = full pi restart. The `session_compact` log entries
   should capture the exact window next time.
-- **Busy-guard (offered, not implemented):** double-Enter during a child run spawns
-  two concurrent `runSync` on the same session file → contention/lost context.
-  Proposal: use `event.streamingBehavior` to reject/queue a second prompt while a
-  run is in flight.
+- **Busy-guard (implemented 2026-08-07):** double-Enter during a child run used to
+  spawn two concurrent `runSync` on the same session file → contention/lost context.
+  In-process `runningSlots` blocks same-process overlap; cross-process exclusivity
+  (stale child from a previous pi process, or a second pi instance) is now enforced
+  with upstream's `acquireSessionLease` per slot — acquired before spawning the run
+  or command child, released on finalize and on `session_shutdown`. A live foreign
+  lease fails the launch with "Another process still owns this channel's session."
 - `lastOutput`/`lastState` don't survive restart (documented limitation).
 
 ## 3. Pitfalls (actual problems hit & resolved)

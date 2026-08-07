@@ -27,6 +27,10 @@ import {
 	tryImport,
 } from "../support/helpers.ts";
 import { PersistentChatStore } from "../../src/persistent/store.ts";
+import {
+	acquireSessionLease,
+	inspectSessionLease,
+} from "../../src/runs/shared/session-lease.ts";
 
 interface RunnerModule {
 	setPersistentRunnerActive: (value: boolean) => void;
@@ -334,6 +338,66 @@ describe(
 				false,
 				"second cancel finds nothing",
 			);
+		});
+
+		it("holds a session lease while a run is in flight and releases it after finalize", async () => {
+			const store = new PersistentChatStore();
+			store.setTarget(1);
+			const { pi } = makePi();
+			const ctx = makeContext(() => true);
+			mockPi.onCall({ output: "never reached", delay: 60_000 });
+
+			runner!.enqueuePersistentPrompt(pi, store, ctx, "hello sub", tempDir);
+			await waitFor(() => mockPi.callCount() === 1, "mock child spawned");
+			const sessionFile = store.getAgent(1)?.sessionFile;
+			assert.ok(sessionFile, "session file created by the run");
+			assert.equal(
+				inspectSessionLease(sessionFile).state,
+				"owned",
+				"lease held while the run is in flight",
+			);
+
+			runner!.interruptPersistentRun(1);
+			await waitFor(
+				() => store.getAgent(1)?.lastState === "fail",
+				"interrupted run finalized",
+			);
+			assert.equal(
+				inspectSessionLease(sessionFile).state,
+				"free",
+				"lease released after finalize",
+			);
+		});
+
+		it("refuses a run when another process holds the session lease", async () => {
+			const store = new PersistentChatStore();
+			store.setTarget(1);
+			const sessionFile = path.join(tempDir, "persist-lease-block.jsonl");
+			fs.writeFileSync(sessionFile, "", "utf-8");
+			store.setSessionFile(1, sessionFile);
+			// A live lease held by another writer (e.g. a stale child from a
+			// previous pi process that never released its session).
+			const foreign = acquireSessionLease({
+				sessionFile,
+				runId: "foreign-run",
+				sourceRunId: "foreign-run",
+			});
+			const { pi } = makePi();
+			const ctx = makeContext(() => true);
+			try {
+				runner!.enqueuePersistentPrompt(pi, store, ctx, "hello sub", tempDir);
+				await waitFor(
+					() => store.getAgent(1)?.lastState === "fail",
+					"run refused by the foreign lease",
+				);
+				assert.match(
+					store.getAgent(1)?.lastOutput ?? "",
+					/Another process still owns this channel's session/,
+				);
+				assert.equal(mockPi.callCount(), 0, "no child spawned");
+			} finally {
+				foreign.release();
+			}
 		});
 	},
 );
