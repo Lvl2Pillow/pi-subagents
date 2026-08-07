@@ -149,7 +149,7 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 		const tasks = ["Task A", "Task B", "Task C"];
 
 		const results = await mapConcurrent(
-			tasks.map((task, i) => ({ agent: agents[i]!.name, task, index: i })),
+			tasks.map((task, i) => ({ agent: agents[i].name, task, index: i })),
 			3,
 			async ({ agent, task, index }: any) => {
 				return runSync(tempDir, agents, agent, task, { index });
@@ -247,7 +247,7 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 			"counted-parallel-indexes",
 			{ tasks: [{ agent: "echo", task: "Counted inspection", count: 2 }] },
 			new AbortController().signal,
-			(update: import("@earendil-works/pi-agent-core").AgentToolResult<import("../../src/shared/types.ts").Details>) => {
+			(update) => {
 				for (const row of update.details?.results ?? []) updateIndexes.push(row.index);
 			},
 			makeMinimalCtx(tempDir),
@@ -297,7 +297,7 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 		assert.equal(fs.existsSync(handoff.groups[0]!.cleanup.tasks[0]!.path), false);
 	});
 
-	it("keeps worktree parallel runs successful when handoff manifest writing fails", { skip: !createSubagentExecutor || process.platform === "win32" ? "executor unavailable or worktree paths differ on Windows" : undefined }, async () => {
+	it("aborts and cleans up before child execution when the ownership journal cannot be written", { skip: !createSubagentExecutor || process.platform === "win32" ? "executor unavailable or worktree paths differ on Windows" : undefined }, async () => {
 		git(["init"]);
 		git(["config", "user.email", "test@example.com"]);
 		git(["config", "user.name", "Test User"]);
@@ -326,22 +326,23 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 				ctx,
 			);
 
-			assert.equal(result.isError, undefined);
+			assert.equal(result.isError, true);
 			assert.equal(result.details?.parallelHandoff, undefined);
-			assert.match(result.content[0]?.text ?? "", /Parallel handoff unavailable:/);
+			assert.match(result.content[0]?.text ?? "", /handoff|not a directory|EEXIST/i);
+			assert.equal(mockPi.callCount(), 0);
 			assert.doesNotMatch(git(["worktree", "list", "--porcelain"]), /pi-parallel-/);
+			assert.equal(git(["branch", "--list", "pi-parallel-*"]), "");
 		} finally {
 			fs.rmSync(sessionDir, { recursive: true, force: true });
 		}
 	});
 
-	it("treats parallel action aliases with tasks as top-level parallel execution", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+	it("rejects removed parallel action aliases with tasks at the public boundary", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
 		for (const action of ["parallel", "PARALLEL", "tasks"]) {
 			mockPi.reset();
-			mockPi.onCall({ output: `${action} alias finished` });
 			const executor = makeExecutor();
 
-			const result = await executor.execute(
+			const result = await executor.executePublic(
 				`parallel-alias-${action}`,
 				{ action, tasks: [{ agent: "echo", task: `Run ${action}` }] },
 				new AbortController().signal,
@@ -349,9 +350,9 @@ describe("parallel agent execution", { skip: !piAvailable ? "pi packages not ava
 				makeMinimalCtx(tempDir),
 			);
 
-			assert.equal(result.isError, undefined);
-			assert.equal(result.details?.mode, "parallel");
-			assert.match(result.content[0]?.text ?? "", new RegExp(`${action} alias finished`));
+			assert.equal(result.isError, true);
+			assert.match(result.content[0]?.text ?? "", /Legacy top-level chain and parallel inputs were removed/);
+			assert.equal(mockPi.callCount(), 0);
 		}
 	});
 

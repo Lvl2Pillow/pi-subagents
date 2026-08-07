@@ -72,7 +72,7 @@ function hasUnquotedFileRedirection(command: string): boolean {
 	let inSingle = false;
 	let inDouble = false;
 	for (let i = 0; i < command.length; i++) {
-		const char = command[i];
+		const char = command[i]!;
 		if (char === "'" && !inDouble) {
 			inSingle = !inSingle;
 			continue;

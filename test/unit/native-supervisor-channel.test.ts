@@ -15,16 +15,18 @@ import {
 	SUBAGENT_CHILD_AGENT_ENV,
 	SUBAGENT_CHILD_INDEX_ENV,
 	SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV,
+	SUBAGENT_ORCHESTRATOR_TARGET_ENV,
 	SUBAGENT_RUN_ID_ENV,
 	SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV,
 } from "../../src/runs/shared/pi-args.ts";
-import { SUBAGENT_DETACH_REQUEST_EVENT, type SubagentState } from "../../src/shared/types.ts";
+import { INTERCOM_DETACH_REQUEST_EVENT, type SubagentState } from "../../src/shared/types.ts";
 
 const createdChannels: string[] = [];
 const savedEnv = {
 	[SUBAGENT_CHILD_AGENT_ENV]: process.env[SUBAGENT_CHILD_AGENT_ENV],
 	[SUBAGENT_CHILD_INDEX_ENV]: process.env[SUBAGENT_CHILD_INDEX_ENV],
 	[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV]: process.env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV],
+	[SUBAGENT_ORCHESTRATOR_TARGET_ENV]: process.env[SUBAGENT_ORCHESTRATOR_TARGET_ENV],
 	[SUBAGENT_RUN_ID_ENV]: process.env[SUBAGENT_RUN_ID_ENV],
 	[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV]: process.env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV],
 };
@@ -140,7 +142,7 @@ describe("native supervisor channel", () => {
 		channel.start();
 		channel.dispose();
 
-		assert.deepEqual(registeredTools, [NATIVE_SUPERVISOR_TOOL_NAME]);
+		assert.deepEqual(registeredTools, [NATIVE_SUPERVISOR_TOOL_NAME, "intercom"]);
 		assert.deepEqual(sent.map(({ message }) => message.details?.id), [matchingId]);
 		assert.deepEqual(sent[0]?.options, { triggerTurn: true });
 		assert.equal(channel.pending.has(matchingId), false, "disposed channel clears pending requests");
@@ -239,7 +241,7 @@ describe("native supervisor channel", () => {
 		try {
 			assert.deepEqual(log, ["send", "emit"]);
 			assert.deepEqual(emitted, [{
-				channel: SUBAGENT_DETACH_REQUEST_EVENT,
+				channel: INTERCOM_DETACH_REQUEST_EVENT,
 				payload: { requestId, runId, agent: "worker", childIndex: 2 },
 			}]);
 			assert.equal(channel.pending.has(requestId), true);
@@ -327,7 +329,7 @@ describe("native supervisor channel", () => {
 		assert.deepEqual(sent.map((message) => message.details?.id), [matchingId]);
 	});
 
-	it("exposes the native supervisor reply path without an intercom fallback tool", async () => {
+	it("keeps an installed intercom tool and still exposes a native supervisor reply path", async () => {
 		const currentSessionId = `session-${randomUUID()}`;
 		const runId = `run-${randomUUID()}`;
 		const requestId = writeRequest({ sessionId: currentSessionId, runId });
@@ -342,7 +344,7 @@ describe("native supervisor channel", () => {
 			},
 		};
 		const pi = {
-			getAllTools: () => [...registeredTools.keys()].map((name) => ({ name })),
+			getAllTools: () => [{ name: "intercom" }, ...[...registeredTools.keys()].map((name) => ({ name }))],
 			registerTool: (tool: { name: string; execute: (_id: string, params: { action: string; replyTo?: string; message?: string }) => Promise<unknown> }) => {
 				registeredTools.set(tool.name, tool);
 			},
@@ -464,6 +466,7 @@ describe("native supervisor channel", () => {
 		const runId = `run-${randomUUID()}`;
 		const channelDir = resolveSupervisorChannelDir(runId, "worker", 0);
 		createdChannels.push(channelDir);
+		process.env[SUBAGENT_ORCHESTRATOR_TARGET_ENV] = "shared-name";
 		process.env[SUBAGENT_ORCHESTRATOR_SESSION_ID_ENV] = "session-parent";
 		process.env[SUBAGENT_SUPERVISOR_CHANNEL_DIR_ENV] = channelDir;
 		process.env[SUBAGENT_RUN_ID_ENV] = runId;
@@ -476,12 +479,12 @@ describe("native supervisor channel", () => {
 				registeredTools.set(tool.name, tool);
 			},
 		};
-		registerNativeSupervisorClient(pi as never);
+		registerNativeSupervisorClient(pi as never, { includeIntercomFallback: false });
 		const controller = new AbortController();
 		controller.abort();
 
 		await assert.rejects(
-			async () => registeredTools.get("contact_supervisor")!.execute("contact", { reason: "need_decision", message: "Need a decision" }, controller.signal),
+			() => registeredTools.get("contact_supervisor")!.execute("contact", { reason: "need_decision", message: "Need a decision" }, controller.signal),
 			/Supervisor request cancelled/,
 		);
 

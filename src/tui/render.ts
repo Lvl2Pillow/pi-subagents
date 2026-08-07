@@ -53,6 +53,7 @@ const ansiStylePattern = /\x1b\[[0-9;]*m/y;
  * Uses Intl.Segmenter for proper Unicode/emoji handling (not char-by-char).
  */
 export function truncLine(text: string, maxWidth: number): string {
+	if (maxWidth <= 0) return "";
 	if (visibleWidth(text) <= maxWidth) return text;
 
 	const targetWidth = maxWidth - 1;
@@ -83,7 +84,7 @@ export function truncLine(text: string, maxWidth: number): string {
 		const textPortion = text.slice(i, end);
 		for (const seg of segmenter.segment(textPortion)) {
 			const grapheme = seg.segment;
-			const graphemeWidth = visibleWidth(grapheme);
+			const graphemeWidth = grapheme === "\x1b" ? 0 : visibleWidth(grapheme);
 
 			if (currentWidth + graphemeWidth > targetWidth) {
 				return result + activeStyles.join("") + "…";
@@ -111,6 +112,7 @@ function wrapPlainText(text: string, maxWidth: number): string[] {
 		for (const seg of segmenter.segment(rawLine)) {
 			const grapheme = seg.segment;
 			const graphemeWidth = visibleWidth(grapheme);
+			if (graphemeWidth > maxWidth) continue;
 			if (currentWidth > 0 && currentWidth + graphemeWidth > maxWidth) {
 				lines.push(current);
 				current = grapheme;
@@ -144,22 +146,9 @@ function runningGlyph(seed?: number): string {
 	return RUNNING_FRAMES[Math.abs(seed) % RUNNING_FRAMES.length]!;
 }
 
-const WIDGET_ANIMATION_FRAME_MS = 500;
-let widgetRequestRender: (() => void) | undefined;
-
 function animatedSeed(seed: number | undefined, frame: number | undefined): number | undefined {
 	if (frame === undefined) return seed;
 	return (seed ?? 0) + frame;
-}
-
-function widgetAnimationFrame(): number {
-	return Math.floor(Date.now() / WIDGET_ANIMATION_FRAME_MS);
-}
-
-export function requestWidgetRender(): boolean {
-	if (!widgetRequestRender) return false;
-	widgetRequestRender();
-	return true;
 }
 
 function progressRunningSeed(progress: ProgressSeedSource | undefined): number | undefined {
@@ -603,7 +592,7 @@ function buildChainStepSpans(details: Pick<Details, "chainAgents" | "workflowGra
 	const spans: ChainStepSpan[] = [];
 	let start = 0;
 	for (let stepIndex = 0; stepIndex < details.chainAgents.length; stepIndex++) {
-		const label = details.chainAgents[stepIndex];
+		const label = details.chainAgents[stepIndex]!;
 		const parsedCount = parseParallelGroupAgentCount(label);
 		const count = parsedCount ?? 1;
 		spans.push({ stepIndex, start, count, isParallel: parsedCount !== undefined });
@@ -1291,7 +1280,8 @@ function collapsedWidgetLineBudget(rows: number): number {
 }
 
 function paddedWidgetLine(line: string, width: number): string {
-	const text = ` ${line} `;
+	if (width <= 2) return " ".repeat(Math.max(0, width));
+	const text = ` ${truncLine(line, width - 2)} `;
 	return `${text}${" ".repeat(Math.max(0, width - visibleWidth(text)))}`;
 }
 
@@ -1346,34 +1336,25 @@ function fitAdaptiveWidgetLines(jobs: AsyncJobState[], lines: string[], theme: T
 	return rendered.lines;
 }
 
-function buildWidgetComponent(jobs: AsyncJobState[], expanded: boolean): (tui: { requestRender(): void }, theme: Theme) => Component & { dispose?(): void } {
-	return (tui, theme) => {
-		const requestRender = () => tui.requestRender();
-		widgetRequestRender = requestRender;
-
+function buildWidgetComponent(jobs: AsyncJobState[], expanded: boolean): (_tui: unknown, theme: Theme) => Component {
+	return (_tui, theme) => {
 		const container = new Container();
 		container.render = (renderWidth: number): string[] => {
-			const width = getTermWidth();
-			const frame = widgetAnimationFrame();
+			const width = Math.max(0, renderWidth - 2);
 			const lines = expanded
-				? buildWidgetLines(jobs, theme, width, true, frame)
+				? buildWidgetLines(jobs, theme, width, true)
 				: jobs.length === 1
-					? compactSingleWidgetLines(jobs[0]!, theme, width, frame)
-					: buildWidgetLines(jobs, theme, width, false, frame);
-			return fitAdaptiveWidgetLines(jobs, lines, theme, width, expanded, frame).map((line) => paddedWidgetLine(line, renderWidth));
+					? compactSingleWidgetLines(jobs[0]!, theme, width)
+					: buildWidgetLines(jobs, theme, width, false);
+			return fitAdaptiveWidgetLines(jobs, lines, theme, width, expanded).map((line) => paddedWidgetLine(line, renderWidth));
 		};
-		const component = container as Component & { dispose?(): void };
-		component.dispose = () => {
-			if (widgetRequestRender === requestRender) widgetRequestRender = undefined;
-		};
-		return component;
+		return container;
 	};
 }
 
 export function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, width = getTermWidth(), expanded = false, frame?: number): string[] {
 	if (jobs.length === 0) return [];
 	if (jobs.length === 1) return buildSingleWidgetLines(jobs[0]!, theme, width, expanded, frame);
-
 	const running = jobs.filter((job) => job.status === "running");
 	const queued = jobs.filter((job) => job.status === "queued");
 	const finished = jobs.filter((job) => job.status !== "running" && job.status !== "queued");
@@ -1447,7 +1428,6 @@ export function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, width = ge
 export function renderWidget(ctx: ExtensionContext, jobs: AsyncJobState[]): void {
 	if (jobs.length === 0) {
 		resetWidgetLayoutSession();
-		widgetRequestRender = undefined;
 		if (ctx.hasUI) ctx.ui.setWidget(WIDGET_KEY, undefined);
 		return;
 	}
@@ -1617,9 +1597,8 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 		}
 		const output = getSingleResultOutput(r);
 		const progressFromArray = d.progress?.find((p) => p.index === i) || d.progress?.find((p) => p.agent === r.agent && p.status === "running");
-		const rProg = (r.progress || progressFromArray || r.progressSummary) as unknown as AgentProgress | undefined;
+		const rProg = r.progress || progressFromArray || r.progressSummary;
 		const rRunning = rProg && "status" in rProg && isResultRunning(r, rProg.status);
-
 		const rPending = rProg && "status" in rProg && rProg.status === "pending";
 		const stepNumber = r.progress?.index !== undefined ? r.progress.index + 1 : progressFromArray?.index !== undefined ? progressFromArray.index + 1 : i + 1;
 		const stepStats = formatProgressStats(theme, rProg);
@@ -1631,9 +1610,10 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 		const line = `${glyph} ${stepLabel}: ${themeBold(theme, agentName)}${contextModeBadge(theme, r.context)}${rowModelDisplay}${stepStats ? ` ${theme.fg("dim", "·")} ${stepStats}` : ""}${pendingLabel}`;
 		c.addChild(new Text(truncLine(`  ${line}`, width), 0, 0));
 		if (rRunning && rProg && "status" in rProg) {
-			const activity = compactCurrentActivity(rProg);
+			const liveProgress = rProg as AgentProgress;
+			const activity = compactCurrentActivity(liveProgress);
 			c.addChild(new Text(truncLine(theme.fg("dim", `    ⎿  ${activity}`), width), 0, 0));
-			for (const nestedLine of formatNestedWidgetLines(r.children, theme, width, false, snapshotNowForProgress(rProg))) {
+			for (const nestedLine of formatNestedWidgetLines(r.children, theme, width, false, snapshotNowForProgress(liveProgress))) {
 				c.addChild(new Text(truncLine(`    ${nestedLine}`, width), 0, 0));
 			}
 			c.addChild(new Text(truncLine(theme.fg("accent", `    ${liveDetailHintText()}`), width), 0, 0));
@@ -1727,7 +1707,8 @@ export function renderSubagentResult(
 	const mdTheme = getMarkdownTheme();
 
 	if (d.mode === "single" && d.results.length === 1) {
-		const r = d.results[0]!;
+		const r = d.results[0];
+		if (!r) return renderMultiCompact(d, theme, frame);
 		if (!expanded) return renderSingleCompact(d, r, theme, frame);
 		const isRunning = isResultRunning(r);
 		const contextBadge = contextModeBadge(theme, r.context ?? d.context);
@@ -1885,7 +1866,6 @@ export function renderSubagentResult(
 		? d.chainAgents
 				.map((agent, i) => {
 					const result = d.results[i];
-
 					const isCurrent = i === (d.currentStepIndex ?? d.results.length);
 					const stepPresentation = result
 						? styledResultPresentation(resultPresentation(result, getSingleResultOutput(result), isCurrent && hasRunning && !hasTerminalResultFlag(result)), theme)
@@ -1949,9 +1929,8 @@ export function renderSubagentResult(
 
 		const progressFromArray = d.progress?.find((p) => p.index === i) 
 			|| d.progress?.find((p) => p.agent === r.agent && p.status === "running");
-		const rProg = (r.progress || progressFromArray || r.progressSummary) as unknown as AgentProgress | undefined;
+		const rProg = r.progress || progressFromArray || r.progressSummary;
 		const rRunning = isResultRunning(r, rProg?.status);
-
 		const stepNumber = typeof rProg?.index === "number" ? rProg.index + 1 : i + 1;
 
 		const resultOutput = getSingleResultOutput(r);

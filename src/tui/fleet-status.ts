@@ -100,21 +100,25 @@ function nestedFleetRows(children: NestedRunSummary[] | undefined): FleetNestedR
 		const steps = (child.mode === "parallel" || child.mode === "chain") ? child.steps ?? [] : [];
 		if (steps.length > 0) {
 			for (const step of steps) {
+				const modelThinking = formatModelThinking(step.model, step.thinking) || undefined;
+				const activity = nestedActivity(step);
 				rows.push({
 					name: step.agent,
 					state: step.status,
-					...(formatModelThinking(step.model, step.thinking) ? { modelThinking: formatModelThinking(step.model, step.thinking) } : {}),
-					...(nestedActivity(step) ? { activity: nestedActivity(step) } : {}),
+					...(modelThinking ? { modelThinking } : {}),
+					...(activity ? { activity } : {}),
 					...(step.startedAt !== undefined ? { startedAt: step.startedAt } : {}),
 				});
 			}
 			continue;
 		}
+		const modelThinking = formatModelThinking(child.model, child.thinking) || undefined;
+		const activity = nestedActivity(child);
 		rows.push({
 			name: nestedRunLabel(child),
 			state: child.state,
-			...(formatModelThinking(child.model, child.thinking) ? { modelThinking: formatModelThinking(child.model, child.thinking) } : {}),
-			...(nestedActivity(child) ? { activity: nestedActivity(child) } : {}),
+			...(modelThinking ? { modelThinking } : {}),
+			...(activity ? { activity } : {}),
 			...(child.startedAt !== undefined ? { startedAt: child.startedAt } : {}),
 		});
 	}
@@ -439,7 +443,7 @@ export class SubagentFleetStatus {
 	private renderEntry(rosterIndex: number, selectedIndex: number, entry: FleetStatusEntry, width: number, theme: Theme): string {
 		const description = entry.description?.replace(/\s+/g, " ").trim();
 		const agent = entry.modelThinking ? `${entry.agent} (${entry.modelThinking})` : entry.agent;
-		const left = `  ${this.bullet(rosterIndex, selectedIndex, theme)} ${theme.fg("muted", agent)}${description ? `  ${description}` : ""}`;
+		const left = `  ${this.bullet(rosterIndex, selectedIndex, theme)} ${theme.fg("muted", agent)} · ${entry.state}${description ? `  ${description}` : ""}`;
 		const elapsed = Date.now() - entry.startedAt;
 		const right = theme.fg("dim", `${formatFleetElapsed(elapsed)} · ${formatFleetTokens(entry.tokens)}`);
 		return rightAlign(left, right, width);

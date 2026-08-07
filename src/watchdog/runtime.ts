@@ -602,10 +602,10 @@ export class MainWatchdogRuntime {
 				return "timeout";
 			}
 			if (!this.isCurrent(reviewEpoch, reviewId)) return "stale";
-			const review = result as { warnings?: WatchdogWarning[]; stopReason?: string } | undefined;
-			for (const warning of review?.warnings ?? []) this.acceptWarning(reviewEpoch, reviewId, warning);
-			if (review?.stopReason && review.stopReason !== "stop") {
-				this.fail(`Watchdog review ended with stop reason '${review.stopReason}'.`);
+			if (!result) return "stale";
+			for (const warning of result.warnings ?? []) this.acceptWarning(reviewEpoch, reviewId, warning);
+			if (result.stopReason && result.stopReason !== "stop") {
+				this.fail(`Watchdog review ended with stop reason '${result.stopReason}'.`);
 				return "completed";
 			}
 			this.displayAcceptedReviewWarning(options.correction);

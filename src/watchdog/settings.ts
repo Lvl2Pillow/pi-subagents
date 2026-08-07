@@ -470,13 +470,13 @@ function parseSessionOverride(value: Record<string, unknown>): WatchdogConfigPat
 
 export function resolveWatchdogConfigStrict(cwd: string, options: { session?: Record<string, unknown> } = {}): ResolvedWatchdogConfig {
 	let patch: WatchdogConfigPatch = {};
-	patch = deepMerge(patch as Record<string, unknown>, parseSourceFile(getUserSettingsPath(), "user") as Record<string, unknown>);
+	patch = deepMerge(patch as Record<string, unknown>, parseSourceFile(getUserSettingsPath(), "user") as Record<string, unknown>) as WatchdogConfigPatch;
 	const projectSettingsPath = getProjectSettingsPath(cwd);
 	if (projectSettingsPath) {
-		patch = deepMerge(patch as Record<string, unknown>, parseSourceFile(projectSettingsPath, "project") as Record<string, unknown>);
+		patch = deepMerge(patch as Record<string, unknown>, parseSourceFile(projectSettingsPath, "project") as Record<string, unknown>) as WatchdogConfigPatch;
 	}
 	if (options.session) {
-		patch = deepMerge(patch as Record<string, unknown>, parseSessionOverride(options.session) as Record<string, unknown>);
+		patch = deepMerge(patch as Record<string, unknown>, parseSessionOverride(options.session) as Record<string, unknown>) as WatchdogConfigPatch;
 	}
 	return resolvePatch(patch);
 }
@@ -546,7 +546,7 @@ export function resolveWatchdogConfig(cwd: string, options: { session?: Record<s
 		if (!source.path) continue;
 		sources.push({ scope: source.scope, path: source.path, exists: fs.existsSync(source.path) });
 		try {
-			patch = deepMerge(patch as Record<string, unknown>, parseSourceFile(source.path, source.scope) as Record<string, unknown>);
+			patch = deepMerge(patch as Record<string, unknown>, parseSourceFile(source.path, source.scope) as Record<string, unknown>) as WatchdogConfigPatch;
 		} catch (error) {
 			errors.push({ scope: source.scope, path: source.path, message: error instanceof Error ? error.message : String(error) });
 		}
@@ -554,7 +554,7 @@ export function resolveWatchdogConfig(cwd: string, options: { session?: Record<s
 	if (options.session) {
 		sources.push({ scope: "session", exists: true });
 		try {
-			patch = deepMerge(patch as Record<string, unknown>, parseSessionOverride(options.session) as Record<string, unknown>);
+			patch = deepMerge(patch as Record<string, unknown>, parseSessionOverride(options.session) as Record<string, unknown>) as WatchdogConfigPatch;
 		} catch (error) {
 			errors.push({ scope: "session", message: error instanceof Error ? error.message : String(error) });
 		}

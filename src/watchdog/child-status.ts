@@ -156,7 +156,7 @@ export function decodeChildWatchdogConfig(raw: string | undefined): ChildWatchdo
 		agentEndTimeoutMs: childConfigPositiveInteger(parsed, "agentEndTimeoutMs"),
 		maxWarnings: childConfigNullableNonNegativeInteger(parsed, "maxWarnings"),
 		...(model ? { model } : {}),
-		...(typeof thinking === "string" || thinking === false ? { thinking } : {}),
+		...(thinking !== undefined ? { thinking: thinking as string | false } : {}),
 		lsp: childConfigLsp(parsed.lsp),
 		autoFollowBlockers: childConfigBoolean(parsed, "autoFollowBlockers"),
 		autoFollowMaxAttempts: childConfigNullableNonNegativeInteger(parsed, "autoFollowMaxAttempts"),

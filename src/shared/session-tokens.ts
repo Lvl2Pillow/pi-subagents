@@ -26,10 +26,7 @@ export function parseSessionTokens(sessionDir: string): TokenUsage | null {
 		for (const line of content.split("\n")) {
 			if (!line.trim()) continue;
 			try {
-				const entry = JSON.parse(line) as {
-					usage?: { inputTokens?: number; input?: number; outputTokens?: number; output?: number };
-					message?: { usage?: { inputTokens?: number; input?: number; outputTokens?: number; output?: number } };
-				};
+				const entry = JSON.parse(line);
 				const usage = entry.usage ?? entry.message?.usage;
 				if (usage) {
 					input += usage.inputTokens ?? usage.input ?? 0;

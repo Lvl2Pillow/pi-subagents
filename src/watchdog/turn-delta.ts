@@ -47,7 +47,7 @@ function formatValue(value: unknown, indent = ""): string {
 	if (value === undefined) return "undefined";
 	if (value === null || typeof value === "number" || typeof value === "boolean") return JSON.stringify(value);
 	if (Array.isArray(value)) {
-		return value.map((item) => `${indent}- ${formatValue(item, `${indent}  `)}`).join("\n");
+		return value.map((item, index) => `${indent}- ${formatValue(item, `${indent}  `)}`).join("\n");
 	}
 	if (typeof value === "object") {
 		const lines: string[] = [];
@@ -99,7 +99,7 @@ function messagesFromEvent(event: unknown): unknown[] {
 	if (!event || typeof event !== "object") return [];
 	const input = event as Record<string, unknown>;
 	if (input.type === "turn_end" || input.event === "turn_end") {
-		return [input.message, ...(Array.isArray(input.toolResults) ? (input.toolResults as unknown[]) : [])].filter(Boolean);
+		return [input.message, ...(Array.isArray(input.toolResults) ? input.toolResults : [])].filter(Boolean);
 	}
 	if (input.message) return [input.message];
 	if (input.type === "tool_execution_start" || input.event === "tool_execution_start") {

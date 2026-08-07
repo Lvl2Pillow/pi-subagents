@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
 	AcceptanceConfig,
@@ -94,7 +96,7 @@ function inferLevel(input: {
 		&& /\bpatch\s+(?:(?:\.{0,2}[\\/])?(?:[\w.-]+[\\/])+[\w.-]+|[\w.-]+\.[a-z0-9]+\b|(?:the\s+)?parser\b)/.test(task);
 	const taskMayWrite = readOnlyTask ? false : taskMayMutate(input.task ?? "") || intent.kind === "implementation" || rolePatchTask;
 	const readOnlyAgent = input.acceptanceRole === "read-only"
-		|| (input.acceptanceRole === undefined && /\b(?:reviewer|oracle|scout|context-builder|researcher|analyst)\b/.test(agent));
+		|| (input.acceptanceRole === undefined && /\b(?:reviewer|oracle|scout|researcher|analyst)\b/.test(agent));
 	const writeTask = taskMayWrite
 		|| (input.acceptanceRole === "writer" && !readOnlyTask)
 		|| (input.acceptanceRole === undefined && /\bworker\b/.test(agent) && !readOnlyTask);
@@ -149,6 +151,13 @@ export function normalizeAcceptanceInput(input: AcceptanceInput | undefined): Ac
 	if (input === false) return { level: "none", reason: "disabled by deprecated false shorthand" };
 	if (typeof input === "string") return { level: input };
 	return { ...input };
+}
+
+export function normalizeGateAcceptance(gate: unknown, acceptance: AcceptanceInput | undefined): { acceptance?: AcceptanceInput; error?: string } {
+	if (gate === undefined) return { acceptance };
+	if (typeof gate !== "string" || !gate.trim()) return { error: "gate must be a non-empty command string." };
+	if (acceptance !== undefined) return { error: "gate cannot be combined with acceptance; use one gate command or acceptance.verify." };
+	return { acceptance: { level: "verified", verify: [{ id: "gate", command: gate.trim() }] } };
 }
 
 function explicitAcceptanceCanDisable(explicit: AcceptanceConfig): boolean {
@@ -347,7 +356,7 @@ export function resolveEffectiveAcceptance(input: {
 			: explicitLevel;
 		const evidence = unique(explicit.evidence ?? []);
 		const criteria = normalizeCriteria(
-			explicit.criteria,
+			explicit.criteria as Array<string | { id?: string; must?: string; evidence?: AcceptanceEvidenceKind[]; severity?: "required" | "recommended" }> | undefined,
 			evidence,
 		);
 		return {
@@ -370,7 +379,7 @@ export function resolveEffectiveAcceptance(input: {
 			: (LEVEL_RANK[explicitLevel] >= LEVEL_RANK[inferred.level] ? explicitLevel : inferred.level);
 	const evidence = unique([...(level === inferred.level ? inferred.evidence : requiredEvidenceForLevel(level)), ...(explicit.evidence ?? [])]);
 	const criteria = normalizeCriteria(
-		(explicit.criteria?.length ? explicit.criteria : inferred.criteria),
+		(explicit.criteria?.length ? explicit.criteria : inferred.criteria) as Array<string | { id?: string; must?: string; evidence?: AcceptanceEvidenceKind[]; severity?: "required" | "recommended" }>,
 		evidence,
 	);
 	const review = explicit.review !== undefined ? explicit.review : inferred.review;
@@ -409,7 +418,7 @@ export function formatAcceptancePrompt(acceptance: ResolvedAcceptanceConfig, opt
 		lines.push("", "Runtime verification commands configured by parent:");
 		for (const command of acceptance.verify) lines.push(`- ${command.id}: ${command.command}`);
 	}
-	if (acceptance.review !== false && acceptance.review) {
+	if (acceptance.review) {
 		lines.push("", `Review gate: ${acceptance.review.required === false ? "optional" : "required"}${acceptance.review.agent ? ` by ${acceptance.review.agent}` : ""}.`);
 		if (acceptance.review.focus) lines.push(`Review focus: ${acceptance.review.focus}`);
 	}
@@ -448,7 +457,7 @@ function extractBalancedJson(text: string, start: number): string | undefined {
 	let inString = false;
 	let escaped = false;
 	for (let i = start; i < text.length; i++) {
-		const char = text[i];
+		const char = text[i]!;
 		if (inString) {
 			if (escaped) escaped = false;
 			else if (char === "\\") escaped = true;
@@ -654,6 +663,21 @@ function parseAcceptanceReportBody(body: string): { report?: AcceptanceReport; e
 	return validateAcceptanceReport(parseReportJson(body));
 }
 
+function parseUnterminatedAcceptanceReportFence(output: string): { report?: AcceptanceReport; error?: string } {
+	const opener = /```acceptance[-_]report\b[^\n]*\n/gi.exec(output);
+	if (!opener) return {};
+	const bodyStart = opener.index + opener[0].length;
+	if (output.indexOf("```", bodyStart) !== -1) return {};
+	try {
+		const validation = validateAcceptanceReport(JSON.parse(output.slice(bodyStart).trim()) as unknown);
+		return validation.report
+			? { report: validation.report }
+			: { error: `Failed to parse acceptance-report: Invalid acceptance-report: ${validation.errors.join("; ")}` };
+	} catch (error) {
+		return { error: `Failed to parse acceptance-report: ${error instanceof Error ? error.message : String(error)}` };
+	}
+}
+
 function parseGenericJsonAcceptanceReportBody(body: string): { report?: AcceptanceReport; error?: string } {
 	const parsed = parseReportJson(body);
 	const normalized = normalizeAcceptanceReportValue(parsed);
@@ -685,6 +709,8 @@ export function parseAcceptanceReport(output: string): { report?: AcceptanceRepo
 	}
 	if (parseErrors.length > 0) return { error: `Failed to parse acceptance-report: ${parseErrors.join("; ")}` };
 	if (explicitFencePresent) {
+		const recovered = parseUnterminatedAcceptanceReportFence(output);
+		if (recovered.report || recovered.error) return recovered;
 		return { error: "Failed to parse acceptance-report: Empty or unterminated acceptance-report fence." };
 	}
 	for (const body of fencedBlocks(output, "(?:json|jsonc|json5)")) {
@@ -941,12 +967,34 @@ function trimOutput(value: string): string | undefined {
 	return trimmed.length > 12_000 ? `${trimmed.slice(0, 12_000)}\n...[truncated]` : trimmed;
 }
 
+const SENSITIVE_ENV_KEY_PATTERN = /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASS|AUTH|CREDENTIAL|COOKIE|SESSION|PRIVATE|API_KEY|ACCESS_KEY)(?:_|$)/i;
+
+function effectiveVerifyEnv(env: Record<string, string> | undefined): Record<string, string> {
+	const inherited = Object.fromEntries(Object.entries(process.env).flatMap(([key, value]) => {
+		return typeof value === "string" ? [[key, value]] : [];
+	}));
+	return { ...inherited, ...(env ?? {}) };
+}
+
+function verifyRedactionEnv(env: Record<string, string> | undefined): Record<string, string> {
+	return Object.fromEntries(Object.entries(effectiveVerifyEnv(env)).filter(([key, value]) => {
+		return value.length >= 4 && SENSITIVE_ENV_KEY_PATTERN.test(key);
+	}));
+}
+
+function redactVerifyEnv(value: string, env: Record<string, string> | undefined): string {
+	let redacted = value;
+	const secrets = [...new Set(Object.values(verifyRedactionEnv(env)).filter(Boolean))].sort((left, right) => right.length - left.length);
+	for (const secret of secrets) redacted = redacted.replaceAll(secret, "[REDACTED]");
+	return redacted;
+}
+
 function uniqueStrings(items: Array<string | undefined>): string[] {
 	return unique(items.map((item) => item?.trim()).filter((item): item is string => Boolean(item)));
 }
 
 export function aggregateAcceptanceReport(input: {
-	results: Array<Pick<SingleResult, "agent" | "acceptance" | "error" | "exitCode">>;
+	results: Array<Pick<SingleResult, "agent" | "acceptance" | "error"> & { exitCode: number | null }>;
 	notes?: string;
 }): AcceptanceReport {
 	const childReports = input.results.map((result) => result.acceptance?.childReport).filter((report): report is AcceptanceReport => Boolean(report));
@@ -977,6 +1025,108 @@ export function aggregateAcceptanceReport(input: {
 	};
 }
 
+const DEFAULT_VERIFY_TIMEOUT_MS = 120_000;
+
+function hash(value: string): string {
+	return createHash("sha256").update(value).digest("hex");
+}
+
+interface VerifyWorkspaceState {
+	kind: "git-tracked";
+	repoRoot: string;
+	cwdRelative: string;
+	head: string;
+	diffHash: string;
+}
+
+function readVerifyWorkspaceState(cwd: string): VerifyWorkspaceState | undefined {
+	const repo = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf-8" });
+	if (repo.status !== 0 || !repo.stdout.trim()) return undefined;
+	const repoRoot = fs.realpathSync(repo.stdout.trim());
+	const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf-8" });
+	const diff = spawnSync("git", ["diff", "--binary", "--full-index", "HEAD", "--"], { cwd: repoRoot, encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
+	if (head.status !== 0 || diff.status !== 0 || !head.stdout.trim()) return undefined;
+	return {
+		kind: "git-tracked",
+		repoRoot,
+		cwdRelative: path.relative(repoRoot, fs.realpathSync(cwd)) || ".",
+		head: head.stdout.trim(),
+		diffHash: hash(diff.stdout),
+	};
+}
+
+function isCachedVerifyResult(value: unknown): value is AcceptanceVerifyResult {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const result = value as Partial<AcceptanceVerifyResult>;
+	return typeof result.id === "string"
+		&& typeof result.command === "string"
+		&& (typeof result.exitCode === "number" || result.exitCode === null)
+		&& (result.status === "passed" || result.status === "failed" || result.status === "timed-out" || result.status === "allowed-failure")
+		&& typeof result.durationMs === "number";
+}
+
+async function runMemoizedVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, options: {
+	signal?: AbortSignal;
+	abortMessage?: string;
+	artifactsDir?: string;
+	runId?: string;
+} = {}): Promise<AcceptanceVerifyResult> {
+	const cwd = command.cwd ? path.resolve(defaultCwd, command.cwd) : defaultCwd;
+	let workspaceState: VerifyWorkspaceState | undefined;
+	try {
+		workspaceState = readVerifyWorkspaceState(cwd);
+	} catch {
+		workspaceState = undefined;
+	}
+	if (!workspaceState || !options.artifactsDir || !options.runId) {
+		return runVerifyCommand(command, defaultCwd, options);
+	}
+	const envKeys = Object.keys(command.env ?? {}).sort();
+	const envHash = hash(JSON.stringify(Object.fromEntries(Object.entries(effectiveVerifyEnv(command.env)).sort(([left], [right]) => left.localeCompare(right)))));
+	const timeoutMs = command.timeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
+	const cacheKey = hash(JSON.stringify({
+		version: 1,
+		command: command.command,
+		cwdRelative: workspaceState.cwdRelative,
+		envKeys,
+		envHash,
+		timeoutMs,
+		allowFailure: command.allowFailure === true,
+		head: workspaceState.head,
+		diffHash: workspaceState.diffHash,
+	}));
+	const artifactPath = path.join(options.artifactsDir, "acceptance", "verify", options.runId, `${cacheKey}.json`);
+	try {
+		const cached = JSON.parse(fs.readFileSync(artifactPath, "utf-8")) as { cacheKey?: unknown; result?: unknown };
+		if (cached.cacheKey === cacheKey && isCachedVerifyResult(cached.result)) {
+			return { ...cached.result, id: command.id, command: command.command, cwd, artifactPath, cacheKey, memoized: true, envKeys, envHash, workspaceState };
+		}
+	} catch {
+		// A cache miss or unreadable artifact must not prevent host verification.
+	}
+	const result = await runVerifyCommand(command, defaultCwd, options);
+	const evidenced: AcceptanceVerifyResult = { ...result, artifactPath, cacheKey, memoized: false, envKeys, envHash, workspaceState };
+	try {
+		fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+		fs.writeFileSync(artifactPath, JSON.stringify({
+			version: 1,
+			cacheKey,
+			command: command.command,
+			cwdRelative: workspaceState.cwdRelative,
+			envKeys,
+			envHash,
+			timeoutMs,
+			allowFailure: command.allowFailure === true,
+			workspaceState,
+			result: evidenced,
+		}, null, 2), "utf-8");
+	} catch (error) {
+		evidenced.artifactError = error instanceof Error ? error.message : String(error);
+		delete evidenced.artifactPath;
+	}
+	return evidenced;
+}
+
 function runVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, options: { signal?: AbortSignal; abortMessage?: string } = {}): Promise<AcceptanceVerifyResult> {
 	return new Promise((resolve) => {
 		const startedAt = Date.now();
@@ -988,7 +1138,7 @@ function runVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, 
 		let hardKill: NodeJS.Timeout | undefined;
 		const child = spawn(command.command, {
 			cwd,
-			env: { ...process.env, ...(command.env ?? {}) },
+			env: effectiveVerifyEnv(command.env),
 			shell: true,
 			stdio: ["ignore", "pipe", "pipe"],
 			windowsHide: true,
@@ -1016,13 +1166,13 @@ function runVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, 
 				finish({
 					exitCode: null,
 					status: "timed-out",
-					stdout: trimOutput(stdout),
-					stderr: trimOutput(stderr || options.abortMessage || "Acceptance verification timed out."),
+					stdout: trimOutput(redactVerifyEnv(stdout, command.env)),
+					stderr: trimOutput(redactVerifyEnv(stderr || options.abortMessage || "Acceptance verification timed out.", command.env)),
 				});
 			}, 1000);
 			hardKill.unref?.();
 		};
-		const timeout = setTimeout(abortVerification, command.timeoutMs ?? 120_000);
+		const timeout = setTimeout(abortVerification, command.timeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS);
 		timeout.unref?.();
 		if (options.signal?.aborted) abortVerification();
 		else options.signal?.addEventListener("abort", abortVerification, { once: true });
@@ -1037,15 +1187,17 @@ function runVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, 
 			finish({
 				exitCode,
 				status: timedOut ? "timed-out" : passed ? "passed" : command.allowFailure ? "allowed-failure" : "failed",
-				stdout: trimOutput(stdout),
-				stderr: trimOutput(stderr || (timedOut ? options.abortMessage ?? "" : "")),
+				stdout: trimOutput(redactVerifyEnv(stdout, command.env)),
+				stderr: trimOutput(redactVerifyEnv(stderr || (timedOut ? options.abortMessage ?? "" : ""), command.env)),
 			});
 		});
 		child.on("error", (error) => {
 			finish({
 				exitCode: timedOut ? null : 1,
 				status: timedOut ? "timed-out" : command.allowFailure ? "allowed-failure" : "failed",
-				stderr: timedOut ? trimOutput(stderr || options.abortMessage || "Acceptance verification timed out.") : error instanceof Error ? error.message : String(error),
+				stderr: timedOut
+					? trimOutput(redactVerifyEnv(stderr || options.abortMessage || "Acceptance verification timed out.", command.env))
+					: redactVerifyEnv(error instanceof Error ? error.message : String(error), command.env),
 			});
 		});
 	});
@@ -1067,6 +1219,8 @@ export async function evaluateAcceptance(input: {
 	signal?: AbortSignal;
 	abortMessage?: string;
 	reportOptional?: boolean;
+	artifactsDir?: string;
+	runId?: string;
 }): Promise<AcceptanceLedger> {
 	const acceptance = input.acceptance;
 	const initialStatus = acceptance.level === "none" ? "not-required" : "claimed";
@@ -1128,7 +1282,12 @@ export async function evaluateAcceptance(input: {
 		}
 		ledger.verifyRuns = [];
 		for (const command of acceptance.verify) {
-			ledger.verifyRuns.push(await runVerifyCommand(command, input.cwd, { signal: input.signal, abortMessage: input.abortMessage }));
+			ledger.verifyRuns.push(await runMemoizedVerifyCommand(command, input.cwd, {
+				signal: input.signal,
+				abortMessage: input.abortMessage,
+				artifactsDir: input.artifactsDir,
+				runId: input.runId,
+			}));
 			if (input.signal?.aborted) break;
 		}
 		if (ledger.verifyRuns.some((run) => run.status === "failed" || run.status === "timed-out")) {
@@ -1152,7 +1311,7 @@ export async function evaluateAcceptance(input: {
 		ledger.evidenceStatus = ledger.status;
 	}
 
-	if (acceptance.review !== false && acceptance.review) {
+	if (acceptance.review) {
 		if (input.reviewResult?.status === "reviewed") {
 			ledger.reviewResult = input.reviewResult;
 			ledger.status = "reviewed";

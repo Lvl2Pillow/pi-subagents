@@ -64,6 +64,8 @@ export interface CompletionNotification {
 	totalTasks?: number;
 	sessionId?: string | null;
 	triggerTurn?: boolean;
+	/** True when an acknowledged grouped intercom relay already delivered this run. */
+	intercomDelivered?: boolean;
 	parallelHandoff?: ParallelHandoffReference;
 }
 
@@ -166,7 +168,7 @@ interface PendingCompletion {
 
 function sendCompletion(pi: Pick<ExtensionAPI, "sendMessage">, items: PendingCompletion[]): boolean {
 	if (items.length === 0) return true;
-	const details = items.map((item) => item.details!);
+	const details = items.map((item) => item.details);
 	const content = details.length === 1 ? formatSingleCompletion(details[0]!) : formatGroupedCompletion(details);
 	const display = details.some((detail) => detail.source === "foreground" || detail.status !== "completed");
 	try {
@@ -273,6 +275,7 @@ export default function registerSubagentNotify(
 
 	const deliver = (result: CompletionNotification): Promise<boolean> => {
 		if (disposed || typeof result.sessionId !== "string" || result.sessionId !== state.currentSessionId) return Promise.resolve(false);
+		if (result.intercomDelivered === true) return Promise.resolve(true);
 		const key = buildCompletionKey(result, "notify");
 		const seenAt = seen.get(key);
 		if (seenAt !== undefined && now() - seenAt <= ttlMs) return Promise.resolve(true);

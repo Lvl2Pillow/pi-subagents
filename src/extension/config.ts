@@ -1,17 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-	ArtifactDirPreference,
-	ExtensionConfig,
-} from "../shared/types.ts";
+import type { ArtifactDirPreference, ExtensionConfig } from "../shared/types.ts";
+import { validateMissionStoreConfig } from "../missions/store.ts";
+import { validateAuthorityPolicy } from "../policy/authority.ts";
 import { getAgentDir } from "../shared/utils.ts";
 import { validatePermissionConfig } from "../runs/shared/permissions.ts";
 
-const ARTIFACT_DIR_PREFERENCES = new Set<ArtifactDirPreference>([
-	"project",
-	"session",
-	"temp",
-]);
+const ARTIFACT_DIR_PREFERENCES = new Set<ArtifactDirPreference>(["project", "session", "temp"]);
 
 export function getConfigPath(): string {
 	return path.join(getAgentDir(), "extensions", "subagent", "config.json");
@@ -24,37 +19,29 @@ function readConfigForUpdate(configPath = getConfigPath()): ExtensionConfig {
 		throw new Error(`Subagent config at '${configPath}' must be a JSON object`);
 	}
 	const config = parsed as Record<string, unknown>;
-	if (
-		config.artifactDir !== undefined &&
-		!ARTIFACT_DIR_PREFERENCES.has(config.artifactDir as ArtifactDirPreference)
-	) {
-		throw new Error(
-			`config.artifactDir must be "project", "session", or "temp"`,
-		);
+	if (config.artifactDir !== undefined && !ARTIFACT_DIR_PREFERENCES.has(config.artifactDir as ArtifactDirPreference)) {
+		throw new Error(`config.artifactDir must be "project", "session", or "temp"`);
 	}
+	validateMissionStoreConfig(config.missions);
+	validateAuthorityPolicy(config.authorityPolicy);
 	validatePermissionConfig(config.permissions);
-	return parsed;
+	return parsed as ExtensionConfig;
 }
 
-export function saveConfig(
-	config: ExtensionConfig,
-	configPath = getConfigPath(),
-): void {
+export function saveConfig(config: ExtensionConfig, configPath = getConfigPath()): void {
 	fs.mkdirSync(path.dirname(configPath), { recursive: true });
-	fs.writeFileSync(
-		configPath,
-		`${JSON.stringify(config, null, "\t")}\n`,
-		"utf-8",
-	);
+	fs.writeFileSync(configPath, `${JSON.stringify(config, null, "\t")}\n`, "utf-8");
 }
 
-export function updateConfig(
-	updater: (config: ExtensionConfig) => ExtensionConfig,
-): ExtensionConfig {
+export function updateConfig(updater: (config: ExtensionConfig) => ExtensionConfig): ExtensionConfig {
 	const configPath = getConfigPath();
 	const next = updater(readConfigForUpdate(configPath));
 	saveConfig(next, configPath);
 	return next;
+}
+
+export function resolveAsyncByDefault(config: Pick<ExtensionConfig, "asyncByDefault">): boolean {
+	return config.asyncByDefault !== false;
 }
 
 export function loadConfig(): ExtensionConfig {
@@ -62,10 +49,7 @@ export function loadConfig(): ExtensionConfig {
 	try {
 		return readConfigForUpdate(configPath);
 	} catch (error) {
-		console.error(
-			`Failed to load subagent config from '${configPath}':`,
-			error,
-		);
+		console.error(`Failed to load subagent config from '${configPath}':`, error);
 	}
 	return {};
 }

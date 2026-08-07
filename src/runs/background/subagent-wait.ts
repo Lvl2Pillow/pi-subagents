@@ -49,10 +49,12 @@ import {
 import { formatAsyncRunList, listAsyncRuns, type AsyncRunSummary } from "./async-status.ts";
 import {
 	DIRS,
+	INTERCOM_DETACH_REQUEST_EVENT,
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
 	SUBAGENT_FOREGROUND_COMPLETE_EVENT,
 	SUBAGENT_CONTROL_EVENT,
-	SUBAGENT_DETACH_REQUEST_EVENT,
+	SUBAGENT_CONTROL_INTERCOM_EVENT,
+	SUBAGENT_RESULT_INTERCOM_EVENT,
 	type Details,
 	type ForegroundResumeRun,
 	type SubagentState,
@@ -123,10 +125,12 @@ export interface SubagentWaitDeps {
 
 /** Bus channels that indicate a run changed state or needs attention. */
 const WAKE_CHANNELS = [
-	SUBAGENT_DETACH_REQUEST_EVENT,
+	INTERCOM_DETACH_REQUEST_EVENT,
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
 	SUBAGENT_FOREGROUND_COMPLETE_EVENT,
 	SUBAGENT_CONTROL_EVENT,
+	SUBAGENT_CONTROL_INTERCOM_EVENT,
+	SUBAGENT_RESULT_INTERCOM_EVENT,
 ];
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -236,7 +240,8 @@ function needsAttention(run: AsyncRunSummary): boolean {
 
 function hasSupervisorTool(run: AsyncRunSummary): boolean {
 	return run.currentTool === "contact_supervisor"
-		|| run.steps.some((step) => step.currentTool === "contact_supervisor");
+		|| run.currentTool === "intercom"
+		|| run.steps.some((step) => step.currentTool === "contact_supervisor" || step.currentTool === "intercom");
 }
 
 function backgroundWorkIdentity(item: RegisteredBackgroundWorkItem): string {
@@ -287,7 +292,8 @@ function summarizeTerminalRuns(runs: AsyncRunSummary[], providerFinishedCount = 
 	if (runs.length === 0 && providerFinishedCount === 0) return "";
 	const counts = { complete: 0, failed: 0, paused: 0 } as Record<string, number>;
 	for (const run of runs) {
-		if (run.state in counts) counts[run.state] = (counts[run.state] ?? 0) + 1;
+		const count = counts[run.state];
+		if (count !== undefined) counts[run.state] = count + 1;
 	}
 	const parts: string[] = [];
 	if (counts.complete) parts.push(`${counts.complete} complete`);
@@ -605,7 +611,7 @@ export async function waitForSubagents(
 
 	const relevantAttention = attention.filter((run) => initialAsyncIds.has(run.id));
 	const supervisorAttentionHint = relevantAttention.some(hasSupervisorTool)
-		? " Reply to any pending supervisor request with subagent_supervisor({ action: \"reply\" })."
+		? " Reply to any pending supervisor request. If subagent_supervisor({ action: \"pending\" }) is empty, check intercom({ action: \"pending\" }) because an external intercom tool may own the request."
 		: "";
 	const attentionNote = relevantAttention.length > 0
 		? ` ${relevantAttention.length} run(s) need attention: ${relevantAttention.map((run) => run.id).join(", ")} —${supervisorAttentionHint} inspect with subagent({ action: "status" }) then steer a top-level live async child, resume a paused/completed/failed child, or interrupt explicitly.`

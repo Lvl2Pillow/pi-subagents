@@ -17,8 +17,10 @@ function parseStepBody(agent: string, sectionBody: string): ChainStepConfig {
 	for (const line of configLines) {
 		const match = line.match(/^([\w-]+):\s*(.*)$/);
 		if (!match) continue;
-		const key = match[1]!.trim().toLowerCase();
-		const rawValue = match[2]!.trim();
+		const [keyValue, rawValueValue] = match.slice(1);
+		if (keyValue === undefined || rawValueValue === undefined) continue;
+		const key = keyValue.trim().toLowerCase();
+		const rawValue = rawValueValue.trim();
 
 		if (key === "output") {
 			if (rawValue === "false") step.output = false;
@@ -91,7 +93,8 @@ function parseStepBody(agent: string, sectionBody: string): ChainStepConfig {
 			}
 			const validation = validateToolBudgetConfig(parsed, `toolBudget for step '${agent}'`);
 			if (validation.error) throw new Error(validation.error);
-			step.toolBudget = parsed as ChainStepConfig["toolBudget"];
+			const toolBudget = parsed as ChainStepConfig["toolBudget"];
+			if (toolBudget !== undefined) step.toolBudget = toolBudget;
 		}
 	}
 
@@ -110,9 +113,9 @@ export function parseChain(content: string, source: AgentSource, filePath: strin
 	for (let i = 0; i < matches.length; i++) {
 		const match = matches[i]!;
 		const agent = match[1]!.trim();
-		const lineEndOffset = body[match.index + match[0].length] === "\n" ? 1 : 0;
-		const sectionStart = match.index + match[0].length + lineEndOffset;
-		const sectionEnd = i + 1 < matches.length ? matches[i + 1]!.index : body.length;
+		const lineEndOffset = body[match.index! + match[0].length] === "\n" ? 1 : 0;
+		const sectionStart = match.index! + match[0].length + lineEndOffset;
+		const sectionEnd = i + 1 < matches.length ? matches[i + 1]!.index! : body.length;
 		const sectionBody = body.slice(sectionStart, sectionEnd).trimEnd();
 		steps.push(parseStepBody(agent, sectionBody));
 	}
@@ -130,12 +133,12 @@ export function parseChain(content: string, source: AgentSource, filePath: strin
 	return {
 		name: buildRuntimeName(localName, packageName),
 		localName,
-		packageName,
+		...(packageName !== undefined ? { packageName } : {}),
 		description: frontmatter.description,
 		source,
 		filePath,
 		steps,
-		extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+		...(Object.keys(extraFields).length > 0 ? { extraFields } : {}),
 	};
 }
 
@@ -166,7 +169,7 @@ export function parseJsonChain(content: string, source: AgentSource, filePath: s
 		throw new Error(`JSON chain '${filePath}' must include array chain.`);
 	}
 	for (let i = 0; i < input.chain.length; i++) {
-		const step = input.chain[i] as unknown;
+		const step = input.chain[i];
 		if (!step || typeof step !== "object" || Array.isArray(step)) {
 			throw new Error(`JSON chain '${filePath}' step ${i + 1} must be an object.`);
 		}
@@ -179,7 +182,7 @@ export function parseJsonChain(content: string, source: AgentSource, filePath: s
 		const parallel = stepRecord.parallel;
 		if (Array.isArray(parallel)) {
 			for (let taskIndex = 0; taskIndex < parallel.length; taskIndex++) {
-				const task = parallel[taskIndex] as unknown;
+				const task = parallel[taskIndex];
 				if (!task || typeof task !== "object" || Array.isArray(task)) continue;
 				const taskRecord = task as Record<string, unknown>;
 				if (taskRecord.toolBudget !== undefined) validateJsonChainToolBudget(taskRecord.toolBudget, `step ${i + 1} parallel task ${taskIndex + 1} toolBudget`);
@@ -213,12 +216,12 @@ export function parseJsonChain(content: string, source: AgentSource, filePath: s
 	return {
 		name: buildRuntimeName(input.name.trim(), parsedPackage.packageName),
 		localName: input.name.trim(),
-		packageName: parsedPackage.packageName,
+		...(parsedPackage.packageName !== undefined ? { packageName: parsedPackage.packageName } : {}),
 		description: input.description.trim(),
 		source,
 		filePath,
 		steps: input.chain as ChainStepConfig[],
-		extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
+		...(Object.keys(extraFields).length > 0 ? { extraFields } : {}),
 	};
 }
 

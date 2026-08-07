@@ -38,6 +38,7 @@ export function projectAgentDefinition(agent: AgentConfig): Record<string, unkno
 		packageName: agent.packageName,
 		filePath: agent.filePath,
 		fileContentDigest: fileDigest(agent.filePath),
+		runner: agent.runner,
 		systemPrompt: agent.systemPrompt,
 		systemPromptMode: agent.systemPromptMode,
 		inheritProjectContext: agent.inheritProjectContext,
@@ -64,6 +65,7 @@ export function projectAgentDefinition(agent: AgentConfig): Record<string, unkno
 		maxSubagentDepth: agent.maxSubagentDepth,
 		completionGuard: agent.completionGuard,
 		toolBudget: agent.toolBudget,
+		memory: agent.memory,
 	};
 }
 

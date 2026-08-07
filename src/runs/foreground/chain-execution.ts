@@ -45,7 +45,7 @@ import { buildChainSummary } from "../../shared/formatters.ts";
 import { compactForegroundDetails, getSingleResultOutput, mapConcurrent, resolveChildCwd, sumResultsCost, sumResultsUsage } from "../../shared/utils.ts";
 import { DEFAULT_GLOBAL_CONCURRENCY_LIMIT, Semaphore } from "../shared/parallel-utils.ts";
 import type { PermissionConfig } from "../shared/permissions.ts";
-import { formatParallelHandoffError, formatParallelHandoffReference, parallelHandoffPath, writeParallelHandoffGroup } from "../shared/parallel-handoff.ts";
+import { formatParallelHandoffError, formatParallelHandoffReference, parallelHandoffPath, writeParallelHandoffGroup, writePendingParallelHandoff } from "../shared/parallel-handoff.ts";
 import { recordRun } from "../shared/run-history.ts";
 import {
 	cleanupWorktrees,
@@ -57,6 +57,7 @@ import {
 	type WorktreeSetup,
 } from "../shared/worktree.ts";
 import {
+	type ActivityState,
 	type AgentContract,
 	type AgentProgress,
 	type ArtifactConfig,
@@ -140,6 +141,8 @@ interface ParallelChainRunInput {
 	onControlEvent?: (event: ControlEvent) => void;
 	controlConfig: ResolvedControlConfig;
 	agentContract?: AgentContract;
+	childIntercomTarget?: (agent: string, index: number) => string | undefined;
+	orchestratorIntercomTarget?: string;
 	foregroundControl?: ForegroundRunControl;
 	results: SingleResult[];
 	allProgress: AgentProgress[];
@@ -227,30 +230,32 @@ function finalizeParallelWorktreeHandoff(input: {
 	results: SingleResult[];
 }): { output: string; reference?: NonNullable<Details["parallelHandoff"]> } {
 	const diffs = diffWorktrees(input.worktreeSetup, input.agents, path.join(input.artifactsDir, "worktree-diffs", input.runId, `step-${input.stepIndex}`));
-	const cleanup = cleanupWorktrees(input.worktreeSetup);
 	const diffSummary = formatWorktreeDiffSummary(diffs);
+	const manifestPath = parallelHandoffPath(input.artifactsDir, input.runId);
+	const handoff = {
+		manifestPath,
+		runId: input.runId,
+		mode: "chain" as const,
+		source: "foreground" as const,
+		cwd: input.cwd,
+		stepIndex: input.stepIndex,
+		flatStartIndex: input.flatStartIndex,
+		setup: input.worktreeSetup,
+		diffs,
+		results: input.results.map((result) => ({
+			agent: result.agent,
+			status: result.stopped ? "stopped" as const : result.detached ? "detached" as const : result.interrupted ? "paused" as const : result.exitCode === 0 ? "completed" as const : "failed" as const,
+			summary: getSingleResultOutput(result) || result.error || "(no output)",
+			...(result.artifactPaths?.outputPath ? { outputPath: result.artifactPaths.outputPath } : {}),
+			...(result.structuredOutput !== undefined ? { structuredOutput: result.structuredOutput } : {}),
+			...(result.structuredOutputPath ? { structuredOutputPath: result.structuredOutputPath } : {}),
+			...(result.sessionFile ? { sessionPath: result.sessionFile } : {}),
+		})),
+	};
 	try {
-		const reference = writeParallelHandoffGroup({
-			manifestPath: parallelHandoffPath(input.artifactsDir, input.runId),
-			runId: input.runId,
-			mode: "chain",
-			source: "foreground",
-			cwd: input.cwd,
-			stepIndex: input.stepIndex,
-			flatStartIndex: input.flatStartIndex,
-			setup: input.worktreeSetup,
-			diffs,
-			cleanup,
-			results: input.results.map((result) => ({
-				agent: result.agent,
-				status: result.stopped ? "stopped" : result.detached ? "detached" : result.interrupted ? "paused" : result.exitCode === 0 ? "completed" : "failed",
-				summary: getSingleResultOutput(result) || result.error || "(no output)",
-				...(result.artifactPaths?.outputPath ? { outputPath: result.artifactPaths.outputPath } : {}),
-				...(result.structuredOutput !== undefined ? { structuredOutput: result.structuredOutput } : {}),
-				...(result.structuredOutputPath ? { structuredOutputPath: result.structuredOutputPath } : {}),
-				...(result.sessionFile ? { sessionPath: result.sessionFile } : {}),
-			})),
-		});
+		writeParallelHandoffGroup(handoff);
+		const cleanup = cleanupWorktrees(input.worktreeSetup, { kind: "preserve", capturedDiffs: diffs, handoffManifestPath: manifestPath });
+		const reference = writeParallelHandoffGroup({ ...handoff, cleanup });
 		const suffix = [diffSummary, formatParallelHandoffReference(reference)].filter(Boolean).join("\n\n");
 		return { output: suffix ? `${input.output}\n\n${suffix}` : input.output, reference };
 	} catch (error) {
@@ -322,7 +327,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 					messages: [],
 					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 },
 					error: "Skipped due to fail-fast",
-				};
+				} as SingleResult;
 			}
 
 			const taskTemplate = input.parallelTemplates[taskIndex] ?? "{previous}";
@@ -352,7 +357,7 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 				? input.worktreeSetup.worktrees[taskIndex]!.agentCwd
 				: resolveChildCwd(input.cwd ?? input.ctx.cwd, task.cwd);
 
-			const outputPath = typeof behavior!.output === "string"
+			const outputPath = typeof behavior.output === "string"
 				? (path.isAbsolute(behavior.output) ? behavior.output : path.join(input.chainDir, behavior.output))
 				: undefined;
 			taskStr = injectSingleOutputInstruction(taskStr, outputPath, taskAgentConfig);
@@ -403,6 +408,8 @@ async function runParallelChainTasks(input: ParallelChainRunInput): Promise<Sing
 				maxSubagentDepth,
 				controlConfig: input.controlConfig,
 				onControlEvent: input.onControlEvent,
+				intercomSessionName: input.childIntercomTarget?.(task.agent, childIndex),
+				orchestratorIntercomTarget: input.orchestratorIntercomTarget,
 				nestedRoute: input.nestedRoute,
 				modelOverride: effectiveModel,
 				availableModels: input.availableModels,
@@ -507,6 +514,8 @@ interface ChainExecutionParams {
 	onControlEvent?: (event: ControlEvent) => void;
 	controlConfig: ResolvedControlConfig;
 	agentContract?: AgentContract;
+	childIntercomTarget?: (agent: string, index: number) => string | undefined;
+	orchestratorIntercomTarget?: string;
 	foregroundControl?: ForegroundRunControl;
 	chainSkills?: string[];
 	chainDir?: string;
@@ -566,6 +575,8 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		onControlEvent,
 		controlConfig,
 		onDetachedExit,
+		childIntercomTarget,
+		orchestratorIntercomTarget,
 		foregroundControl,
 		intercomEvents,
 		chainSkills: chainSkillsParam,
@@ -589,7 +600,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 			? `[${step.parallel.map((t) => t.agent).join("+")}]`
 			: isDynamicParallelStep(step)
 				? `expand:${step.parallel.agent}`
-			: (step).agent,
+			: (step as SequentialStep).agent,
 	);
 	const totalSteps = chainSteps.length;
 
@@ -622,10 +633,11 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		?? (isCheckpointStep(firstStep)
 			? undefined
 			: isParallelStep(firstStep)
-				? firstStep.parallel[0]!.task!
+				? firstStep.parallel[0]!.task
 				: isDynamicParallelStep(firstStep)
-					? firstStep.parallel.task!
-					: (firstStep).task!);
+					? firstStep.parallel.task
+					: (firstStep as SequentialStep).task)
+		?? "";
 	try {
 		validateChainOutputBindings(chainSteps, { maxItems: params.dynamicFanoutMaxItems });
 	} catch (error) {
@@ -684,7 +696,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 					theme,
 					agentConfigs,
 					flatTemplates,
-					originalTask!,
+					originalTask,
 					chainDir,
 					resolvedBehaviors,
 					availableModels,
@@ -713,7 +725,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 				const override = result.behaviorOverrides[i];
 				return {
 					...step,
-					task: result.templates[i],
+					task: result.templates[i]!,
 					...(override?.model !== undefined ? { model: override.model } : {}),
 					...(override?.output !== undefined ? { output: override.output } : {}),
 					...("outputMode" in step && step.outputMode !== undefined ? { outputMode: step.outputMode } : {}),
@@ -743,7 +755,7 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 		const budgetError = usageBudgetError(stepIndex, globalTaskIndex);
 		if (budgetError) return budgetError;
 		const step = chainSteps[stepIndex]!;
-		const stepTemplates = templates[stepIndex];
+		const stepTemplates = templates[stepIndex]!;
 
 		if (isCheckpointStep(step)) {
 			const checkpoint = { name: step.checkpoint, ...(step.message ? { message: step.message } : {}), status: "pending" as const, stepIndex };
@@ -783,12 +795,24 @@ ${step.message}` : ""}` }],
 			}
 
 			try {
+				if (worktreeSetup) {
+					writePendingParallelHandoff({
+						manifestPath: parallelHandoffPath(artifactsDir, runId),
+						runId,
+						mode: "chain",
+						source: "foreground",
+						cwd: parallelCwd,
+						stepIndex,
+						flatStartIndex: globalTaskIndex,
+						setup: worktreeSetup,
+					});
+				}
 				const agentNames = step.parallel.map((task) => task.agent);
 				const parallelBehaviors = resolveParallelBehaviors(step.parallel, agents, stepIndex, chainSkills)
 					.map((behavior, taskIndex) => suppressProgressForReadOnlyTask(behavior, parallelTemplates[taskIndex] ?? step.parallel[taskIndex]?.task, originalTask));
 				for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
 					const behavior = parallelBehaviors[taskIndex]!;
-					const outputPath = typeof behavior!.output === "string"
+					const outputPath = typeof behavior.output === "string"
 						? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 						: undefined;
 					const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Parallel chain step ${stepIndex + 1} task ${taskIndex + 1} (${step.parallel[taskIndex]!.agent})`);
@@ -807,7 +831,7 @@ ${step.message}` : ""}` }],
 					modelScope,
 					chainDir,
 					prev,
-					originalTask: originalTask!,
+					originalTask,
 					ctx,
 					intercomEvents,
 					cwd,
@@ -834,6 +858,8 @@ ${step.message}` : ""}` }],
 					controlConfig,
 					agentContract: params.agentContract,
 					onControlEvent,
+					childIntercomTarget,
+					orchestratorIntercomTarget,
 					foregroundControl,
 					nestedRoute: params.nestedRoute,
 					worktreeSetup,
@@ -922,7 +948,7 @@ ${step.message}` : ""}` }],
 					.filter(({ result, task }) => isAgentContractV1(task?.agentContract ?? step.agentContract ?? params.agentContract) && (task?.gateOn ?? step.gateOn) === "acceptance" && result.acceptance?.status === "rejected");
 				if (acceptanceFailures.length > 0) {
 					const acceptanceSummary = acceptanceFailures
-						.map(({ result, originalIndex }) => `- Task ${originalIndex + 1} (${result.agent}): ${acceptanceFailureMessage(result.acceptance!) ?? "acceptance rejected"}`)
+						.map(({ result, originalIndex }) => `- Task ${originalIndex + 1} (${result.agent}): ${(result.acceptance ? acceptanceFailureMessage(result.acceptance) : undefined) ?? "acceptance rejected"}`)
 						.join("\n");
 					const errorMsg = `Parallel step ${stepIndex + 1} acceptance gate failed:\n${acceptanceSummary}`;
 					const summary = buildChainSummary(chainSteps, results, chainDir, "failed", { index: stepIndex, error: errorMsg });
@@ -1018,7 +1044,9 @@ ${step.message}` : ""}` }],
 						cwd: cwd ?? ctx.cwd,
 						reportOptional: isAgentContractV1(step.agentContract ?? params.agentContract),
 					});
-					dynamicGroupStatuses[stepIndex]!.acceptance = groupAcceptance;
+					const dynamicGroupStatus = dynamicGroupStatuses[stepIndex];
+					if (!dynamicGroupStatus) throw new Error(`Missing dynamic group status at step ${stepIndex}`);
+					dynamicGroupStatus.acceptance = groupAcceptance;
 					const groupAcceptanceFailure = !isAgentContractV1(step.agentContract ?? params.agentContract) || step.gateOn === "acceptance" ? acceptanceFailureMessage(groupAcceptance) : undefined;
 					if (groupAcceptanceFailure) {
 						dynamicGroupStatuses[stepIndex] = { status: "failed", error: groupAcceptanceFailure, acceptance: groupAcceptance };
@@ -1065,7 +1093,7 @@ ${step.message}` : ""}` }],
 				modelScope,
 				chainDir,
 				prev,
-				originalTask: originalTask!,
+				originalTask,
 				ctx,
 				intercomEvents,
 				cwd,
@@ -1092,6 +1120,8 @@ ${step.message}` : ""}` }],
 				controlConfig,
 				agentContract: params.agentContract,
 				onControlEvent,
+				childIntercomTarget,
+				orchestratorIntercomTarget,
 				foregroundControl,
 				nestedRoute: params.nestedRoute,
 				maxSubagentDepth: params.maxSubagentDepth,
@@ -1164,7 +1194,7 @@ ${step.message}` : ""}` }],
 				.filter(({ result, task }) => isAgentContractV1(task?.agentContract ?? dynamicParallelStep.agentContract ?? params.agentContract) && (task?.gateOn ?? dynamicParallelStep.gateOn) === "acceptance" && result.acceptance?.status === "rejected");
 			if (acceptanceFailures.length > 0) {
 				const acceptanceSummary = acceptanceFailures
-					.map(({ result, originalIndex }) => `- Item ${originalIndex + 1} (${result.agent}, key ${materialized.items[originalIndex]?.key ?? originalIndex}): ${acceptanceFailureMessage(result.acceptance!) ?? "acceptance rejected"}`)
+					.map(({ result, originalIndex }) => `- Item ${originalIndex + 1} (${result.agent}, key ${materialized.items[originalIndex]?.key ?? originalIndex}): ${(result.acceptance ? acceptanceFailureMessage(result.acceptance) : undefined) ?? "acceptance rejected"}`)
 					.join("\n");
 				const errorMsg = `Dynamic step ${stepIndex + 1} acceptance gate failed:\n${acceptanceSummary}`;
 				dynamicGroupStatuses[stepIndex] = { status: "failed", error: errorMsg };
@@ -1210,7 +1240,9 @@ ${step.message}` : ""}` }],
 				cwd: cwd ?? ctx.cwd,
 				reportOptional: isAgentContractV1(step.agentContract ?? params.agentContract),
 			});
-			dynamicGroupStatuses[stepIndex]!.acceptance = groupAcceptance;
+			const dynamicGroupStatus = dynamicGroupStatuses[stepIndex];
+			if (!dynamicGroupStatus) throw new Error(`Missing dynamic group status at step ${stepIndex}`);
+			dynamicGroupStatus.acceptance = groupAcceptance;
 			const groupAcceptanceFailure = effectiveGroupAcceptance.explicit && (!isAgentContractV1(step.agentContract ?? params.agentContract) || step.gateOn === "acceptance") ? acceptanceFailureMessage(groupAcceptance) : undefined;
 			if (groupAcceptanceFailure) {
 				dynamicGroupStatuses[stepIndex] = { status: "failed", error: groupAcceptanceFailure, acceptance: groupAcceptance };
@@ -1226,7 +1258,7 @@ ${step.message}` : ""}` }],
 			}));
 			prev = aggregateParallelOutputs(taskResults, (i, agent) => `=== Dynamic Item ${i + 1} (${agent}, key ${materialized.items[i]?.key ?? i}) ===`);
 		} else {
-			const seqStep = step;
+			const seqStep = step as SequentialStep;
 			const stepTemplate = stepTemplates as string;
 
 			const agentConfig = agents.find((a) => a.name === seqStep.agent);
@@ -1266,7 +1298,7 @@ ${step.message}` : ""}` }],
 			);
 
 			let stepTask = resolveOutputReferences(stepTemplate, outputs);
-			stepTask = stepTask.replace(/\{task\}/g, originalTask!);
+			stepTask = stepTask.replace(/\{task\}/g, originalTask);
 			stepTask = stepTask.replace(/\{previous\}/g, prev);
 			stepTask = stepTask.replace(/\{chain_dir\}/g, chainDir);
 			const cleanTask = stepTask;
@@ -1282,7 +1314,7 @@ ${step.message}` : ""}` }],
 				{ scope: modelScope },
 			);
 
-			const outputPath = typeof behavior!.output === "string"
+			const outputPath = typeof behavior.output === "string"
 				? (path.isAbsolute(behavior.output) ? behavior.output : path.join(chainDir, behavior.output))
 				: undefined;
 			stepTask = injectSingleOutputInstruction(stepTask, outputPath, agentConfig);
@@ -1356,6 +1388,8 @@ ${step.message}` : ""}` }],
 				maxSubagentDepth,
 				controlConfig,
 				onControlEvent,
+				intercomSessionName: childIntercomTarget?.(seqStep.agent, childIndex),
+				orchestratorIntercomTarget,
 				nestedRoute: params.nestedRoute,
 				modelOverride: effectiveModel,
 				availableModels,

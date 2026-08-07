@@ -3,7 +3,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { randomUUID } from "node:crypto";
 import registerFanoutChildSubagentExtension from "../../src/extension/fanout-child.ts";
 import { createSubagentExecutor } from "../../src/runs/foreground/subagent-executor.ts";
 import { createNestedRoute, findNestedControlResult, projectNestedEvents, readNestedControlRequests, readNestedControlResults, snapshotNestedEventFiles, writeNestedControlRequest, writeNestedControlResult, writeNestedEvent } from "../../src/runs/shared/nested-events.ts";
@@ -20,14 +19,7 @@ import {
 import { ASYNC_DIR, type SubagentState } from "../../src/shared/types.ts";
 
 const routeRoots: string[] = [];
-
-// The route dir lives in the shared NESTED_EVENTS_DIR; a unique root id keeps
-// other processes' global scans (projectNestedEvents writes registry.json into
-// every route they scan) from ever resolving to this process's routes.
-const NESTED_CONTROL_SEED = randomUUID().slice(0, 8);
-function uniqueRoot(prefix: string): string {
-	return `${prefix}-${NESTED_CONTROL_SEED}`;
-}
+const fanoutListenerCleanupKey = "__piSubagentFanoutChildNestedControlInboxCleanups";
 const savedEnv = {
 	[SUBAGENT_CHILD_ENV]: process.env[SUBAGENT_CHILD_ENV],
 	[SUBAGENT_FANOUT_CHILD_ENV]: process.env[SUBAGENT_FANOUT_CHILD_ENV],
@@ -40,6 +32,15 @@ const savedEnv = {
 };
 
 afterEach(() => {
+	const globalStore = globalThis as Record<string, unknown>;
+	const listenerCleanups = globalStore[fanoutListenerCleanupKey];
+	if (listenerCleanups instanceof Map) {
+		for (const entry of listenerCleanups.values()) {
+			if (typeof entry === "function") entry();
+			else if (entry && typeof entry === "object" && typeof (entry as { cleanup?: unknown }).cleanup === "function") (entry as { cleanup: () => void }).cleanup();
+		}
+	}
+	delete globalStore[fanoutListenerCleanupKey];
 	for (const root of routeRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 	for (const [key, value] of Object.entries(savedEnv)) {
 		if (value === undefined) delete process.env[key];
@@ -55,6 +56,7 @@ function createState(): SubagentState {
 		foregroundRuns: new Map(),
 		foregroundControls: new Map(),
 		lastForegroundControlId: null,
+		pendingForegroundControlNotices: new Map(),
 		cleanupTimers: new Map(),
 		lastUiContext: null,
 		poller: null,
@@ -69,7 +71,7 @@ function createExecutor(state = createState(), agents: Array<Record<string, unkn
 	return createSubagentExecutor({
 		pi: { events, getSessionName() { return "parent"; } } as any,
 		state,
-		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} },
+		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} } as any,
 		asyncByDefault: false,
 		tempArtifactsDir: os.tmpdir(),
 		getSubagentSessionRoot: (parentSessionFile) => parentSessionFile ? path.join(path.dirname(parentSessionFile), path.basename(parentSessionFile, ".jsonl")) : os.tmpdir(),
@@ -89,7 +91,7 @@ function ctx(root: string, sessionFile: string | null = null) {
 }
 
 function createNestedRun(id = "nested-live", state: "running" | "complete" | "failed" | "paused" = "running", extras: Record<string, unknown> = {}) {
-	const route = createNestedRoute(uniqueRoot("root-control"));
+	const route = createNestedRoute("root-control");
 	routeRoots.push(path.dirname(route.eventSink));
 	writeNestedEvent(route, {
 		type: state === "running" ? "subagent.nested.updated" : "subagent.nested.completed",
@@ -298,7 +300,7 @@ describe("nested control routing", () => {
 		try {
 			const emitted: Array<{ name: string; payload: unknown }> = [];
 			const events = { emit(name: string, payload: unknown) { emitted.push({ name, payload }); }, on() { return () => {}; } };
-			const route = createNestedRun("nested-live-resume", "running");
+			const route = createNestedRun("nested-live-resume", "running", { intercomTarget: "attacker-target", leafIntercomTarget: "attacker-leaf" });
 			const executor = createExecutor(stateWithNestedRoute(route), [], true, events);
 			setTimeout(() => {
 				const request = readNestedControlRequests(route)[0];
@@ -339,7 +341,7 @@ describe("nested control routing", () => {
 	it("rejects stopped nested runs before attempting revival", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-nested-stopped-resume-"));
 		try {
-			const route = createNestedRun("nested-stopped-resume", "stopped" as Parameters<typeof createNestedRun>[1], { sessionFile: path.join(root, "missing-session.jsonl") });
+			const route = createNestedRun("nested-stopped-resume", "stopped", { sessionFile: path.join(root, "missing-session.jsonl") });
 
 			const result = await createExecutor(stateWithNestedRoute(route), [{ name: "worker", description: "Worker", prompt: "Do work" }])
 				.execute("resume", { action: "resume", id: "nested-stopped-resume", message: "continue" }, new AbortController().signal, undefined, ctx(root));
@@ -490,6 +492,69 @@ describe("nested control routing", () => {
 			assert.equal(fs.existsSync(requestPath), false);
 		} finally {
 			console.error = originalError;
+		}
+	});
+
+	it("cleans the prior listener on reload and processes a resume request once", async () => {
+		const route = createNestedRoute("root-reload-listener");
+		routeRoots.push(path.dirname(route.eventSink));
+		setNestedRouteEnv(route, "root-reload-listener");
+		process.env[SUBAGENT_CHILD_ENV] = "1";
+		process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
+		const registrations: string[] = [];
+		const activeIntervals = new Set<ReturnType<typeof setInterval>>();
+		const originalSetInterval = globalThis.setInterval;
+		const originalClearInterval = globalThis.clearInterval;
+		globalThis.setInterval = ((...args: Parameters<typeof setInterval>) => {
+			const interval = originalSetInterval(...args);
+			activeIntervals.add(interval);
+			return interval;
+		}) as typeof setInterval;
+		globalThis.clearInterval = ((interval: ReturnType<typeof setInterval>) => {
+			activeIntervals.delete(interval);
+			return originalClearInterval(interval);
+		}) as typeof clearInterval;
+		try {
+			const makePi = () => ({
+				events: { emit() {}, on() { return () => {}; } },
+				registerTool() { registrations.push("subagent"); },
+				getSessionName() { return "child"; },
+			}) as any;
+			const firstPi = makePi();
+
+			registerFanoutChildSubagentExtension(firstPi);
+			registerFanoutChildSubagentExtension(firstPi);
+			registerFanoutChildSubagentExtension(makePi());
+			assert.equal(activeIntervals.size, 1);
+
+			const unrelatedRoute = createNestedRoute("root-unrelated-listener");
+			routeRoots.push(path.dirname(unrelatedRoute.eventSink));
+			setNestedRouteEnv(unrelatedRoute, "root-unrelated-listener");
+			registerFanoutChildSubagentExtension(makePi());
+			assert.equal(activeIntervals.size, 2);
+
+			delete process.env[SUBAGENT_PARENT_EVENT_SINK_ENV];
+			delete process.env[SUBAGENT_PARENT_CONTROL_INBOX_ENV];
+			delete process.env[SUBAGENT_PARENT_ROOT_RUN_ID_ENV];
+			delete process.env[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV];
+			registerFanoutChildSubagentExtension(makePi());
+			assert.equal(activeIntervals.size, 2);
+
+			setNestedRouteEnv(route, "root-reload-listener");
+			writeNestedControlRequest(route, {
+				ts: Date.now(),
+				requestId: "reload-resume-once",
+				targetRunId: "missing-run",
+				action: "resume",
+				message: "continue",
+			});
+
+			await waitFor(() => readNestedControlResults(route).length === 1);
+			assert.equal(registrations.length, 4);
+			assert.equal(readNestedControlResults(route)[0]?.requestId, "reload-resume-once");
+		} finally {
+			globalThis.setInterval = originalSetInterval;
+			globalThis.clearInterval = originalClearInterval;
 		}
 	});
 

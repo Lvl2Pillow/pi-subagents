@@ -775,22 +775,26 @@ export class ChainClarifyComponent implements Component {
 
 	private handleEditInput(data: string): void {
 		const textWidth = this.width - 4; // Must match render: innerW - 2 = (width - 2) - 2
-		if (matchesKey(data, "shift+up") || matchesKey(data, "pageup" as Parameters<typeof matchesKey>[1])) {
+		if (matchesKey(data, "shift+up") || matchesKey(data, "pageUp")) {
 			const { lines: wrapped, starts } = wrapText(this.editState.buffer, textWidth);
 			const cursorPos = getCursorDisplayPos(this.editState.cursor, starts);
 			const targetLine = Math.max(0, cursorPos.line - this.EDIT_VIEWPORT_HEIGHT);
+			const targetStart = starts[targetLine];
+			if (targetStart === undefined) return;
 			const targetCol = Math.min(cursorPos.col, wrapped[targetLine]?.length ?? 0);
-			this.editState = { ...this.editState, cursor: starts[targetLine]! + targetCol };
+			this.editState = { ...this.editState, cursor: targetStart + targetCol };
 			this.tui.requestRender();
 			return;
 		}
 
-		if (matchesKey(data, "shift+down") || matchesKey(data, "pagedown" as Parameters<typeof matchesKey>[1])) {
+		if (matchesKey(data, "shift+down") || matchesKey(data, "pageDown")) {
 			const { lines: wrapped, starts } = wrapText(this.editState.buffer, textWidth);
 			const cursorPos = getCursorDisplayPos(this.editState.cursor, starts);
 			const targetLine = Math.min(wrapped.length - 1, cursorPos.line + this.EDIT_VIEWPORT_HEIGHT);
+			const targetStart = starts[targetLine];
+			if (targetStart === undefined) return;
 			const targetCol = Math.min(cursorPos.col, wrapped[targetLine]?.length ?? 0);
-			this.editState = { ...this.editState, cursor: starts[targetLine]! + targetCol };
+			this.editState = { ...this.editState, cursor: targetStart + targetCol };
 			this.tui.requestRender();
 			return;
 		}
@@ -878,25 +882,22 @@ export class ChainClarifyComponent implements Component {
 		}
 	}
 
-	render(_width: number): string[] {
+	render(width: number): string[] {
+		let lines: string[] = [];
 		if (this.editingStep !== null) {
-			if (this.editMode === "model") {
-				return this.renderModelSelector();
+			if (this.editMode === "model") lines = this.renderModelSelector();
+			else if (this.editMode === "thinking") lines = this.renderThinkingSelector();
+			else if (this.editMode === "skills") lines = this.renderSkillSelector();
+			else lines = this.renderFullEditMode();
+		} else {
+			switch (this.mode) {
+				case 'single': lines = this.renderSingleMode(); break;
+				case 'parallel': lines = this.renderParallelMode(); break;
+				case 'chain': lines = this.renderChainMode(); break;
 			}
-			if (this.editMode === "thinking") {
-				return this.renderThinkingSelector();
-			}
-			if (this.editMode === "skills") {
-				return this.renderSkillSelector();
-			}
-			return this.renderFullEditMode();
 		}
-		// Mode-based navigation rendering
-		switch (this.mode) {
-			case 'single': return this.renderSingleMode();
-			case 'parallel': return this.renderParallelMode();
-			case 'chain': return this.renderChainMode();
-		}
+		const renderWidth = Math.max(0, Math.min(this.width, Math.floor(width)));
+		return lines.map((line) => truncateToWidth(line, renderWidth));
 	}
 
 	/** Render the model selector view */

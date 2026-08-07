@@ -227,7 +227,7 @@ export function resolveDynamicFanoutItems(step: DynamicParallelStep, outputs: Ch
 	if (value.length > maxItems) throw new DynamicFanoutError(`Dynamic chain step ${stepIndex + 1} resolved ${value.length} items, exceeding maxItems ${maxItems}.`);
 	const seen = new Set<string>();
 	const seenIds = new Set<string>();
-	return value.map((item: unknown, index) => {
+	return value.map((item, index) => {
 		const key = step.expand.key === undefined
 			? String(index)
 			: scalarToKey(resolveJsonPointer(item, step.expand.key, `Dynamic chain step ${stepIndex + 1} expand.key`), `Dynamic chain step ${stepIndex + 1} expand.key`);
@@ -264,12 +264,12 @@ export function materializeDynamicParallelStep(step: DynamicParallelStep, output
 export function collectDynamicResults(
 	step: DynamicParallelStep,
 	items: DynamicMaterializedItem[],
-	results: Array<Pick<SingleResult, "agent" | "exitCode" | "error" | "timedOut" | "stopped" | "structuredOutput" | "artifactPaths" | "savedOutputPath"> & { output?: string; finalOutput?: string }>,
+	results: Array<Pick<SingleResult, "agent" | "error" | "timedOut" | "stopped" | "structuredOutput" | "artifactPaths" | "savedOutputPath"> & { exitCode: number | null; output?: string; finalOutput?: string }>,
 ): DynamicCollectedResult[] {
 	return items.map((entry, index) => {
 		const result = results[index];
 		const text = result
-			? ("output" in result && typeof result.output === "string" ? result.output : getSingleResultOutput(result))
+			? ("output" in result && typeof result.output === "string" ? result.output : getSingleResultOutput(result as SingleResult))
 			: "";
 		return {
 			key: entry.key,

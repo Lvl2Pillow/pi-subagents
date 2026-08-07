@@ -72,7 +72,7 @@ const defaultTimers: TimerApi = {
 };
 
 function unrefHandle(handle: TimerHandle): void {
-	if (handle && typeof handle === "object" && "unref" in handle && typeof (handle).unref === "function") {
+	if (handle && typeof handle === "object" && "unref" in handle && typeof (handle as { unref: unknown }).unref === "function") {
 		(handle as { unref: () => void }).unref();
 	}
 }

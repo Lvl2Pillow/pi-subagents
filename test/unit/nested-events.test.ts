@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
@@ -86,15 +85,14 @@ describe("nested route index", () => {
 	});
 
 	it("keeps at most one route when a root run id has duplicate route dirs", () => {
-		const dupRoot = `dup-root-${randomUUID().slice(0, 8)}`;
-		const first = trackRoute(dupRoot);
-		const second = trackRoute(dupRoot);
+		const first = trackRoute("dup-root");
+		const second = trackRoute("dup-root");
 
 		const index = buildNestedRouteIndex();
 
 		// readdir order is not guaranteed, so the contract is deduplication: exactly
 		// one route is indexed per root run id, not a specific winner.
-		const indexed = index.get(dupRoot);
+		const indexed = index.get("dup-root");
 		assert.ok(indexed, "expected one route for dup-root");
 		const tokens = new Set([first.capabilityToken, second.capabilityToken]);
 		assert.ok(tokens.has(indexed.capabilityToken), "indexed route must be one of the two created routes");
@@ -159,14 +157,18 @@ describe("nested event parsing and projection", () => {
 			ts: 200,
 			parentRunId: "root-run",
 			parentStepIndex: 1,
-			child: { ...child("nested-a", "running", 200), currentTool: "read" },
+			child: {
+				...child("nested-a", "running", 200),
+				currentTool: "read",
+				runtimeAcknowledgedExtensions: { version: 1, source: "child-runtime", ids: ["ext.ok", "bad/path", "ext.ok"], omitted: 1 },
+			},
 		});
 		writeNestedEvent(route, {
 			type: "subagent.nested.completed",
 			ts: 300,
 			parentRunId: "root-run",
 			parentStepIndex: 1,
-			child: child("nested-a", "complete", 300),
+			child: { ...child("nested-a", "complete", 300), runtimeAcknowledgedExtensions: { version: 1, source: "child-runtime", ids: ["ext.ok", "bad/path", "ext.ok"], omitted: 1 } },
 		});
 
 		const registry = projectNestedEvents(route);
@@ -179,6 +181,12 @@ describe("nested event parsing and projection", () => {
 		assert.equal(registry.children[0]?.steps?.[0]?.model, "provider/leaf");
 		assert.equal(registry.children[0]?.steps?.[0]?.thinking, "low");
 		assert.equal(registry.children[0]?.children?.[0]?.id, "nested-grandchild");
+		assert.deepEqual(registry.children[0]?.runtimeAcknowledgedExtensions, {
+			version: 1,
+			source: "child-runtime",
+			ids: ["ext.ok"],
+			omitted: 1,
+		});
 
 		const job: AsyncJobState = {
 			asyncId: "root-run",
@@ -391,6 +399,24 @@ describe("nested event parsing and projection", () => {
 		assert.equal(summary.processTerminal?.reason, "proof-write-failed");
 		assert.equal(summary.steps?.[0]?.processTerminal?.state, "unknown");
 		assert.equal(summary.steps?.[0]?.processTerminal?.reason, "proof-write-failed");
+	});
+
+	it("sanitizes runtime acknowledged extensions in nested status summaries", () => {
+		const summary = nestedSummaryFromAsyncStatus({
+			runId: "child-run",
+			mode: "single",
+			state: "complete",
+			startedAt: 1,
+			runtimeAcknowledgedExtensions: { version: 1, source: "child-runtime", ids: ["/Users/alice/.secret-extension", "ok-ext", "x".repeat(5000)], omitted: 0 } as never,
+			steps: [{
+				agent: "worker",
+				status: "complete",
+				runtimeAcknowledgedExtensions: { version: 1, source: "child-runtime", ids: ["C:/Users/alice/secret"], omitted: 0 } as never,
+			}],
+		}, "/tmp/child-run", { id: "child-run", parentRunId: "parent-run", depth: 1, mode: "single", ts: 2 });
+
+		assert.deepEqual(summary.runtimeAcknowledgedExtensions?.ids, ["ok-ext"]);
+		assert.equal(summary.steps?.[0]?.runtimeAcknowledgedExtensions, undefined);
 	});
 
 	it("removes evicted status files without replaying completed children", () => {

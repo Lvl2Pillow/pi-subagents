@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { after, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import {
 	cleanupWorktrees,
 	createWorktrees,
@@ -40,31 +39,13 @@ function cleanupRepo(repoDir: string): void {
 	try { fs.rmSync(repoDir, { recursive: true, force: true }); } catch {}
 }
 
-// Worktree dirs and branches are derived from the runId (`pi-worktree-<runId>-<i>`,
-// `pi-parallel-<runId>-<i>`) under a shared os.tmpdir()/baseDir, so tests must use a
-// per-process-unique runId to avoid colliding with parallel test-file processes.
-const WORKTREE_TEST_SEED = randomUUID().slice(0, 12);
-function uniqueRunId(prefix: string): string {
-	return `${prefix}-${WORKTREE_TEST_SEED}`;
-}
-
-const hookScriptDirs = new Set<string>();
-
 function createHookScript(_repoDir: string, fileName: string, source: string): string {
 	const hooksDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-worktree-hook-script-"));
-	hookScriptDirs.add(hooksDir);
 	const hookPath = path.join(hooksDir, fileName);
 	fs.writeFileSync(hookPath, `#!/usr/bin/env node\n${source}\n`, "utf-8");
 	fs.chmodSync(hookPath, 0o755);
 	return hookPath;
 }
-
-after(() => {
-	for (const hooksDir of hookScriptDirs) {
-		try { fs.rmSync(hooksDir, { recursive: true, force: true }); } catch {}
-	}
-	hookScriptDirs.clear();
-});
 
 const hookScriptSkip = process.platform === "win32"
 	? "Hook script execution differs on Windows CI environments."
@@ -75,14 +56,12 @@ describe("worktree", () => {
 		const repoDir = createRepo("pi-worktree-structure-");
 		let setup: WorktreeSetup | undefined;
 		try {
-			const runId = uniqueRunId("structure");
-			setup = createWorktrees(repoDir, runId, 2);
+			setup = createWorktrees(repoDir, "structure", 2);
 			assert.equal(setup.worktrees.length, 2);
 			assert.equal(setup.cwd, git(repoDir, ["rev-parse", "--show-toplevel"]));
-			const worktrees = setup.worktrees;
-			for (let i = 0; i < worktrees.length; i++) {
-				const worktree = worktrees[i]!;
-				assert.equal(worktree.branch, `pi-parallel-${runId}-${i}`);
+			for (let i = 0; i < setup.worktrees.length; i++) {
+				const worktree = setup.worktrees[i]!;
+				assert.equal(worktree.branch, `pi-parallel-structure-${i}`);
 				assert.equal(worktree.index, i);
 				assert.equal(worktree.agentCwd, worktree.path);
 				assert.equal(worktree.nodeModulesLinked, false);
@@ -105,8 +84,7 @@ describe("worktree", () => {
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			const runId = uniqueRunId("subdir");
-			setup = createWorktrees(nestedDir, runId, 1);
+			setup = createWorktrees(nestedDir, "subdir", 1);
 			assert.equal(setup.worktrees[0]!.agentCwd, path.join(setup.worktrees[0]!.path, "packages", "app"));
 		} finally {
 			if (setup) cleanupWorktrees(setup);
@@ -134,12 +112,11 @@ describe("worktree", () => {
 
 	it("creates worktrees under a configured base directory", () => {
 		const repoDir = createRepo("pi-worktree-base-dir-");
-		const runId = uniqueRunId("base-dir");
-		const baseDir = path.join(os.tmpdir(), `pi-worktree-base-${WORKTREE_TEST_SEED}`, "nested");
+		const baseDir = path.join(os.tmpdir(), `pi-worktree-base-${Date.now().toString(36)}`, "nested");
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, runId, 1, { baseDir });
-			assert.equal(setup.worktrees[0]!.path, path.join(baseDir, `pi-worktree-${runId}-0`));
+			setup = createWorktrees(repoDir, "base-dir", 1, { baseDir });
+			assert.equal(setup.worktrees[0]!.path, path.join(baseDir, "pi-worktree-base-dir-0"));
 			assert.ok(fs.existsSync(baseDir), "configured base directory should be created");
 		} finally {
 			if (setup) cleanupWorktrees(setup);
@@ -151,13 +128,12 @@ describe("worktree", () => {
 	it("uses PI_SUBAGENTS_WORKTREE_DIR when no base directory is configured", () => {
 		const repoDir = createRepo("pi-worktree-env-base-dir-");
 		const previous = process.env.PI_SUBAGENTS_WORKTREE_DIR;
-		const runId = uniqueRunId("env-base-dir");
-		const baseDir = path.join(os.tmpdir(), `pi-worktree-env-base-${WORKTREE_TEST_SEED}`);
+		const baseDir = path.join(os.tmpdir(), `pi-worktree-env-base-${Date.now().toString(36)}`);
 		let setup: WorktreeSetup | undefined;
 		try {
 			process.env.PI_SUBAGENTS_WORKTREE_DIR = baseDir;
-			setup = createWorktrees(repoDir, runId, 1);
-			assert.equal(setup.worktrees[0]!.path, path.join(baseDir, `pi-worktree-${runId}-0`));
+			setup = createWorktrees(repoDir, "env-base-dir", 1);
+			assert.equal(setup.worktrees[0]!.path, path.join(baseDir, "pi-worktree-env-base-dir-0"));
 		} finally {
 			if (setup) cleanupWorktrees(setup);
 			if (previous === undefined) {
@@ -175,10 +151,24 @@ describe("worktree", () => {
 		try {
 			fs.writeFileSync(path.join(repoDir, "tracked.txt"), "dirty\n", "utf-8");
 			assert.throws(
-				() => createWorktrees(repoDir, uniqueRunId("dirty"), 1),
+				() => createWorktrees(repoDir, "dirty", 1),
 				/worktree isolation requires a clean git working tree/i,
 			);
 		} finally {
+			cleanupRepo(repoDir);
+		}
+	});
+
+	it("createWorktrees ignores pi-subagents runtime artifacts in the source checkout", () => {
+		const repoDir = createRepo("pi-worktree-runtime-artifacts-");
+		let setup: WorktreeSetup | undefined;
+		try {
+			fs.mkdirSync(path.join(repoDir, ".pi-subagents", "missions"), { recursive: true });
+			fs.writeFileSync(path.join(repoDir, ".pi-subagents", "missions", "mission.json"), "{}\n", "utf-8");
+			setup = createWorktrees(repoDir, "runtime-artifacts", 1);
+			assert.equal(setup.worktrees.length, 1);
+		} finally {
+			if (setup) cleanupWorktrees(setup);
 			cleanupRepo(repoDir);
 		}
 	});
@@ -232,7 +222,7 @@ describe("worktree", () => {
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("diff"), 1);
+			setup = createWorktrees(repoDir, `diff-${process.pid}`, 1);
 			const worktree = setup.worktrees[0]!;
 			fs.writeFileSync(path.join(worktree.path, "committed.ts"), "export const committed = true;\n", "utf-8");
 			git(worktree.path, ["add", "committed.ts"]);
@@ -258,7 +248,7 @@ describe("worktree", () => {
 			assert.match(summary, /=== Worktree Changes ===/);
 			assert.match(summary, /Full patches:/);
 		} finally {
-			if (setup) cleanupWorktrees(setup);
+			if (setup) cleanupWorktrees(setup, { kind: "setup-rollback" });
 			cleanupRepo(repoDir);
 		}
 	});
@@ -267,7 +257,7 @@ describe("worktree", () => {
 		const repoDir = createRepo("pi-worktree-cleanup-");
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("cleanup"), 2);
+			setup = createWorktrees(repoDir, "cleanup", 2);
 			const worktreePaths = setup.worktrees.map((worktree) => worktree.path);
 			const branches = setup.worktrees.map((worktree) => worktree.branch);
 			const cleanup = cleanupWorktrees(setup);
@@ -290,6 +280,87 @@ describe("worktree", () => {
 		}
 	});
 
+	it("preserves dirty worktrees when no patch was captured", () => {
+		const repoDir = createRepo("pi-worktree-uncaptured-");
+		let setup: WorktreeSetup | undefined;
+		try {
+			setup = createWorktrees(repoDir, "uncaptured", 1);
+			const worktree = setup.worktrees[0]!;
+			fs.writeFileSync(path.join(worktree.path, "tracked.txt"), "uncaptured\n", "utf-8");
+
+			const cleanup = cleanupWorktrees(setup);
+			assert.equal(cleanup.state, "partial");
+			assert.equal(cleanup.tasks[0]?.preserved, true);
+			assert.match(cleanup.tasks[0]?.reason ?? "", /not represented by a captured handoff patch/);
+			assert.equal(fs.existsSync(worktree.path), true);
+			assert.notEqual(git(repoDir, ["branch", "--list", worktree.branch]), "");
+
+			const unconfirmed = cleanupWorktrees(setup, { kind: "discard", authorization: { kind: "policy" } });
+			assert.equal(unconfirmed.state, "partial");
+			assert.match(unconfirmed.tasks[0]?.reason ?? "", /confirmation/);
+			const discarded = cleanupWorktrees(setup, { kind: "discard", authorization: { kind: "confirmed" } });
+			assert.equal(discarded.state, "complete");
+			setup = undefined;
+		} finally {
+			if (setup) cleanupWorktrees(setup, { kind: "setup-rollback" });
+			cleanupRepo(repoDir);
+		}
+	});
+
+	it("preserves committed branch work when no patch was captured", () => {
+		const repoDir = createRepo("pi-worktree-committed-uncaptured-");
+		let setup: WorktreeSetup | undefined;
+		try {
+			setup = createWorktrees(repoDir, "committed-uncaptured", 1);
+			const worktree = setup.worktrees[0]!;
+			fs.writeFileSync(path.join(worktree.path, "committed.txt"), "unlanded commit\n", "utf-8");
+			git(worktree.path, ["add", "committed.txt"]);
+			git(worktree.path, ["commit", "-m", "unlanded work"]);
+			assert.equal(git(worktree.path, ["status", "--porcelain"]), "");
+
+			const cleanup = cleanupWorktrees(setup);
+			assert.equal(cleanup.state, "partial");
+			assert.equal(cleanup.tasks[0]?.preserved, true);
+			assert.equal(fs.existsSync(worktree.path), true);
+
+			cleanupWorktrees(setup, { kind: "discard", authorization: { kind: "confirmed" } });
+			setup = undefined;
+		} finally {
+			if (setup) cleanupWorktrees(setup, { kind: "setup-rollback" });
+			cleanupRepo(repoDir);
+		}
+	});
+
+	it("removes dirty worktrees only after their captured patch is recorded in the handoff manifest", () => {
+		const repoDir = createRepo("pi-worktree-captured-");
+		let setup: WorktreeSetup | undefined;
+		try {
+			setup = createWorktrees(repoDir, "captured", 1);
+			const worktreePath = setup.worktrees[0]!.path;
+			fs.writeFileSync(path.join(worktreePath, "tracked.txt"), "captured\n", "utf-8");
+			const diffs = diffWorktrees(setup, ["worker"], path.join(repoDir, "artifacts", "captured"));
+			assert.equal(diffs[0]?.error, undefined);
+			assert.ok(fs.statSync(diffs[0]!.patchPath).size > 0);
+
+			const withoutManifest = cleanupWorktrees(setup, { kind: "preserve", capturedDiffs: diffs });
+			assert.equal(withoutManifest.state, "partial");
+			assert.equal(fs.existsSync(worktreePath), true);
+
+			const handoffManifestPath = path.join(repoDir, "artifacts", "handoff.json");
+			fs.writeFileSync(handoffManifestPath, JSON.stringify({
+				version: 1,
+				groups: [{ children: [{ patch: { path: diffs[0]!.patchPath } }] }],
+			}), "utf-8");
+			const cleanup = cleanupWorktrees(setup, { kind: "preserve", capturedDiffs: diffs, handoffManifestPath });
+			assert.equal(cleanup.state, "complete");
+			assert.equal(fs.existsSync(worktreePath), false);
+			setup = undefined;
+		} finally {
+			if (setup) cleanupWorktrees(setup, { kind: "setup-rollback" });
+			cleanupRepo(repoDir);
+		}
+	});
+
 	it("createWorktrees creates node_modules symlink when node_modules exists", {
 		skip: process.platform === "win32" ? "Symlink behavior differs on Windows CI environments." : undefined,
 	}, () => {
@@ -300,7 +371,7 @@ describe("worktree", () => {
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("node-modules"), 1);
+			setup = createWorktrees(repoDir, "node-modules", 1);
 			const symlinkPath = path.join(setup.worktrees[0]!.path, "node_modules");
 			assert.equal(setup.worktrees[0]!.nodeModulesLinked, true);
 			assert.deepEqual(setup.worktrees[0]!.syntheticPaths, ["node_modules"]);
@@ -326,7 +397,7 @@ describe("worktree", () => {
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("tracked-node-modules"), 1);
+			setup = createWorktrees(repoDir, `tracked-node-modules-${process.pid}`, 1);
 			assert.equal(setup.worktrees[0]!.nodeModulesLinked, false);
 			assert.deepEqual(setup.worktrees[0]!.syntheticPaths, []);
 			fs.writeFileSync(path.join(setup.worktrees[0]!.path, "tracked.txt"), "modified\n", "utf-8");
@@ -337,7 +408,7 @@ describe("worktree", () => {
 			assert.doesNotMatch(patch, /diff --git a\/node_modules b\/node_modules/);
 			assert.equal(fs.lstatSync(path.join(setup.worktrees[0]!.path, "node_modules")).isSymbolicLink(), true);
 		} finally {
-			if (setup) cleanupWorktrees(setup);
+			if (setup) cleanupWorktrees(setup, { kind: "setup-rollback" });
 			cleanupRepo(repoDir);
 		}
 	});
@@ -355,7 +426,7 @@ process.stdout.write(JSON.stringify({ syntheticPaths: [".venv"] }));
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("hook-relative"), 1, {
+			setup = createWorktrees(repoDir, "hook-relative", 1, {
 				setupHook: { hookPath: path.relative(repoDir, hookPath) },
 			});
 			assert.ok(setup.worktrees[0]!.syntheticPaths.includes(".venv"));
@@ -375,7 +446,7 @@ process.stdout.write(JSON.stringify({ syntheticPaths: [] }));
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("hook-absolute"), 1, {
+			setup = createWorktrees(repoDir, "hook-absolute", 1, {
 				setupHook: { hookPath },
 			});
 			assert.equal(setup.worktrees.length, 1);
@@ -389,7 +460,7 @@ process.stdout.write(JSON.stringify({ syntheticPaths: [] }));
 		const repoDir = createRepo("pi-worktree-hook-bare-");
 		try {
 			assert.throws(
-				() => createWorktrees(repoDir, uniqueRunId("hook-bare"), 1, { setupHook: { hookPath: "node" } }),
+				() => createWorktrees(repoDir, "hook-bare", 1, { setupHook: { hookPath: "node" } }),
 				/worktree setup hook must be an absolute path or a repo-relative path/i,
 			);
 		} finally {
@@ -404,7 +475,7 @@ import * as fs from "node:fs";
 JSON.parse(fs.readFileSync(0, "utf-8"));
 process.stdout.write(JSON.stringify({ syntheticPaths: ["tracked.txt"] }));
 `);
-		const runId = uniqueRunId("hook-tracked");
+		const runId = `hook-tracked-${Date.now().toString(36)}`;
 		try {
 			assert.throws(
 				() => createWorktrees(repoDir, runId, 1, { setupHook: { hookPath: path.relative(repoDir, hookPath) } }),
@@ -422,7 +493,7 @@ import * as fs from "node:fs";
 const payload = JSON.parse(fs.readFileSync(0, "utf-8"));
 process.stdout.write(JSON.stringify({ syntheticPaths: [payload.worktreePath + "/.venv"] }));
 `);
-		const runId = uniqueRunId("hook-absolute-synthetic");
+		const runId = `hook-absolute-synthetic-${Date.now().toString(36)}`;
 		try {
 			assert.throws(
 				() => createWorktrees(repoDir, runId, 1, { setupHook: { hookPath: path.relative(repoDir, hookPath) } }),
@@ -445,7 +516,7 @@ process.stdout.write(JSON.stringify({ syntheticPaths: [".env.local"] }));
 
 		let setup: WorktreeSetup | undefined;
 		try {
-			setup = createWorktrees(repoDir, uniqueRunId("hook-diff"), 1, {
+			setup = createWorktrees(repoDir, `hook-diff-${process.pid}`, 1, {
 				setupHook: { hookPath: path.relative(repoDir, hookPath) },
 			});
 			fs.writeFileSync(path.join(setup.worktrees[0]!.path, "tracked.txt"), "modified-by-agent\n", "utf-8");
@@ -454,14 +525,14 @@ process.stdout.write(JSON.stringify({ syntheticPaths: [".env.local"] }));
 			assert.match(patch, /tracked\.txt/);
 			assert.doesNotMatch(patch, /\.env\.local/);
 		} finally {
-			if (setup) cleanupWorktrees(setup);
+			if (setup) cleanupWorktrees(setup, { kind: "setup-rollback" });
 			cleanupRepo(repoDir);
 		}
 	});
 
 	it("cleans up created worktrees when a later hook setup fails", { skip: hookScriptSkip }, () => {
 		const repoDir = createRepo("pi-worktree-hook-cleanup-");
-		const runId = uniqueRunId("hook-cleanup");
+		const runId = `hook-cleanup-${Date.now().toString(36)}`;
 		const hookPath = createHookScript(repoDir, "flaky-hook.mjs", `
 import * as fs from "node:fs";
 const payload = JSON.parse(fs.readFileSync(0, "utf-8"));
@@ -492,7 +563,7 @@ setTimeout(() => {
 	process.stdout.write(JSON.stringify({ syntheticPaths: [] }));
 }, 1000);
 `);
-		const runId = uniqueRunId("hook-timeout");
+		const runId = `hook-timeout-${Date.now().toString(36)}`;
 		try {
 			assert.throws(
 				() => createWorktrees(repoDir, runId, 1, {
@@ -502,6 +573,41 @@ setTimeout(() => {
 			);
 		} finally {
 			cleanupRepo(repoDir);
+		}
+	});
+});
+
+describe("manifest-backed worktree discard", () => {
+	it("keeps incomplete cleanup actionable with exact manual Git commands", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-worktree-discard-manifest-"));
+		try {
+			const manifestPath = path.join(root, "handoff.json");
+			const worktreePath = path.join(root, "preserved-worktree");
+			fs.mkdirSync(worktreePath);
+			fs.writeFileSync(manifestPath, JSON.stringify({
+				version: 1,
+				runId: "discard-run",
+				mode: "parallel",
+				source: "foreground",
+				cwd: root,
+				createdAt: 1,
+				updatedAt: 1,
+				groups: [{
+					stepIndex: 0,
+					baseCommit: "deadbeef",
+					repoRoot: root,
+					children: [],
+					cleanup: { state: "partial", pruned: false, tasks: [{ index: 0, path: worktreePath, branch: "pi-parallel-discard", worktreeRemoved: false, branchRemoved: false, preserved: true }] },
+				}],
+			}), "utf-8");
+			const { discardPreservedWorktrees } = await import("../../src/runs/shared/parallel-handoff.ts");
+			const discarded = discardPreservedWorktrees(manifestPath, { kind: "confirmed" });
+			assert.match(discarded.text, /git -C .* worktree remove --force/);
+			assert.match(discarded.text, /branch -D/);
+			assert.equal(discarded.manifest.groups[0]?.cleanup.state, "partial");
+			assert.equal(discarded.manifest.groups[0]?.cleanup.tasks[0]?.preserved, true);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});
 });

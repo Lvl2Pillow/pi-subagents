@@ -185,6 +185,14 @@ function writeStructuredOutputCapture(response) {
 	fs.writeFileSync(outputPath, JSON.stringify(response.structuredOutputCapture), "utf-8");
 }
 
+function writeRuntimeAcknowledgedExtensions(response) {
+	if (!Object.prototype.hasOwnProperty.call(response, "runtimeAcknowledgedExtensions")) return;
+	const outputPath = process.env.PI_SUBAGENT_RUNTIME_ACKNOWLEDGED_EXTENSIONS;
+	if (!outputPath) return;
+	fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+	fs.writeFileSync(outputPath, JSON.stringify(response.runtimeAcknowledgedExtensions), "utf-8");
+}
+
 function writeToolDiagnostic(response) {
 	if (!Array.isArray(response.missingTools) || response.missingTools.length === 0) return;
 	const diagnosticPath = process.env.PI_SUBAGENT_TOOL_DIAGNOSTIC_PATH;
@@ -347,6 +355,7 @@ async function main() {
 
 	writeDeclaredFiles(response);
 	writeStructuredOutputCapture(response);
+	writeRuntimeAcknowledgedExtensions(response);
 
 	if (Array.isArray(response.steps) && response.steps.length > 0) {
 		for (const step of response.steps) {

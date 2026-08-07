@@ -42,7 +42,7 @@ Controls the `subagent` tool result shown inline in chat. The default, `"rich"`,
 { "asyncByDefault": false }
 ```
 
-Ordinary top-level calls use background execution when the request omits `async`. Set `asyncByDefault` to `false` to restore foreground-by-default behavior. Callers can still force foreground with `async: false` unless `forceTopLevelAsync` is enabled; `clarify: true` remains foreground for its UI.
+WorkflowScript calls use background execution when the request omits `async`. Set `asyncByDefault` to `false` to restore foreground-by-default behavior for tool launches that still use the internal single-run primitive. Callers can still force foreground with `async: false` unless `forceTopLevelAsync` is enabled.
 
 ## `fleetView`
 
@@ -86,7 +86,7 @@ This is different from `waitTool.enabled=false`, which returns immediately witho
 { "forceTopLevelAsync": true }
 ```
 
-Forces depth-0 single, parallel, and chain runs into background mode and bypasses clarify UI by forcing `clarify: false`. Nested calls keep their own inherited settings.
+Forces depth-0 internal single, parallel, and chain runs into background mode and bypasses launch UI by forcing `clarify: false`. Nested calls keep their own inherited settings.
 
 ## `globalConcurrencyLimit`
 

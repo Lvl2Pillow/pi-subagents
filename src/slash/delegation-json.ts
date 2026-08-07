@@ -39,11 +39,11 @@ export function cloneJsonWithinByteLimit(input: unknown, maxBytes: number): Boun
 		}
 		if (typeof value !== "object") throw new TypeError("invalid");
 
-		const object = value;
+		const object = value as object;
 		if (active.has(object)) throw new TypeError("invalid");
 		active.add(object);
 		try {
-			const prototype = Object.getPrototypeOf(object) as object | null;
+			const prototype = Object.getPrototypeOf(object);
 			const keys = Reflect.ownKeys(object);
 			if (Array.isArray(object)) {
 				if (prototype !== Array.prototype) throw new TypeError("invalid");

@@ -37,7 +37,6 @@ const theme = {
 	bg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
 };
-type FleetViewTheme = typeof theme;
 
 describe("below-editor subagent FleetView", () => {
 	it("formats elapsed time and token counts like the Claude Code fleet", () => {
@@ -70,7 +69,7 @@ describe("below-editor subagent FleetView", () => {
 			});
 		}
 
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -134,7 +133,7 @@ describe("below-editor subagent FleetView", () => {
 			updatedAt: 20,
 			totalTokens: { input: 40, output: 2, total: 42 },
 		});
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -154,7 +153,6 @@ describe("below-editor subagent FleetView", () => {
 			assert.ok(lines[0]!.includes("1 active agent"));
 			assert.ok(lines[0]!.includes("↓ 42 tokens"));
 			assert.ok(visibleWidth(lines[0]!) <= 50);
-
 		} finally {
 			fleet.dispose();
 		}
@@ -306,7 +304,7 @@ describe("below-editor subagent FleetView", () => {
 			updatedAt: 20,
 			currentAgent: "worker",
 		});
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[]; invalidate(): void }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[]; invalidate(): void }) | undefined;
 		let removals = 0;
 		const ctx = {
 			hasUI: true,
@@ -395,7 +393,7 @@ describe("below-editor subagent FleetView", () => {
 				lastUpdate: 20,
 			})),
 		});
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -463,7 +461,7 @@ describe("below-editor subagent FleetView", () => {
 				},
 			],
 		});
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -596,7 +594,7 @@ describe("below-editor subagent FleetView", () => {
 			],
 		});
 		const fleet = new SubagentFleetStatus(state, () => {}, { refreshMs: 60_000 });
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
 		const ctx = {
 			hasUI: true,
 			ui: {
@@ -635,7 +633,7 @@ describe("below-editor subagent FleetView", () => {
 		});
 		let editorText = "draft";
 		let inputHandler: ((data: string) => { consume?: boolean } | undefined) | undefined;
-		let widgetFactory: ((tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] }) | undefined;
+		let widgetFactory: ((tui: unknown, theme: typeof theme) => { render(width: number): string[] }) | undefined;
 		const opened: string[] = [];
 		let closeInspector: (() => void) | undefined;
 		const ctx = {
@@ -658,16 +656,16 @@ describe("below-editor subagent FleetView", () => {
 			assert.ok(inputHandler);
 			assert.ok(widgetFactory);
 			const tui = { requestRender() {}, focusedComponent: Object.create(Editor.prototype) as Editor };
-			const component = widgetFactory(tui, theme);
+			const component = widgetFactory!(tui, theme);
 
-			assert.equal(inputHandler("\x1b[B"), undefined, "non-empty editor should retain Down");
+			assert.equal(inputHandler!("\x1b[B"), undefined, "non-empty editor should retain Down");
 			editorText = "";
 			tui.focusedComponent = {
 				render() { return []; },
 				invalidate() {},
 				handleInput() {},
 			} as unknown as Editor;
-			assert.equal(inputHandler("\x1b[B"), undefined, "non-editor focus should retain Down");
+			assert.equal(inputHandler!("\x1b[B"), undefined, "non-editor focus should retain Down");
 
 			const crossModuleCustomEditor = {
 				render() { return []; },
@@ -692,20 +690,18 @@ describe("below-editor subagent FleetView", () => {
 			assert.deepEqual(inputHandler!("\x1b[B"), { consume: true });
 			assert.ok(component.render(100).some((line) => line.includes("> worker")));
 			assert.deepEqual(inputHandler!("\r"), { consume: true });
-
 			await Promise.resolve();
 			assert.deepEqual(opened, ["foreground-active:run-worker:0"]);
-			assert.ok(!widgetFactory, "the widget should unregister while the inspector owns the viewport");
+			assert.equal(widgetFactory, undefined, "the widget should unregister while the inspector owns the viewport");
 
 			closeInspector!();
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.notEqual(widgetFactory, undefined, "closing should restore the FleetView widget");
+			assert.ok(widgetFactory, "closing should restore the FleetView widget");
 			assert.notEqual(widgetFactory, component, "restoration should install a new component factory");
-			const restoredComponent = (widgetFactory as unknown as (tui: unknown, theme: FleetViewTheme) => { render(width: number): string[] })(tui, theme);
+			const restoredComponent = widgetFactory!(tui, theme);
 			assert.ok(restoredComponent.render(100).some((line) => line.includes("> worker")), "closing should restore the prior selected roster row");
 			assert.deepEqual(inputHandler!("\x1b"), { consume: true });
 			assert.equal(restoredComponent.render(100).length, 1, "Escape should return to the compact summary");
-
 		} finally {
 			fleet.dispose();
 		}

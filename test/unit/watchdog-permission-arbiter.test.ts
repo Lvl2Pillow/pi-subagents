@@ -28,7 +28,7 @@ function ctx(current = model()) {
 
 function responseStream(message: AssistantMessage) {
 	const stream = createAssistantMessageEventStream();
-	queueMicrotask(() => stream.push({ type: "done", reason: message.stopReason as "length" | "stop" | "toolUse", message }));
+	queueMicrotask(() => stream.push({ type: "done", reason: message.stopReason, message }));
 	return stream;
 }
 

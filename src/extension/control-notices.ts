@@ -6,7 +6,7 @@ export const SUBAGENT_CONTROL_MESSAGE_TYPE = "subagent_control_notice";
 
 export interface SubagentControlMessageDetails {
 	event: ControlEvent;
-	source?: "foreground" | "async";
+	source?: "foreground" | "async" | "goal";
 	asyncDir?: string;
 	childIntercomTarget?: string;
 	noticeText?: string;
@@ -17,7 +17,7 @@ export function controlNoticeTarget(details: SubagentControlMessageDetails): str
 }
 
 export function formatSubagentControlNotice(details: SubagentControlMessageDetails, content?: string): string {
-	return details.noticeText ?? content ?? formatControlNoticeMessage(details.event);
+	return details.noticeText ?? content ?? formatControlNoticeMessage(details.event, controlNoticeTarget(details));
 }
 
 function deliverControlNotice(input: {
@@ -26,10 +26,10 @@ function deliverControlNotice(input: {
 	details: SubagentControlMessageDetails;
 }): void {
 	const childIntercomTarget = controlNoticeTarget(input.details);
-	const key = controlNotificationKey(input.details.event);
+	const key = controlNotificationKey(input.details.event, childIntercomTarget);
 	if (input.visibleControlNotices.has(key)) return;
 	input.visibleControlNotices.add(key);
-	const noticeText = input.details.noticeText ?? formatControlNoticeMessage(input.details.event);
+	const noticeText = input.details.noticeText ?? formatControlNoticeMessage(input.details.event, childIntercomTarget);
 	input.pi.sendMessage(
 		{
 			customType: SUBAGENT_CONTROL_MESSAGE_TYPE,
@@ -37,7 +37,7 @@ function deliverControlNotice(input: {
 			display: true,
 			details: { ...input.details, childIntercomTarget, noticeText },
 		},
-		{ triggerTurn: input.details.source !== "foreground" },
+		{ triggerTurn: input.details.source === "async" },
 	);
 }
 

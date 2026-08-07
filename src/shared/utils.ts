@@ -177,6 +177,53 @@ export function readStatus(asyncDir: string): AsyncStatus | null {
 	return status;
 }
 
+const outputTailCache = new Map<string, { mtime: number; size: number; lines: string[] }>();
+
+/**
+ * Get the last N lines from an output file (with mtime/size-based caching)
+ */
+function getOutputTail(outputFile: string | undefined, maxLines: number = 3): string[] {
+	if (!outputFile) return [];
+	let fd: number | null = null;
+	try {
+		const stat = fs.statSync(outputFile);
+		if (stat.size === 0) return [];
+
+		const cached = outputTailCache.get(outputFile);
+		if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
+			return cached.lines;
+		}
+
+		const tailBytes = 4096;
+		const start = Math.max(0, stat.size - tailBytes);
+		fd = fs.openSync(outputFile, "r");
+		const buffer = Buffer.alloc(Math.min(tailBytes, stat.size));
+		fs.readSync(fd, buffer, 0, buffer.length, start);
+		const content = buffer.toString("utf-8");
+		const allLines = content.split("\n").filter((l) => l.trim());
+		const lines = allLines.slice(-maxLines).map((l) => l.slice(0, 120) + (l.length > 120 ? "..." : ""));
+
+		outputTailCache.set(outputFile, { mtime: stat.mtimeMs, size: stat.size, lines });
+		if (outputTailCache.size > 20) {
+			const firstKey = outputTailCache.keys().next().value;
+			if (firstKey) outputTailCache.delete(firstKey);
+		}
+
+		return lines;
+	} catch {
+		// Output tails are UI-only hints; unreadable or missing files should render as no tail.
+		return [];
+	} finally {
+		if (fd !== null) {
+			try {
+				fs.closeSync(fd);
+			} catch {
+				// Closing the best-effort tail file handle should not surface over the main status view.
+			}
+		}
+	}
+}
+
 /**
  * Get human-readable last activity time for a file
  */
@@ -209,7 +256,18 @@ export function findLatestSessionFile(sessionDir: string): string | null {
 			};
 		})
 		.sort((a, b) => b.mtime - a.mtime);
-	return files.length > 0 ? files[0]!.path : null;
+	const latest = files[0];
+	return latest ? latest.path : null;
+}
+
+/**
+ * Write a prompt to a temporary file
+ */
+function writePrompt(agent: string, prompt: string): { dir: string; path: string } {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagent-"));
+	const p = path.join(dir, `${agent.replace(/[^\w.-]/g, "_")}.md`);
+	fs.writeFileSync(p, prompt, { mode: 0o600 });
+	return { dir, path: p };
 }
 
 // ============================================================================
@@ -222,8 +280,8 @@ export function findLatestSessionFile(sessionDir: string): string | null {
 export function getFinalOutput(messages: Message[]): string {
 	const validTextParts: string[] = [];
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i]!;
-		if (msg.role !== "assistant") continue;
+		const msg = messages[i];
+		if (!msg || msg.role !== "assistant") continue;
 		const hasAssistantError = ("errorMessage" in msg && typeof msg.errorMessage === "string" && msg.errorMessage.length > 0)
 			|| ("stopReason" in msg && msg.stopReason === "error");
 		if (hasAssistantError) continue;
@@ -232,8 +290,8 @@ export function getFinalOutput(messages: Message[]): string {
 			.map((part) => part.type === "text" ? part.text : "")
 			.join("\n");
 		for (let j = msg.content.length - 1; j >= 0; j--) {
-			const part = msg.content[j]!;
-			if (part.type !== "text" || part.text.trim().length === 0) continue;
+			const part = msg.content[j];
+			if (!part || part.type !== "text" || part.text.trim().length === 0) continue;
 			validTextParts.push(part.text);
 			if (/```acceptance[-_]report\s*\n[\s\S]*?```/i.test(part.text)) return messageText;
 			for (const match of part.text.matchAll(/```(?:json|jsonc|json5)\s*\n([\s\S]*?)```/gi)) {
@@ -410,7 +468,7 @@ export function boundStreamedToolCalls(result: Pick<SingleResult, "toolCalls" | 
 }
 
 export function hasEmptyTerminalAssistantResponse(messages: Message[]): boolean {
-	const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+	const lastAssistant = messages.findLast((message) => message.role === "assistant");
 	return lastAssistant?.role === "assistant"
 		&& Array.isArray(lastAssistant.content)
 		&& lastAssistant.content.length === 0
@@ -423,8 +481,8 @@ export function hasEmptyTerminalAssistantResponse(messages: Message[]): boolean 
 export function detectSubagentError(messages: Message[]): ErrorInfo {
 	let lastAssistantTextIndex = -1;
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i]!;
-		if (msg.role === "assistant") {
+		const msg = messages[i];
+		if (msg?.role === "assistant") {
 			const hasText = Array.isArray(msg.content) && msg.content.some(
 				(c) => c.type === "text" && "text" in c && typeof c.text === "string" && c.text.trim().length > 0,
 			);
@@ -438,8 +496,8 @@ export function detectSubagentError(messages: Message[]): ErrorInfo {
 	const scanStart = lastAssistantTextIndex >= 0 ? lastAssistantTextIndex + 1 : 0;
 
 	for (let i = messages.length - 1; i >= scanStart; i--) {
-		const msg = messages[i]!;
-		if (msg.role !== "toolResult") continue;
+		const msg = messages[i];
+		if (!msg || msg.role !== "toolResult") continue;
 		const toolName = "toolName" in msg && typeof msg.toolName === "string" ? msg.toolName : undefined;
 		const isError = "isError" in msg && msg.isError === true;
 
@@ -448,9 +506,10 @@ export function detectSubagentError(messages: Message[]): ErrorInfo {
 		const text = msg.content.find((c) => c.type === "text");
 		const details = text && "text" in text ? text.text : undefined;
 		const exitMatch = details?.match(/exit(?:ed)?\s*(?:with\s*)?(?:code|status)?\s*[:\s]?\s*(\d+)/i);
+		const exitCodeText = exitMatch?.[1];
 		return {
 			hasError: true,
-			exitCode: exitMatch ? parseInt(exitMatch[1]!, 10) : 1,
+			exitCode: exitCodeText ? parseInt(exitCodeText, 10) : 1,
 			errorType: toolName || "tool",
 			details: details?.slice(0, 200),
 		};
@@ -500,7 +559,7 @@ export function extractToolArgsPreview(args: Record<string, unknown>): string {
 	const previewKeys = ["command", "path", "file_path", "pattern", "query", "url", "task", "describe", "search"];
 	for (const key of previewKeys) {
 		if (args[key] && typeof args[key] === "string") {
-			const value = args[key];
+			const value = args[key] as string;
 			return truncatePreview(value, 60);
 		}
 	}
@@ -527,7 +586,7 @@ export function extractTextFromContent(content: unknown): string {
 	// Handle array content
 	if (!Array.isArray(content)) return "";
 	const texts: string[] = [];
-	for (const part of content as unknown[]) {
+	for (const part of content) {
 		if (part && typeof part === "object") {
 			// Handle { type: "text", text: "..." }
 			if ("type" in part && part.type === "text" && "text" in part) {

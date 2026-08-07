@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { appendJsonl } from "../../shared/artifacts.ts";
-import type { AsyncStatus, WorkflowGraphNode, WorkflowGraphSnapshot } from "../../shared/types.ts";
+import type { AsyncParallelGroupStatus, AsyncStatus, WorkflowGraphNode, WorkflowGraphSnapshot } from "../../shared/types.ts";
 import { readStatus } from "../../shared/utils.ts";
 import type { DynamicRunnerGroup, ParallelStepGroup, RunnerStep, RunnerSubagentStep, RunnerCheckpointStep } from "../shared/parallel-utils.ts";
 import { isCheckpointRunnerStep, isDynamicRunnerGroup, isParallelGroup } from "../shared/parallel-utils.ts";
@@ -104,9 +104,10 @@ export function enqueueChainAppendRequest(input: {
 function readAppendRequest(filePath: string): ChainAppendRequest | undefined {
 	const raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Partial<ChainAppendRequest>;
 	if (!raw.id || typeof raw.id !== "string") return undefined;
-	if (typeof raw.createdAt !== "number" || !Number.isFinite(raw.createdAt)) return undefined;
+	const createdAt = raw.createdAt;
+	if (typeof createdAt !== "number" || !Number.isFinite(createdAt)) return undefined;
 	if (!Array.isArray(raw.steps) || raw.steps.length === 0) return undefined;
-	return { id: raw.id, createdAt: raw.createdAt, steps: raw.steps };
+	return { id: raw.id, createdAt, steps: raw.steps as RunnerStep[] };
 }
 
 export function readPendingChainAppendRequests(asyncDir: string): ChainAppendRequest[] {

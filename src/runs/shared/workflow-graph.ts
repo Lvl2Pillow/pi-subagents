@@ -199,7 +199,7 @@ export function buildWorkflowGraphSnapshot(input: WorkflowGraphBuildInput): Work
 			continue;
 		}
 
-		const seq = step;
+		const seq = step as SequentialStep;
 		const status = nodeStatus(input, flatIndex);
 		const id = `step-${stepIndex}`;
 		nodes.push({

@@ -41,7 +41,7 @@ function makeState(sessionId: string | null): SubagentState {
 		watcher: null,
 		watcherRestartTimer: null,
 		resultFileCoalescer: { schedule: () => false, clear: () => {} },
-	};
+	} as SubagentState;
 }
 
 function textOf(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -450,7 +450,7 @@ describe("subagent_wait tool", () => {
 			setTimeout(() => {
 				const child = state.foregroundRuns!.get("foreground-repeated")!.children[0]!;
 				child.activityState = "needs_attention";
-				events.emit("subagent:detach-request", { runId: "foreground-repeated", childIndex: 0 });
+				events.emit("pi-intercom:detach-request", { runId: "foreground-repeated", childIndex: 0 });
 			}, 15);
 
 			const result = await waiting;

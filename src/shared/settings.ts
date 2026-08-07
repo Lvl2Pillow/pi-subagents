@@ -120,6 +120,16 @@ export interface CheckpointStep {
 	message?: string;
 	phase?: string;
 	label?: string;
+	agent?: string;
+	task?: string;
+	as?: string;
+	output?: string | false;
+	outputMode?: OutputMode;
+	reads?: string[] | false;
+	progress?: boolean;
+	skill?: string | string[] | false;
+	skills?: string[] | false;
+	model?: string;
 }
 
 /** Parallel step: multiple agents running concurrently */
@@ -237,7 +247,7 @@ export function resolveChainTemplates(
 			return step.parallel.task ?? "{previous}";
 		}
 		// Sequential step: existing logic
-		const seq = step;
+		const seq = step as SequentialStep;
 		if (seq.task) return seq.task;
 		// Default: first step uses {task}, others use {previous}
 		return i === 0 ? "{task}" : "{previous}";

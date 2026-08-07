@@ -26,9 +26,8 @@ const expectedHostPeerRanges = {
 const expectedHostDevVersions = {
 	"@earendil-works/pi-agent-core": "0.81.0",
 	"@earendil-works/pi-ai": "0.81.0",
-	"@earendil-works/pi-coding-agent": "0.81.0",
 	"@earendil-works/pi-tui": "0.81.0",
-} satisfies Record<(typeof hostPeerPackages)[number], string>;
+} satisfies Record<Exclude<(typeof hostPeerPackages)[number], "@earendil-works/pi-coding-agent">, string>;
 
 function collectSourceFiles(dir: string): string[] {
 	const files: string[] = [];
@@ -56,6 +55,7 @@ test("published extension APIs use supported package entrypoints", async () => {
 	assert.deepEqual(packageJson.exports, {
 		".": "./index.ts",
 		"./background-work": "./src/api/background-work.ts",
+		"./external-runs": "./src/api/external-runs.ts",
 		"./capability-ceiling": "./src/api/capability-ceiling.ts",
 		"./delegation": "./src/api/delegation.ts",
 		"./preflight": "./src/api/preflight.ts",
@@ -67,6 +67,9 @@ test("published extension APIs use supported package entrypoints", async () => {
 	const backgroundWork = await import("pi-subagents/background-work");
 	assert.equal(backgroundWork.BACKGROUND_WORK_PROTOCOL_VERSION, 1);
 	assert.equal(backgroundWork.BACKGROUND_WORK_REGISTRY_KEY, "pi-subagents.background-work.v1");
+	const externalRuns = await import("pi-subagents/external-runs");
+	assert.equal(externalRuns.EXTERNAL_RUN_REGISTRY_VERSION, 1);
+	assert.equal(typeof externalRuns.registerExternalRunProvider, "function");
 	const capability = await import("pi-subagents/capability-ceiling");
 	assert.equal(capability.SUBAGENT_CAPABILITY_CEILING_VERSION, 1);
 	assert.equal(capability.SUBAGENT_CAPABILITY_CEILING_REGISTRY_KEY, "pi-subagents.capability-ceiling.v1");
@@ -114,6 +117,10 @@ test("direct dependency declarations are exact version pins", () => {
 
 	for (const section of ["dependencies", "devDependencies"] as const) {
 		for (const [name, version] of Object.entries<string>(packageJson[section] ?? {})) {
+			if (name === "@earendil-works/pi-coding-agent") {
+				assert.equal(version, "file:./test/fixtures/pi-coding-agent-shim");
+				continue;
+			}
 			assert.match(version, exactVersionPattern, `${section}.${name} should use an exact version`);
 		}
 	}
@@ -143,6 +150,11 @@ test("host-owned development packages use the supported SDK baseline", () => {
 	for (const [name, version] of Object.entries(expectedHostDevVersions)) {
 		assert.equal(packageJson.devDependencies?.[name], version, `${name} should use ${version}`);
 	}
+	assert.equal(
+		packageJson.devDependencies?.["@earendil-works/pi-coding-agent"],
+		"file:./test/fixtures/pi-coding-agent-shim",
+		"pi-coding-agent should use the local type/runtime shim until upstream Pi no longer pins vulnerable Undici",
+	);
 });
 
 test("old pi package scope is not used by source or tests", () => {

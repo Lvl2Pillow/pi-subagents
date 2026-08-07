@@ -1,3 +1,5 @@
+export type ResolvedRunnerConfig = import("../../shared/types.ts").AgentRunnerConfig;
+
 export interface RunnerSubagentStep {
 	/** Session id of the direct parent session for permission-system ask forwarding. */
 	parentSessionId?: string;
@@ -5,6 +7,7 @@ export interface RunnerSubagentStep {
 	permissionRules?: import("./permissions.ts").PermissionRules;
 	agent: string;
 	task: string;
+	runner?: ResolvedRunnerConfig;
 	/** Resolved launch context for this child. */
 	context?: "fresh" | "fork";
 	importAsyncRoot?: {
@@ -36,8 +39,6 @@ export interface RunnerSubagentStep {
 	namespaceOutputPath?: boolean;
 	outputMode?: "inline" | "file-only";
 	sessionFile?: string;
-	sessionFiles?: string[];
-	thinkingOverrides?: (string | false | undefined)[];
 	maxSubagentDepth?: number;
 	waitToolEnabled?: boolean;
 	structuredOutput?: {
@@ -51,6 +52,7 @@ export interface RunnerSubagentStep {
 	launchBindingTask?: string;
 	launchContractDigest?: string;
 	launchResolvedExtensions?: import("../../shared/types.ts").LaunchResolvedChildExtensionsV1;
+	runtimeAcknowledgedExtensions?: import("../../shared/types.ts").RuntimeAcknowledgedChildExtensionsV1;
 	effectiveAcceptance?: import("../../shared/types.ts").ResolvedAcceptanceConfig;
 	acceptanceInput?: import("../../shared/types.ts").AcceptanceInput;
 	acceptanceRole?: import("../../shared/types.ts").AcceptanceRole;
@@ -83,13 +85,14 @@ export interface DynamicRunnerGroup {
 	phase?: string;
 	label?: string;
 	sessionFiles?: (string | undefined)[];
-	thinkingOverrides?: (string | false | undefined)[];
+	thinkingOverrides?: (string | undefined)[];
 	effectiveAcceptance?: import("../../shared/types.ts").ResolvedAcceptanceConfig;
 	acceptanceInput?: import("../../shared/types.ts").AcceptanceInput;
 	acceptanceRole?: import("../../shared/types.ts").AcceptanceRole;
 	agentContract?: import("../../shared/types.ts").AgentContract;
 	gateOn?: import("../../shared/types.ts").ChainGateLayer;
 	capabilityCeiling?: import("./capability-ceiling.ts").ResolvedSubagentCapabilityCeiling;
+	capabilityAudit?: import("./capability-ceiling.ts").SubagentCapabilityAudit;
 }
 
 export type RunnerStep = RunnerSubagentStep | ParallelStepGroup | DynamicRunnerGroup | RunnerCheckpointStep;
@@ -167,7 +170,7 @@ export async function mapConcurrent<T, R>(
 	onSchedulingSettled?: () => void,
 ): Promise<R[]> {
 	const safeLimit = Math.max(1, Math.floor(limit) || 1);
-	const results: R[] = new Array<R>(items.length);
+	const results: R[] = new Array(items.length);
 	let next = 0;
 	let liveWorkers = Math.min(safeLimit, items.length);
 	const notifySchedulingSettled = () => {
@@ -182,15 +185,17 @@ export async function mapConcurrent<T, R>(
 		try {
 			while (next < items.length) {
 				const i = next++;
+				if (!(i in items)) throw new Error(`Missing parallel item at index ${i}`);
+				const item = items[i] as T;
 				if (globalSemaphore) {
 					await globalSemaphore.acquire();
 					try {
-						results[i] = await fn(items[i]!, i);
+						results[i] = await fn(item, i);
 					} finally {
 						globalSemaphore.release();
 					}
 				} else {
-					results[i] = await fn(items[i]!, i);
+					results[i] = await fn(item, i);
 				}
 			}
 		} finally {

@@ -7,6 +7,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import * as path from "node:path";
 import type { Message } from "@earendil-works/pi-ai";
 import type { AgentConfig } from "../../agents/agents.ts";
+import { appendAgentRefinementOverlay } from "../../agents/agent-refinements.ts";
 import {
 	ensureArtifactsDir,
 	formatOutputArtifactContent,
@@ -24,8 +25,8 @@ import {
 	type SingleResult,
 	type Usage,
 	DEFAULT_MAX_OUTPUT,
-	SUBAGENT_DETACH_REQUEST_EVENT,
-	SUBAGENT_DETACH_RESPONSE_EVENT,
+	INTERCOM_DETACH_REQUEST_EVENT,
+	INTERCOM_DETACH_RESPONSE_EVENT,
 	type AcceptanceLedger,
 	type ResolvedAcceptanceConfig,
 	truncateOutput,
@@ -50,12 +51,14 @@ import {
 	boundStreamedToolCalls,
 } from "../../shared/utils.ts";
 import { buildSkillInjection, resolveSkillsWithFallback } from "../../agents/skills.ts";
+import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
 import { resolvePermissionRules } from "../shared/permissions.ts";
 import { applyThinkingSuffix, buildPiArgs, cleanupTempDir, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/pi-args.ts";
+import { readRuntimeAcknowledgedExtensions } from "../shared/runtime-acknowledged-extensions.ts";
 import { assertAgentAllowedByCapabilityCeiling, decodeSubagentCapabilityCeiling, intersectSubagentCapabilityCeilings, resolveCurrentSubagentCapabilityCeiling, SUBAGENT_CAPABILITY_CEILING_ENV } from "../shared/capability-ceiling.ts";
 import { resolveEffectiveThinking } from "../../shared/model-info.ts";
 import { MISSING_STRUCTURED_OUTPUT_CALL_ERROR, readStructuredOutput } from "../shared/structured-output.ts";
@@ -148,6 +151,7 @@ function persistSingleResultMetadata(input: {
 		agentContract: target.agentContract,
 		launchContractDigest: target.launchContractDigest,
 		launchResolvedExtensions: target.launchResolvedExtensions,
+		runtimeAcknowledgedExtensions: target.runtimeAcknowledgedExtensions,
 		execution: target.execution,
 		acceptance: target.acceptance,
 		capabilityCeiling: target.capabilityCeiling,
@@ -304,7 +308,7 @@ async function runSingleAttempt(
 	const permissionAuditPath = permissionRules && options.artifactsDir
 		? path.join(options.artifactsDir, "permission-audit", `${options.runId}-${options.index ?? 0}.jsonl`)
 		: undefined;
-	const { args, env: sharedEnv, tempDir, toolDiagnosticPath, capabilityAudit } = buildPiArgs({
+	const { args, env: sharedEnv, tempDir, toolDiagnosticPath, runtimeAcknowledgedExtensionsPath, capabilityAudit } = buildPiArgs({
 		baseArgs: ["--mode", "json", "-p"],
 		task,
 		sessionEnabled: shared.sessionEnabled,
@@ -323,6 +327,8 @@ async function runSingleAttempt(
 		mcpDirectTools: agent.mcpDirectTools,
 		cwd: options.cwd ?? runtimeCwd,
 		promptFileStem: agent.name,
+		intercomSessionName: options.intercomSessionName,
+		orchestratorIntercomTarget: options.orchestratorIntercomTarget,
 		runId: options.runId,
 		childAgentName: agent.name,
 		childIndex: options.index ?? 0,
@@ -503,21 +509,6 @@ async function runSingleAttempt(
 			}
 		};
 
-		const detachForIntercom = () => {
-			detached = true;
-			processClosed = true;
-			result.detached = true;
-			result.detachedReason = "intercom coordination";
-			progress.status = "detached";
-			progress.durationMs = Date.now() - startTime;
-			result.progressSummary = {
-				toolCount: progress.toolCount,
-				tokens: progress.tokens,
-				durationMs: progress.durationMs,
-			};
-			finish(-2);
-		};
-
 		const detachForeground = (reason: string): boolean => {
 			if (detached || processClosed || lifecycleFinished || options.signal?.aborted) return false;
 			const receiptProgress = snapshotProgress(progress);
@@ -638,8 +629,8 @@ async function runSingleAttempt(
 			if (action === "start-drain") startFinalDrain();
 		};
 
-		const unsubscribeIntercomDetach = options.intercomEvents?.on?.(SUBAGENT_DETACH_REQUEST_EVENT, (payload) => {
-			if (!options.allowIntercomDetach || detached || processClosed) return;
+		const unsubscribeIntercomDetach = options.intercomEvents?.on?.(INTERCOM_DETACH_REQUEST_EVENT, (payload) => {
+			if (!options.allowIntercomDetach || processClosed) return;
 			if (!payload || typeof payload !== "object") return;
 			const event = payload as { requestId?: unknown; runId?: unknown; agent?: unknown; childIndex?: unknown };
 			const requestId = event.requestId;
@@ -650,8 +641,8 @@ async function runSingleAttempt(
 				if (typeof event.agent === "string" && event.agent !== agent.name) return;
 				if (typeof event.childIndex === "number" && event.childIndex !== (options.index ?? 0)) return;
 			} else if (!intercomStarted) return;
-			options.intercomEvents?.emit(SUBAGENT_DETACH_RESPONSE_EVENT, { requestId, accepted: true, runId: options.runId, agent: agent.name, childIndex: options.index ?? 0 });
-			detachForIntercom();
+			const accepted = detachForeground("intercom coordination");
+			options.intercomEvents?.emit(INTERCOM_DETACH_RESPONSE_EVENT, { requestId, accepted, runId: options.runId, agent: agent.name, childIndex: options.index ?? 0 });
 		});
 
 		const finish = (code: number) => {
@@ -884,7 +875,7 @@ async function runSingleAttempt(
 					? evt.args as Record<string, unknown>
 					: {};
 				if (options.structuredOutput && evt.toolName === "structured_output") structuredOutputToolInvoked = true;
-				if (options.allowIntercomDetach && evt.toolName === "contact_supervisor") {
+				if (options.allowIntercomDetach && (evt.toolName === "intercom" || evt.toolName === "contact_supervisor")) {
 					intercomStarted = true;
 				}
 				progress.toolCount++;
@@ -1079,6 +1070,7 @@ async function runSingleAttempt(
 				// JSONL artifact flush is best effort.
 			});
 			const toolDiagnosticError = readChildToolDiagnosticError(toolDiagnosticPath);
+			result.runtimeAcknowledgedExtensions = readRuntimeAcknowledgedExtensions(runtimeAcknowledgedExtensionsPath);
 			cleanupTempDir(tempDir);
 			stdoutReader.end();
 			stderrReader.end();
@@ -1443,6 +1435,11 @@ async function runSyncCompletion(
 		const skillInjection = buildSkillInjection(resolvedSkills);
 		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${skillInjection}` : skillInjection;
 	}
+	const memoryInjection = buildAgentMemoryInjection(agent, skillCwd);
+	if (memoryInjection) {
+		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memoryInjection}` : memoryInjection;
+	}
+	systemPrompt = appendAgentRefinementOverlay(systemPrompt, { cwd: skillCwd, agentName });
 	systemPrompt = injectOutputPathSystemPrompt(systemPrompt, options.outputPath, agent);
 
 	const candidates = buildModelCandidates(
@@ -1704,6 +1701,8 @@ async function runSyncCompletion(
 					: undefined,
 				cwd: options.cwd ?? runtimeCwd,
 				reportOptional: isAgentContractV1(options.agentContract),
+				artifactsDir: options.artifactsDir,
+				runId: options.runId,
 			});
 		}
 	} catch (error) {

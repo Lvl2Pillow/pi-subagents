@@ -73,16 +73,16 @@ describe("buildDoctorReport", () => {
 				state,
 				currentSessionFile: path.join(root, "sessions", "parent.jsonl"),
 				currentSessionId: "session-abc123",
+				orchestratorTarget: "subagent-chat-abc123",
 				expandTilde: (value) => value.replace(/^~\//, `${root}/home/`),
 				paths,
 				deps: {
 					isAsyncAvailable: () => true,
 					discoverAgentsAll: () => ({
-						package: [],
+						builtin: [makeAgent("builtin-a", "builtin")],
 						user: [makeAgent("user-a", "user")],
 						project: [makeAgent("project-a", "project"), makeAgent("project-b", "project")],
 						chains: [makeChain("user-flow", "user"), makeChain("project-flow", "project")],
-						chainDiagnostics: [],
 						userDir: path.join(root, "home", ".agents"),
 						projectDir: path.join(root, ".pi", "agents"),
 						userChainDir: path.join(root, "home", ".pi", "agent", "chains"),
@@ -94,6 +94,14 @@ describe("buildDoctorReport", () => {
 						{ name: "project-skill", source: "project" },
 						{ name: "package-skill", source: "user-package" },
 					],
+					diagnoseIntercomBridge: () => ({
+						active: true,
+						mode: "always",
+						wantsIntercom: true,
+						supervisorChannelAvailable: true,
+						extensionDir: "native:pi-subagents-supervisor-channel",
+						orchestratorTarget: "subagent-chat-abc123",
+					}),
 				},
 			});
 
@@ -103,12 +111,14 @@ describe("buildDoctorReport", () => {
 			assert.match(report, /- configured session dir: .*subagent-sessions/);
 			assert.match(report, /- current session file: .*parent\.jsonl/);
 			assert.match(report, /- temp root: ok /);
-			assert.match(report, /- agents: total 3 \(package 0, user 1, project 2\)/);
-			assert.match(report, /- chains: total 2 \(package 0, user 1, project 1\)/);
+			assert.match(report, /- agents: total 4 \(builtin 1, package 0, user 1, project 2\)/);
+			assert.match(report, /- chains: total 2 \(builtin 0, package 0, user 1, project 1\)/);
 			assert.match(report, /Spawn budget\n- usage: 3\/5 used, 2 remaining \(configured 4; granted 1; grant allowance 3\)/);
 			assert.match(report, /- recent grants: \+1 at 1970-01-01T00:00:00\.000Z \(4 → 5\)/);
 			assert.match(report, /new parent session resets usage and grants; compaction does not/);
 			assert.match(report, /- skills: total 2 \(project 1, user-package 1\)/);
+			assert.match(report, /- bridge: active/);
+			assert.match(report, /- supervisor channel: available \(native:pi-subagents-supervisor-channel\)/);
 			assert.doesNotMatch(report, /Companion packages/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
@@ -136,6 +146,14 @@ describe("buildDoctorReport", () => {
 						throw new Error("discovery exploded");
 					},
 					discoverAvailableSkills: () => [],
+					diagnoseIntercomBridge: () => ({
+						active: false,
+						mode: "fork-only",
+						wantsIntercom: false,
+						supervisorChannelAvailable: true,
+						extensionDir: "native:pi-subagents-supervisor-channel",
+						reason: "bridge mode is fork-only and context is not fork",
+					}),
 				},
 			});
 
@@ -144,6 +162,7 @@ describe("buildDoctorReport", () => {
 			assert.match(report, /- results: missing /);
 			assert.match(report, /- agents\/chains: failed — Error: discovery exploded/);
 			assert.match(report, /- skills: total 0 \(none\)/);
+			assert.match(report, /- bridge: inactive \(bridge mode is fork-only and context is not fork\)/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

@@ -367,7 +367,7 @@ export function createBoundedLineReader(options: {
 	};
 }
 
-function trimToUtf8Boundary(buffer: Buffer<ArrayBufferLike>, maxBytes: number): Buffer<ArrayBufferLike> {
+function trimToUtf8Boundary(buffer: Buffer, maxBytes: number): Buffer {
 	if (buffer.length <= maxBytes) return buffer;
 	let start = buffer.length - maxBytes;
 	while (start < buffer.length && (buffer[start]! & 0xc0) === 0x80) start++;

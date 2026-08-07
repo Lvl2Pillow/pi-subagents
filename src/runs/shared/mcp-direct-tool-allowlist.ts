@@ -144,7 +144,7 @@ function validateConfig(raw: unknown): McpConfig {
 		mcpServers: servers && typeof servers === "object" && !Array.isArray(servers) ? servers as Record<string, ServerEntry> : {},
 		imports: Array.isArray(obj.imports) ? obj.imports.filter((value): value is ImportKind => isImportKind(value)) : undefined,
 		settings: obj.settings && typeof obj.settings === "object" && !Array.isArray(obj.settings)
-			? obj.settings
+			? obj.settings as McpConfig["settings"]
 			: undefined,
 	};
 }
@@ -238,6 +238,10 @@ function resolveDirectToolSelections(config: McpConfig, cache: MetadataCache, pr
 	}
 
 	return names;
+}
+
+export function resolveMcpDirectToolNames(mcpDirectTools: string[] | undefined, cwd = process.cwd()): string[] {
+	return resolveMcpDirectToolSelections(mcpDirectTools, cwd).map((selection) => selection.name);
 }
 
 function parseSelections(selections: string[]): { servers: Set<string>; tools: Map<string, Set<string>> } {

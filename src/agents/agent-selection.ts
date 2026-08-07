@@ -4,10 +4,12 @@ export function mergeAgentsForScope(
 	scope: AgentScope,
 	userAgents: AgentConfig[],
 	projectAgents: AgentConfig[],
+	builtinAgents: AgentConfig[] = [],
 	packageAgents: AgentConfig[] = [],
 ): AgentConfig[] {
 	const agentMap = new Map<string, AgentConfig>();
 
+	for (const agent of builtinAgents) agentMap.set(agent.name, agent);
 	for (const agent of packageAgents) agentMap.set(agent.name, agent);
 
 	if (scope === "both") {

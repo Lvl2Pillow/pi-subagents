@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
-const { buildWidgetLines, clearLegacyResultAnimationTimer, renderWidget, requestWidgetRender } = await import("../../src/tui/render.ts") as unknown as {
+const { buildWidgetLines, clearLegacyResultAnimationTimer, renderWidget } = await import("../../src/tui/render.ts") as {
 	buildWidgetLines: (jobs: Array<Record<string, unknown>>, theme: { fg(name: string, text: string): string; bold(text: string): string }, width?: number, expanded?: boolean, frame?: number) => string[];
-
 	clearLegacyResultAnimationTimer: (context: { state: { subagentResultAnimationTimer?: ReturnType<typeof setInterval> } }) => void;
 	renderWidget: (ctx: Record<string, unknown>, jobs: Array<Record<string, unknown>>) => void;
-	requestWidgetRender: () => void;
 };
 
 const theme = {
@@ -83,7 +82,7 @@ function withStdoutSize<T>(rows: number, columns: number, fn: () => T): T {
 }
 
 function resetWidgetLayout(): void {
-	renderWidget(createUiContext().ctx, []);
+	renderWidget(createUiContext().ctx as never, []);
 }
 
 describe("subagent async widget rendering", () => {
@@ -127,7 +126,7 @@ describe("subagent async widget rendering", () => {
 	it("renders a compact component widget for three active parallel agents without core truncation", () => {
 		const now = Date.now();
 		const ui = createUiContext();
-		renderWidget(ui.ctx, [{
+		renderWidget(ui.ctx as never, [{
 			asyncId: "run-1",
 			asyncDir: "/tmp/1",
 			status: "running",
@@ -157,6 +156,38 @@ describe("subagent async widget rendering", () => {
 		assert.ok(lines.length <= 10, "collapsed component should stay under Pi's string-widget cap even though it bypasses it");
 	});
 
+	it("honors the component render width instead of the terminal width", () => {
+		resetWidgetLayout();
+		withStdoutSize(50, 120, () => {
+			const ui = createUiContext();
+			renderWidget(ui.ctx as never, [{
+				asyncId: "run-narrow",
+				asyncDir: "/tmp/pi-subagents-uid-1000/async-subagent-runs/call_with_a_long_identifier",
+				status: "running",
+				mode: "parallel",
+				agents: ["correctness", "tests-maintainability"],
+				activeParallelGroup: true,
+				runningSteps: 2,
+				completedSteps: 0,
+				stepsTotal: 2,
+				steps: [
+					{ index: 0, agent: "correctness", status: "running" },
+					{ index: 1, agent: "tests-maintainability", status: "running" },
+				],
+			}]);
+
+			const widget = ui.widgets.at(-1);
+			for (const width of [0, 1, 2, 3, 74]) {
+				const lines = renderWidgetLines(widget, width);
+				assert.ok(lines.length > 0);
+				for (const line of lines) {
+					assert.ok(visibleWidth(line) <= width, `widget line exceeds render width: ${visibleWidth(line)} > ${width}`);
+				}
+			}
+		});
+		resetWidgetLayout();
+	});
+
 	it("locks crowded collapsed widget height for the current terminal session", () => {
 		resetWidgetLayout();
 		withStdoutSize(30, 120, () => {
@@ -179,13 +210,13 @@ describe("subagent async widget rendering", () => {
 			}));
 			const ui = createUiContext();
 
-			renderWidget(ui.ctx, crowdedJobs);
+			renderWidget(ui.ctx as never, crowdedJobs);
 			const crowdedLines = renderWidgetLines(ui.widgets.at(-1));
 			assert.equal(crowdedLines.length, 10, "30 terminal rows should keep the compact widget cap while locking height");
 			assert.match(crowdedLines.join("\n"), /Async agents · 3 agents running/);
 
-			renderWidget(ui.ctx, [{
-				...crowdedJobs[0],
+			renderWidget(ui.ctx as never, [{
+				...crowdedJobs[0]!,
 				status: "complete",
 				runningSteps: 0,
 				completedSteps: 2,
@@ -198,8 +229,8 @@ describe("subagent async widget rendering", () => {
 			assert.equal(settledLines.length, 10, "collapsed widget keeps its locked row count until cleared or resized");
 			assert.match(settledLines.join("\n"), /parallel · done/);
 
-			renderWidget(ui.ctx, []);
-			renderWidget(ui.ctx, [{ asyncId: "small", asyncDir: "/tmp/small", status: "running", agents: ["worker"], currentTool: "read" }]);
+			renderWidget(ui.ctx as never, []);
+			renderWidget(ui.ctx as never, [{ asyncId: "small", asyncDir: "/tmp/small", status: "running", agents: ["worker"], currentTool: "read" }]);
 			const resetLines = renderWidgetLines(ui.widgets.at(-1));
 			assert.ok(resetLines.length < 10, "clearing the widget starts a fresh layout session");
 		});
@@ -223,7 +254,7 @@ describe("subagent async widget rendering", () => {
 				steps: Array.from({ length: 40 }, (_, index) => ({ index, agent: `agent-${index}`, status: "running", currentTool: "read" })),
 			}];
 
-			renderWidget(ui.ctx, jobs);
+			renderWidget(ui.ctx as never, jobs);
 			const lines = renderWidgetLines(ui.widgets.at(-1));
 			assert.equal(lines.length, 14);
 			assert.match(lines.join("\n"), /parallel · running/);
@@ -240,13 +271,13 @@ describe("subagent async widget rendering", () => {
 				{ asyncId: "run-2", asyncDir: "/tmp/run-2", status: "running", mode: "single", agents: ["second"], currentTool: "grep" },
 				{ asyncId: "run-3", asyncDir: "/tmp/run-3", status: "running", mode: "single", agents: ["third"], currentTool: "edit" },
 			];
-			renderWidget(ui.ctx, jobs);
+			renderWidget(ui.ctx as never, jobs);
 			const firstText = renderWidgetLines(ui.widgets.at(-1)).join("\n");
 			assert.match(firstText, /first/);
 			assert.match(firstText, /\+2 more/);
 
-			renderWidget(ui.ctx, [
-				{ ...jobs[0], status: "complete", currentTool: undefined },
+			renderWidget(ui.ctx as never, [
+				{ ...jobs[0]!, status: "complete", currentTool: undefined },
 				jobs[1]!,
 				jobs[2]!,
 			]);
@@ -262,7 +293,7 @@ describe("subagent async widget rendering", () => {
 		resetWidgetLayout();
 		withStdoutSize(20, 120, () => {
 			const ui = createUiContext();
-			renderWidget(ui.ctx, [{
+			renderWidget(ui.ctx as never, [{
 				asyncId: "run-tiny",
 				asyncDir: "/tmp/run-tiny",
 				status: "running",
@@ -281,8 +312,8 @@ describe("subagent async widget rendering", () => {
 		resetWidgetLayout();
 		withStdoutSize(20, 120, () => {
 			const ui = createUiContext();
-			(ui.ctx.ui as { getToolsExpanded?: () => boolean }).getToolsExpanded = () => true;
-			renderWidget(ui.ctx, [{
+			ui.ctx.ui.getToolsExpanded = () => true;
+			renderWidget(ui.ctx as never, [{
 				asyncId: "run-expanded",
 				asyncDir: "/tmp/run-expanded",
 				status: "running",
@@ -679,14 +710,14 @@ describe("subagent async widget rendering", () => {
 		assert.equal(firstGrapheme(first[1] ?? ""), firstGrapheme(second[1] ?? ""));
 	});
 
-	it("advances component widget glyphs without job data changes", () => {
+	it("keeps component widget output stable without job data changes", () => {
 		const originalNow = Date.now;
 		let renderRequests = 0;
 		try {
 			Date.now = () => 1_000;
 			const ui = createUiContext();
 			renderWidget(ui.ctx as never, [{
-				asyncId: "run-animated",
+				asyncId: "run-stable",
 				asyncDir: "/tmp/run",
 				status: "running",
 				mode: "parallel",
@@ -698,21 +729,17 @@ describe("subagent async widget rendering", () => {
 				updatedAt: 1_000,
 				steps: [{ index: 0, agent: "reviewer", status: "running" }],
 			}]);
-			const component = (ui.widgets.at(-1) as (_tui: { requestRender(): void }, widgetTheme: typeof theme) => { render(width: number): string[]; dispose?(): void })(
+			const component = (ui.widgets.at(-1) as (_tui: { requestRender(): void }, widgetTheme: typeof theme) => { render(width: number): string[] })(
 				{ requestRender: () => { renderRequests += 1; } },
 				theme,
 			);
 			const first = component.render(180).join("\n");
 
 			Date.now = () => 1_600;
-			requestWidgetRender();
 			const second = component.render(180).join("\n");
 
-			assert.equal(renderRequests, 1);
-			assert.notEqual(firstRunningGlyph(first), firstRunningGlyph(second));
-			component.dispose?.();
-			requestWidgetRender();
-			assert.equal(renderRequests, 1, "disposed widget should not accept animation requests");
+			assert.equal(renderRequests, 0, "quiet progress must not schedule editor-wide redraws");
+			assert.equal(second, first, "elapsed wall time alone must not change the widget");
 		} finally {
 			Date.now = originalNow;
 			renderWidget(createUiContext().ctx as never, []);
@@ -721,7 +748,7 @@ describe("subagent async widget rendering", () => {
 
 	it("does not animate queued-only widgets", async () => {
 		const ui = createUiContext();
-		renderWidget(ui.ctx, [{ asyncId: "queued-only", asyncDir: "/tmp/queued", status: "queued", agents: ["planner"] }]);
+		renderWidget(ui.ctx as never, [{ asyncId: "queued-only", asyncDir: "/tmp/queued", status: "queued", agents: ["planner"] }]);
 		const initialWidgetCount = ui.widgets.length;
 		await new Promise((resolve) => setTimeout(resolve, 190));
 		assert.equal(ui.widgets.length, initialWidgetCount, "static queued widget should not refresh at animation cadence");
@@ -745,13 +772,13 @@ describe("subagent async widget rendering", () => {
 
 	it("does not refresh running widgets at animation cadence", async () => {
 		const ui = createUiContext();
-		renderWidget(ui.ctx, [{ asyncId: "run-static", asyncDir: "/tmp/run", status: "running", agents: ["scout"] }]);
+		renderWidget(ui.ctx as never, [{ asyncId: "run-static", asyncDir: "/tmp/run", status: "running", agents: ["scout"] }]);
 		const initialWidgetCount = ui.widgets.length;
 		await new Promise((resolve) => setTimeout(resolve, 190));
 		assert.equal(ui.widgets.length, initialWidgetCount, "running widget should wait for status updates instead of animation ticks");
 		assert.equal(ui.renderRequests, 0);
 
-		renderWidget(ui.ctx, []);
+		renderWidget(ui.ctx as never, []);
 		const afterClearCount = ui.widgets.length;
 		await new Promise((resolve) => setTimeout(resolve, 190));
 		assert.equal(ui.widgets.length, afterClearCount, "cleared widget should stay quiet");

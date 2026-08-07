@@ -146,6 +146,11 @@ describe("registerSubagentNotify", () => {
 		assert.deepEqual(sent[0]!.options, { triggerTurn: false });
 	});
 
+	it("suppresses local delivery after an acknowledged grouped intercom relay", async () => {
+		const { notifier, sent } = createPi("session-a");
+		assert.equal(await notifier.deliver(completionResult({ id: "intercom-delivered", intercomDelivered: true })), true);
+		assert.equal(sent.length, 0);
+	});
 
 	it("rejects a pending batch when the notifier is disposed", async () => {
 		const clock = createFakeClock();
@@ -334,7 +339,6 @@ describe("registerSubagentNotify", () => {
 			display: false,
 		});
 		assert.deepEqual(sent[0]!.options, { triggerTurn: true });
-
 	});
 
 	it("ignores successes from other sessions instead of grouping them", () => {
@@ -424,7 +428,7 @@ describe("completion formatting helpers", () => {
 			agent: "worker",
 			success: true,
 			summary: "Done",
-			parallelHandoff: { version: 1, path: "/tmp/run/handoff.json", groupCount: 1, childCount: 1, changedPatches: 0, cleanupState: "complete" },
+			parallelHandoff: { path: "/tmp/run/handoff.json" },
 		}).handoffPath, "/tmp/run/handoff.json");
 	});
 

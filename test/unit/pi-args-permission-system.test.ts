@@ -61,6 +61,10 @@ function readPromptFile(result: { tempDir?: string }): string {
 	return fs.readFileSync(path.join(result.tempDir, promptFile), "utf-8");
 }
 
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 describe("resolvePermissionSystemExtension", () => {
 	it("returns undefined when extension is not installed", () => {
 		const { agentDir } = createFixture();
@@ -76,7 +80,7 @@ describe("resolvePermissionSystemExtension", () => {
 		fs.mkdirSync(extDir, { recursive: true });
 		assert.throws(
 			() => resolvePermissionSystemExtension(),
-			new RegExp(`Permission-system package manifest is missing at ${pkgPath}`),
+			new RegExp(`Permission-system package manifest is missing at ${escapeRegExp(pkgPath)}`),
 		);
 	});
 
@@ -95,7 +99,7 @@ describe("resolvePermissionSystemExtension", () => {
 			fs.writeFileSync(pkgPath, JSON.stringify(value));
 			assert.throws(
 				() => resolvePermissionSystemExtension(),
-				new RegExp(`Permission-system package manifest at ${pkgPath}`),
+				new RegExp(`Permission-system package manifest at ${escapeRegExp(pkgPath)}`),
 			);
 		}
 	});
@@ -110,7 +114,7 @@ describe("resolvePermissionSystemExtension", () => {
 
 		assert.throws(
 			() => resolvePermissionSystemExtension(),
-			new RegExp(`Cannot read permission-system package manifest at ${pkgPath}`),
+			new RegExp(`Cannot read permission-system package manifest at ${escapeRegExp(pkgPath)}`),
 		);
 	});
 
@@ -123,7 +127,7 @@ describe("resolvePermissionSystemExtension", () => {
 
 		assert.throws(
 			() => resolvePermissionSystemExtension(),
-			new RegExp(`Cannot read permission-system package manifest at ${pkgPath}`),
+			new RegExp(`Cannot read permission-system package manifest at ${escapeRegExp(pkgPath)}`),
 		);
 	});
 
@@ -137,7 +141,7 @@ describe("resolvePermissionSystemExtension", () => {
 
 		assert.throws(
 			() => resolvePermissionSystemExtension(),
-			new RegExp(`Cannot read permission-system package manifest at ${pkgPath}`),
+			new RegExp(`Cannot read permission-system package manifest at ${escapeRegExp(pkgPath)}`),
 		);
 	});
 
@@ -211,7 +215,7 @@ describe("resolvePermissionSystemExtension", () => {
 
 		assert.throws(
 			() => resolvePermissionSystemExtension(),
-			new RegExp(`Permission-system extension entry .* in ${pkgPath} does not exist`),
+			new RegExp(`Permission-system extension entry .* in ${escapeRegExp(pkgPath)} does not exist`),
 		);
 	});
 });
@@ -239,7 +243,7 @@ describe("resolvePiLaunchToolPlan with permission system", () => {
 			inheritSkills: false,
 		});
 		const extensionArgs = args.filter(
-			(_arg, index) => args[index - 1] === "--extension",
+			(arg, index) => args[index - 1] === "--extension",
 		);
 		assert.ok(
 			extensionArgs.includes(path.join(extDir, "src", "index.ts")),

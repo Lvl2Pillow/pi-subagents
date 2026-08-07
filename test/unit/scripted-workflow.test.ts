@@ -1,8 +1,78 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatWorkflowJsonPreview, runWorkflowScript, WorkflowScriptError } from "../../src/workflows/scripted-workflow.ts";
+import { formatWorkflowJsonPreview, previewSimpleWorkflowRun, runWorkflowScript, WorkflowScriptError } from "../../src/workflows/scripted-workflow.ts";
 
 describe("scripted workflow runtime", () => {
+	it("uses ordinary statement-body return semantics", async () => {
+		const implicit = await runWorkflowScript({
+			script: `({ answer: 42 });`,
+			async launch(key) { return { key, ok: true, output: "done", artifactPaths: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		const explicit = await runWorkflowScript({
+			script: `return ({ answer: 42 });`,
+			async launch(key) { return { key, ok: true, output: "done", artifactPaths: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+
+		assert.equal(implicit.value, null);
+		assert.deepEqual(explicit.value, { answer: 42 });
+	});
+
+	it("previews only simple explicit-return child scripts", () => {
+		assert.deepEqual(previewSimpleWorkflowRun(`return runs.run('main', { agent: 'worker', task: 'Review' });`), { agent: "worker", task: "Review" });
+		assert.deepEqual(previewSimpleWorkflowRun(`return runs.run("main", {"agent":"scout","task":"Scan"})`), { agent: "scout", task: "Scan" });
+		assert.equal(previewSimpleWorkflowRun(`const agent = "worker"; return runs.run("main", { agent });`), undefined);
+		assert.deepEqual(previewSimpleWorkflowRun(`return runs.run("main", { agent: selected });`), {});
+	});
+
+	it("allows scripts to run without a timeout", async () => {
+		const result = await runWorkflowScript({
+			script: `return "done";`,
+			async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+
+		assert.equal(result.value, "done");
+	});
+
+	it("exposes validated state only when a mission state adapter is present", async () => {
+		const values = new Map<string, unknown>();
+		const withState = await runWorkflowScript({
+			script: `
+				if (typeof state !== "object") throw new Error("state missing");
+				await state.set("review.stage", { count: 2 });
+				return await state.get("review.stage");
+			`,
+			state: {
+				get: (key) => values.get(key),
+				set: (key, value) => { values.set(key, value); },
+			},
+			async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		assert.deepEqual(withState.value, { count: 2 });
+
+		const withoutState = await runWorkflowScript({
+			script: `return typeof state;`,
+			async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		assert.equal(withoutState.value, "undefined");
+
+		for (const script of [`return state.get("bad key");`, `return state.set("valid", undefined);`]) {
+			await assert.rejects(
+				runWorkflowScript({
+					script,
+					state: { get: () => undefined, set: () => undefined },
+					async launch(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+					async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+				}),
+				(error: unknown) => error instanceof WorkflowScriptError && /state/.test(error.message),
+			);
+		}
+	});
+
 	it("runs keyed children, streams progress, and exposes no host capabilities", async () => {
 		const launches: Array<{ key: string; params: Record<string, unknown> }> = [];
 		const traceSnapshots: number[] = [];
@@ -117,6 +187,35 @@ describe("scripted workflow runtime", () => {
 		]);
 	});
 
+	it("accepts one gate command and rejects gate with acceptance", async () => {
+		const launches: Record<string, unknown>[] = [];
+		await runWorkflowScript({
+			script: `return runs.run("gated", { agent: "worker", gate: "npm test" });`,
+			async launch(key, params) { launches.push(params); return { key, ok: true, output: "done", artifactPaths: [] }; },
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		assert.equal(launches[0]?.gate, "npm test");
+		await assert.rejects(
+			runWorkflowScript({
+				script: `return runs.run("invalid", { agent: "worker", gate: "npm test", acceptance: "checked" });`,
+				async launch(key) { return { key, ok: true, output: "done", artifactPaths: [] }; },
+				async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			}),
+			(error: unknown) => error instanceof WorkflowScriptError && /gate cannot be combined with acceptance/.test(error.message),
+		);
+	});
+
+	it("rejects retained resume with gate", async () => {
+		await assert.rejects(
+			runWorkflowScript({
+				script: `return runs.run("resume", { resume: "retained-run", task: "Continue", gate: "npm test" });`,
+				async launch(key) { return { key, ok: true, output: "done", artifactPaths: [] }; },
+				async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			}),
+			(error: unknown) => error instanceof WorkflowScriptError && /gate is not supported with retained resume/.test(error.message),
+		);
+	});
+
 	it("keeps runs.run fail-fast for ordinary child failures", async () => {
 		await assert.rejects(
 			runWorkflowScript({
@@ -135,6 +234,7 @@ describe("scripted workflow runtime", () => {
 			`return await runs.all([{ key: "valid", agent: "worker", task: "run" }, { key: "bad key", agent: "worker", task: "run" }]);`,
 			`return await runs.all([{ key: "same", agent: "worker", task: "one" }, { key: "same", agent: "worker", task: "two" }]);`,
 			`return await runs.all([{ key: "valid", agent: "worker", task: "run" }, { key: "nested", workflowScript: "return null" }]);`,
+			`return await runs.all([{ key: "valid", agent: "worker", task: "run" }, { key: "legacy", agent: "worker", task: "run", parallel: [{ task: "nested" }] }]);`,
 			`return await runs.all([{ key: "valid", agent: "worker", task: "run" }, { key: "undefined-action", agent: "worker", task: "run", action: undefined }]);`,
 			`return await runs.all([{ key: "valid", agent: "worker", task: "run" }, { key: "uncloneable", agent: "worker", task: () => "run" }]);`,
 			`const items = []; items[1] = { key: "valid", agent: "worker", task: "run" }; return await runs.all(items);`,
@@ -230,6 +330,31 @@ describe("scripted workflow runtime", () => {
 		);
 	});
 
+	it("passes retained resume items and rejects agent overrides", async () => {
+		let launchParams: Record<string, unknown> | undefined;
+		const resumed = await runWorkflowScript({
+			script: `return runs.run("continue", { resume: "retained-run", task: "Apply the follow-up" });`,
+			timeoutMs: 2_000,
+			async launch(key, params) {
+				launchParams = params;
+				return { key, ok: true, runId: "revived-run", output: "continued", artifactPaths: [] };
+			},
+			async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+		});
+		assert.deepEqual(launchParams, { resume: "retained-run", task: "Apply the follow-up", async: false });
+		assert.equal((resumed.value as { runId?: string }).runId, "revived-run");
+
+		await assert.rejects(
+			runWorkflowScript({
+				script: `return runs.run("invalid", { resume: "retained-run", agent: "worker", task: "Override" });`,
+				timeoutMs: 2_000,
+				async launch(key) { return { key, ok: true, output: "unexpected", artifactPaths: [] }; },
+				async status(key) { return { key, ok: true, output: "ok", artifactPaths: [] }; },
+			}),
+			(error: unknown) => error instanceof WorkflowScriptError && /resume and agent are mutually exclusive/.test(error.message),
+		);
+	});
+
 	it("passes per-child worktree controls through runs.run and runs.all", async () => {
 		const launches: Array<{ key: string; worktree: unknown }> = [];
 		await runWorkflowScript({
@@ -292,17 +417,19 @@ describe("scripted workflow runtime", () => {
 	});
 
 	it("rejects legacy orchestration params in runs.run", async () => {
-		let launches = 0;
-		await assert.rejects(
-			runWorkflowScript({
-				script: `return await runs.run("legacy", { tasks: [{ agent: "scout", task: "scan" }] });`,
-				timeoutMs: 2_000,
-				launch: async () => { launches++; return { key: "legacy", ok: true, output: "unexpected", artifactPaths: [] }; },
-				status: async () => ({ key: "unused", ok: true, output: "unused", artifactPaths: [] }),
-			}),
-			(error: unknown) => error instanceof WorkflowScriptError && /accepts one child.*runs\.all/i.test(error.message),
-		);
-		assert.equal(launches, 0);
+		for (const params of [`tasks: [{ agent: "scout", task: "scan" }]`, `parallel: [{ agent: "scout", task: "scan" }]`]) {
+			let launches = 0;
+			await assert.rejects(
+				runWorkflowScript({
+					script: `return await runs.run("legacy", { ${params} });`,
+					timeoutMs: 2_000,
+					launch: async () => { launches++; return { ok: true, output: "unexpected" }; },
+					status: async () => ({ ok: true, output: "unused" }),
+				}),
+				(error: unknown) => error instanceof WorkflowScriptError && /accepts one child.*runs\.all/i.test(error.message),
+			);
+			assert.equal(launches, 0);
+		}
 	});
 
 	it("rejects a duplicate key with incompatible params", async () => {

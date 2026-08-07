@@ -15,10 +15,6 @@ type RenderSubagentResult = (
 			mode: "single" | "parallel" | "chain" | "management";
 			context?: "fresh" | "fork" | "mixed";
 			results: unknown[];
-			totalSteps?: number;
-			chainAgents?: string[];
-			currentStepIndex?: number;
-			progress?: unknown[];
 		};
 	},
 	options: { expanded: boolean },
@@ -36,11 +32,10 @@ type RenderSubagentSummary = (
 
 let renderSubagentResult: RenderSubagentResult | undefined;
 let renderSubagentSummary: RenderSubagentSummary | undefined;
-({ renderSubagentResult, renderSubagentSummary } = await import("../../src/tui/render.ts") as unknown as {
+({ renderSubagentResult, renderSubagentSummary } = await import("../../src/tui/render.ts") as {
 	renderSubagentResult?: RenderSubagentResult;
 	renderSubagentSummary?: RenderSubagentSummary;
 });
-
 
 const theme = {
 	fg: (_name: string, text: string) => text,
@@ -114,7 +109,7 @@ describe("renderSubagentResult fork indicator", () => {
 			const widget = renderSubagentResult!({ content: [{ type: "text", text: "running" }], details }, { expanded: true }, theme);
 			const text = widget.render(160).join("\n");
 			for (const result of details.results) {
-				assert.match(text, new RegExp(`${result.children[0]!.id} · running`));
+				assert.match(text, new RegExp(`${result.children[0].id} · running`));
 			}
 		}
 	});

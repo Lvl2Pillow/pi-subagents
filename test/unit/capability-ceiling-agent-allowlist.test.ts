@@ -10,21 +10,8 @@ import {
 	parseSubagentCapabilityCeiling,
 	registerSubagentCapabilityCeiling,
 } from "../../src/api/capability-ceiling.ts";
-import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { runSync } from "../../src/runs/foreground/execution.ts";
 import { buildPiArgs } from "../../src/runs/shared/pi-args.ts";
-
-const mockModelRegistry = { getAvailable: () => [] } as unknown as ModelRegistry;
-
-function readText(result: {
-	content: Array<{ type: string; text?: string }>;
-}): string {
-	const first = result.content[0];
-	assert.ok(first);
-	assert.equal(first.type, "text");
-	assert.equal(typeof first.text, "string");
-	return first.text!;
-}
 
 function agent(name: string): AgentConfig {
 	return {
@@ -65,8 +52,8 @@ describe("capability ceiling agent allowlist", () => {
 		const sessionId = `allowlist-list-${Date.now()}-${Math.random()}`;
 		const handle = registerSubagentCapabilityCeiling({ sessionId, source: "plan-mode", ceiling: { allowedAgents: ["reviewer"] } });
 		try {
-			const result = handleList({}, { cwd: process.cwd(), currentSessionId: sessionId, modelRegistry: mockModelRegistry });
-			const text = readText(result);
+			const result = handleList({}, { cwd: process.cwd(), currentSessionId: sessionId, modelRegistry: { getAvailable: () => [] } });
+			const text = result.content[0]?.text ?? "";
 			assert.match(text, /Executable agents:/);
 			assert.match(text, /- reviewer /);
 			assert.match(text, /Restricted agents \(not executable in this session; capability ceiling: plan-mode\):/);
@@ -90,7 +77,6 @@ describe("capability ceiling agent allowlist", () => {
 
 	it("rejects a non-allowlisted foreground launch before spawning", async () => {
 		const result = await runSync(process.cwd(), [agent("worker"), agent("reviewer")], "worker", "Do work", {
-			runId: "capability-ceiling-test",
 			capabilityCeiling: { version: 1, allowedAgents: ["reviewer"], denyExtensions: false, sources: ["plan-mode"] },
 		});
 		assert.equal(result.exitCode, 1);

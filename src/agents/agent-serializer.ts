@@ -1,5 +1,5 @@
-import type { AgentConfig } from "./agents.ts";
 import { stringify as stringifyYaml } from "yaml";
+import type { AgentConfig } from "./agents.ts";
 import { frontmatterNameForConfig } from "./identity.ts";
 
 export const KNOWN_FIELDS = new Set([
@@ -36,6 +36,7 @@ export const KNOWN_FIELDS = new Set([
 	"permission",
 	"permissions",
 	"memory",
+	"runner",
 ]);
 
 function joinComma(values: string[] | undefined): string | undefined {
@@ -75,6 +76,14 @@ export function serializeAgent(config: AgentConfig, options: SerializeAgentOptio
 	if (!preservingExistingFrontmatter || preserve("inheritProjectContext")) lines.push(`inheritProjectContext: ${config.inheritProjectContext ? "true" : "false"}`);
 	if (!preservingExistingFrontmatter || preserve("inheritSkills")) lines.push(`inheritSkills: ${config.inheritSkills ? "true" : "false"}`);
 	if (config.defaultContext || preserve("defaultContext")) lines.push(`defaultContext: ${config.defaultContext ?? ""}`);
+	if (config.runner || preserve("runner")) {
+		if (config.runner) {
+			lines.push("runner:");
+			for (const line of stringifyYaml(config.runner).trimEnd().split("\n")) lines.push(`  ${line}`);
+		} else {
+			lines.push("runner:");
+		}
+	}
 	if (config.defaultAsync !== undefined || preserve("async")) lines.push(`async: ${config.defaultAsync === undefined ? "" : config.defaultAsync ? "true" : "false"}`);
 	if (config.defaultTimeoutMs !== undefined || preserve("timeoutMs")) lines.push(`timeoutMs: ${config.defaultTimeoutMs ?? ""}`);
 	if (config.defaultTurnBudget || preserve("turnBudget")) lines.push(`turnBudget: ${config.defaultTurnBudget ? JSON.stringify(config.defaultTurnBudget) : ""}`);
@@ -124,6 +133,12 @@ export function serializeAgent(config: AgentConfig, options: SerializeAgentOptio
 		if (config.permissions) {
 			for (const line of stringifyYaml(config.permissions).trimEnd().split("\n")) lines.push(`  ${line}`);
 		}
+	}
+
+	if (config.memory) {
+		lines.push("memory:");
+		lines.push(`  scope: ${config.memory.scope}`);
+		lines.push(`  path: ${config.memory.path}`);
 	}
 
 	if (config.extraFields) {

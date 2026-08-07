@@ -6,10 +6,12 @@ import { listAsyncRuns } from "./async-status.ts";
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import {
 	DIRS,
+	INTERCOM_DETACH_REQUEST_EVENT,
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
 	SUBAGENT_CONTROL_EVENT,
-	SUBAGENT_DETACH_REQUEST_EVENT,
+	SUBAGENT_CONTROL_INTERCOM_EVENT,
 	SUBAGENT_FOREGROUND_COMPLETE_EVENT,
+	SUBAGENT_RESULT_INTERCOM_EVENT,
 	type SubagentState,
 	type WaitSubscriptionRecord,
 } from "../../shared/types.ts";
@@ -181,10 +183,12 @@ export function createWaitSubscriptionManager(
 	};
 
 	const wakeChannels = [
-		SUBAGENT_DETACH_REQUEST_EVENT,
+		INTERCOM_DETACH_REQUEST_EVENT,
 		SUBAGENT_ASYNC_COMPLETE_EVENT,
 		SUBAGENT_FOREGROUND_COMPLETE_EVENT,
 		SUBAGENT_CONTROL_EVENT,
+		SUBAGENT_CONTROL_INTERCOM_EVENT,
+		SUBAGENT_RESULT_INTERCOM_EVENT,
 	];
 	const unsubscribes = wakeChannels.map((channel) => pi.events.on(channel, reconcile));
 	const interval = setInterval(reconcile, options.pollIntervalMs ?? RECONCILE_INTERVAL_MS);

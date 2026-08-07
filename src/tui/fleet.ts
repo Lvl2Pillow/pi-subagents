@@ -1,54 +1,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import {
-	getMarkdownTheme,
-	type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import {
-	Key,
-	matchesKey,
-	truncateToWidth,
-	visibleWidth,
-	wrapTextWithAnsi,
-	type Component,
-	type MarkdownTheme,
-} from "@earendil-works/pi-tui";
+import { getMarkdownTheme, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type MarkdownTheme } from "@earendil-works/pi-tui";
 import { getArtifactPaths, getArtifactsDir } from "../shared/artifacts.ts";
-import {
-	formatDuration,
-	formatModelThinking,
-	formatTokens,
-	shortenPath,
-} from "../shared/formatters.ts";
-import {
-	DIRS,
-	type AsyncJobState,
-	type Details,
-	type ForegroundChildControl,
-	type ForegroundResumeChild,
-	type ForegroundResumeRun,
-	type ForegroundRunControl,
-	type SubagentState,
-} from "../shared/types.ts";
+import { formatDuration, formatModelThinking, formatTokens, shortenPath } from "../shared/formatters.ts";
+import { DIRS, type AsyncJobState, type Details, type ForegroundChildControl, type ForegroundResumeChild, type ForegroundResumeRun, type ForegroundRunControl, type SubagentState } from "../shared/types.ts";
 import { readStatus } from "../shared/utils.ts";
 import { formatAsyncRunTranscript } from "../runs/background/fleet-view.ts";
-import {
-	listAsyncRuns,
-	type AsyncRunSummary,
-} from "../runs/background/async-status.ts";
+import { listAsyncRuns, type AsyncRunSummary } from "../runs/background/async-status.ts";
 import { steerAsyncRun } from "../runs/foreground/async-steering-action.ts";
+import type { SteerDeliveryMode } from "../runs/background/control-channel.ts";
 import { stopAsyncRun } from "../runs/foreground/async-stop-action.ts";
-import {
-	contextModeBadge,
-	contextModeLabel,
-} from "../runs/shared/context-mode.ts";
+import { contextModeBadge, contextModeLabel } from "../runs/shared/context-mode.ts";
 import { FLEET_STATUS_WIDGET_KEY } from "./fleet-status.ts";
-import {
-	readFleetTranscript,
-	renderFleetTranscript,
-	type FleetTranscript,
-} from "./fleet-transcript.ts";
+import { readFleetTranscript, renderFleetTranscript, type FleetTranscript } from "./fleet-transcript.ts";
+import { handleHerdrInspectorAction } from "../inspectors/herdr/actions.ts";
 
 const REFRESH_MS = 750;
 const MAX_RECENT_ASYNC_RUNS = 20;
@@ -63,50 +30,10 @@ type FleetTui = {
 type AsyncStep = AsyncRunSummary["steps"][number];
 
 export type FleetItem = (
-	| {
-			key: string;
-			kind: "foreground-active";
-			runId: string;
-			index?: number;
-			agent: string;
-			state: "running";
-			updatedAt: number;
-			control: ForegroundRunControl;
-			activeChild?: ForegroundChildControl;
-	  }
-	| {
-			key: string;
-			kind: "foreground-recent";
-			runId: string;
-			index: number;
-			agent: string;
-			state: ForegroundResumeChild["status"];
-			updatedAt: number;
-			run: ForegroundResumeRun;
-			child: ForegroundResumeChild;
-	  }
-	| {
-			key: string;
-			kind: "async";
-			runId: string;
-			index?: number;
-			agent: string;
-			state: string;
-			updatedAt: number;
-			run: AsyncRunSummary;
-			step?: AsyncStep;
-	  }
-	| {
-			key: string;
-			kind: "persistent";
-			index: number;
-			agent: string;
-			state: "idle" | "running" | "success" | "fail";
-			updatedAt: number;
-			sessionFile: string | null;
-			/** Final output of the last completed run (fleet detail view). */
-			output?: string;
-	  }
+	| { key: string; kind: "foreground-active"; runId: string; index?: number; agent: string; state: "running"; updatedAt: number; control: ForegroundRunControl; activeChild?: ForegroundChildControl }
+	| { key: string; kind: "foreground-recent"; runId: string; index: number; agent: string; state: ForegroundResumeChild["status"]; updatedAt: number; run: ForegroundResumeRun; child: ForegroundResumeChild }
+	| { key: string; kind: "async"; runId: string; index?: number; agent: string; state: string; updatedAt: number; run: AsyncRunSummary; step?: AsyncStep }
+	| { key: string; kind: "persistent"; index: number; agent: string; state: "idle" | "running" | "success" | "fail"; updatedAt: number; sessionFile: string | null; /** Final output of the last completed run (fleet detail view). */ output?: string }
 ) & { description?: string };
 
 export interface FleetSnapshot {
@@ -120,17 +47,9 @@ export interface FleetActionResult {
 }
 
 export interface FleetActionHandlers {
-	steer(input: {
-		runId: string;
-		asyncDir: string;
-		index?: number;
-		message: string;
-	}): Promise<FleetActionResult>;
-	stop(input: {
-		runId: string;
-		asyncDir: string;
-		index?: number;
-	}): Promise<FleetActionResult> | FleetActionResult;
+	steer(input: { runId: string; asyncDir: string; index?: number; message: string; mode: SteerDeliveryMode }): Promise<FleetActionResult>;
+	stop(input: { runId: string; asyncDir: string; index?: number }): Promise<FleetActionResult> | FleetActionResult;
+	inspect?(input: { runId: string; asyncDir: string; index?: number }): Promise<FleetActionResult>;
 }
 
 export interface FleetViewOptions {
@@ -142,10 +61,7 @@ export interface FleetViewOptions {
 	actions?: FleetActionHandlers;
 }
 
-function belongsToCurrentSession(
-	sessionId: string | undefined,
-	currentSessionId: string | null,
-): boolean {
+function belongsToCurrentSession(sessionId: string | undefined, currentSessionId: string | null): boolean {
 	return !currentSessionId || sessionId === currentSessionId;
 }
 
@@ -174,28 +90,12 @@ function trackedJobSummary(job: AsyncJobState): AsyncRunSummary {
 		...(job.timedOut !== undefined ? { timedOut: job.timedOut } : {}),
 		...(job.stopped !== undefined ? { stopped: job.stopped } : {}),
 		...(job.turnBudget ? { turnBudget: job.turnBudget } : {}),
-		...(job.turnBudgetExceeded !== undefined
-			? { turnBudgetExceeded: job.turnBudgetExceeded }
-			: {}),
-		...(job.wrapUpRequested !== undefined
-			? { wrapUpRequested: job.wrapUpRequested }
-			: {}),
+		...(job.turnBudgetExceeded !== undefined ? { turnBudgetExceeded: job.turnBudgetExceeded } : {}),
+		...(job.wrapUpRequested !== undefined ? { wrapUpRequested: job.wrapUpRequested } : {}),
 		...(job.currentStep !== undefined ? { currentStep: job.currentStep } : {}),
-		...(job.chainStepCount !== undefined
-			? { chainStepCount: job.chainStepCount }
-			: {}),
-		...(job.parallelGroups?.length
-			? { parallelGroups: job.parallelGroups }
-			: {}),
-		steps: (
-			job.steps ??
-			job.agents?.map((agent, index) => ({
-				agent,
-				index,
-				status: job.status === "queued" ? ("pending" as const) : job.status,
-			})) ??
-			[]
-		).map((step, index) => ({
+		...(job.chainStepCount !== undefined ? { chainStepCount: job.chainStepCount } : {}),
+		...(job.parallelGroups?.length ? { parallelGroups: job.parallelGroups } : {}),
+		steps: (job.steps ?? job.agents?.map((agent, index) => ({ agent, index, status: job.status === "queued" ? "pending" as const : job.status })) ?? []).map((step, index) => ({
 			...step,
 			index: step.index ?? index,
 		})),
@@ -203,27 +103,14 @@ function trackedJobSummary(job: AsyncJobState): AsyncRunSummary {
 		...(job.outputFile ? { outputFile: job.outputFile } : {}),
 		...(job.totalTokens ? { totalTokens: job.totalTokens } : {}),
 		...(job.sessionFile ? { sessionFile: job.sessionFile } : {}),
-		...(job.nestedChildren?.length
-			? { nestedChildren: job.nestedChildren }
-			: {}),
+		...(job.nestedChildren?.length ? { nestedChildren: job.nestedChildren } : {}),
 	};
 }
 
 function asyncItems(run: AsyncRunSummary, description?: string): FleetItem[] {
 	const updatedAt = run.lastUpdate ?? run.endedAt ?? run.startedAt;
 	if (run.steps.length === 0 || run.mode === "workflow") {
-		return [
-			{
-				key: `async:${run.id}`,
-				kind: "async",
-				runId: run.id,
-				agent: run.mode,
-				state: run.state,
-				updatedAt,
-				run,
-				...(description ? { description } : {}),
-			},
-		];
+		return [{ key: `async:${run.id}`, kind: "async", runId: run.id, agent: run.mode, state: run.state, updatedAt, run, ...(description ? { description } : {}) }];
 	}
 	return run.steps.map((step) => ({
 		key: `async:${run.id}:${step.index}`,
@@ -253,14 +140,10 @@ export function collectFleetSnapshot(
 ): FleetSnapshot {
 	const items: FleetItem[] = [];
 	const activeForegroundIds = new Set<string>();
-	for (const control of [...state.foregroundControls.values()].sort(
-		(left, right) => right.updatedAt - left.updatedAt,
-	)) {
+	for (const control of [...state.foregroundControls.values()].sort((left, right) => right.updatedAt - left.updatedAt)) {
 		activeForegroundIds.add(control.runId);
 		if (control.activeChildren) {
-			for (const child of [...control.activeChildren.values()].sort(
-				(left, right) => left.index - right.index,
-			)) {
+			for (const child of [...control.activeChildren.values()].sort((left, right) => left.index - right.index)) {
 				items.push({
 					key: `foreground-active:${control.runId}:${child.index}`,
 					kind: "foreground-active",
@@ -280,9 +163,7 @@ export function collectFleetSnapshot(
 			key: `foreground-active:${control.runId}:${control.currentIndex ?? 0}`,
 			kind: "foreground-active",
 			runId: control.runId,
-			...(control.currentIndex !== undefined
-				? { index: control.currentIndex }
-				: {}),
+			...(control.currentIndex !== undefined ? { index: control.currentIndex } : {}),
 			agent: control.currentAgent ?? control.mode,
 			state: "running",
 			updatedAt: control.updatedAt,
@@ -314,29 +195,22 @@ export function collectFleetSnapshot(
 			const history = listAsyncRuns(options.asyncDirRoot, {
 				...(state.currentSessionId ? { sessionId: state.currentSessionId } : {}),
 				entryLimit: MAX_FLEET_HISTORY_CANDIDATES,
-
 				resultsDir: options.resultsDir ?? DIRS.results,
 				reconcile: false,
 			}).filter((run) => !trackedIds.has(run.id));
 			runs = [...trackedRuns, ...history];
 		} else {
 			runs = trackedRuns;
-
 		}
 		for (const run of orderFleetAsyncRuns(runs, options.limit ?? MAX_RECENT_ASYNC_RUNS)) {
 			items.push(...asyncItems(run, descriptions.get(run.id)));
 		}
-
 	} catch (cause) {
 		error = cause instanceof Error ? cause.message : String(cause);
 	}
 
 	const recentForeground = [...(state.foregroundRuns?.values() ?? [])]
-		.filter(
-			(run) =>
-				belongsToCurrentSession(run.sessionId, state.currentSessionId) &&
-				!activeForegroundIds.has(run.runId),
-		)
+		.filter((run) => belongsToCurrentSession(run.sessionId, state.currentSessionId) && !activeForegroundIds.has(run.runId))
 		.sort((left, right) => right.updatedAt - left.updatedAt);
 	for (const run of recentForeground) {
 		for (const child of run.children) {
@@ -375,30 +249,13 @@ export function collectFleetSnapshot(
 
 function statusGlyph(item: FleetItem, theme: Theme): string {
 	if (item.state === "running") return theme.fg("accent", "●");
-	if (
-		item.state === "queued" ||
-		item.state === "pending" ||
-		item.state === "idle"
-	)
-		return theme.fg("muted", "◦");
-	if (
-		item.state === "complete" ||
-		item.state === "completed" ||
-		item.state === "success"
-	)
-		return theme.fg("success", "✓");
-	if (
-		item.state === "paused" ||
-		item.state === "stopped" ||
-		item.state === "detached"
-	)
-		return theme.fg("warning", "■");
+	if (item.state === "queued" || item.state === "pending" || item.state === "idle") return theme.fg("muted", "◦");
+	if (item.state === "complete" || item.state === "completed" || item.state === "success") return theme.fg("success", "✓");
+	if (item.state === "paused" || item.state === "stopped" || item.state === "detached") return theme.fg("warning", "■");
 	return theme.fg("error", "✗");
 }
 
-function foregroundActiveDetail(
-	item: Extract<FleetItem, { kind: "foreground-active" }>,
-): string[] {
+function foregroundActiveDetail(item: Extract<FleetItem, { kind: "foreground-active" }>): string[] {
 	const { control } = item;
 	const live = item.activeChild ?? control;
 	const modelThinking = formatModelThinking(live.model, live.thinking);
@@ -407,19 +264,13 @@ function foregroundActiveDetail(
 		"Source: foreground",
 		`State: running`,
 		`Mode: ${control.mode}`,
-		item.index !== undefined
-			? `Child: ${item.index} (${item.agent})`
-			: `Agent: ${item.agent}`,
+		item.index !== undefined ? `Child: ${item.index} (${item.agent})` : `Agent: ${item.agent}`,
 		modelThinking ? `Model: ${modelThinking}` : undefined,
 		`Started: ${new Date(live.startedAt).toISOString()}`,
-		live.currentTool
-			? `Current tool: ${live.currentTool}${live.currentPath ? ` · ${shortenPath(live.currentPath)}` : ""}`
-			: undefined,
+		live.currentTool ? `Current tool: ${live.currentTool}${live.currentPath ? ` · ${shortenPath(live.currentPath)}` : ""}` : undefined,
 		live.turnCount !== undefined ? `Turns: ${live.turnCount}` : undefined,
 		live.toolCount !== undefined ? `Tools: ${live.toolCount}` : undefined,
-		live.tokens !== undefined
-			? `Tokens: ${formatTokens(live.tokens)}`
-			: undefined,
+		live.tokens !== undefined ? `Tokens: ${formatTokens(live.tokens)}` : undefined,
 		"",
 		"Transcript",
 		"Live foreground output remains in the expanded subagent tool result. Persisted output and session paths appear here after the child settles.",
@@ -427,9 +278,7 @@ function foregroundActiveDetail(
 	return lines.filter((line): line is string => line !== undefined);
 }
 
-function foregroundRecentDetail(
-	item: Extract<FleetItem, { kind: "foreground-recent" }>,
-): string[] {
+function foregroundRecentDetail(item: Extract<FleetItem, { kind: "foreground-recent" }>): string[] {
 	const { child, run } = item;
 	const outputPath = child.artifactPaths?.outputPath ?? child.savedOutputPath;
 	const modelThinking = formatModelThinking(child.model, child.thinking);
@@ -443,64 +292,39 @@ function foregroundRecentDetail(
 		`Updated: ${new Date(child.updatedAt ?? run.updatedAt).toISOString()}`,
 		outputPath ? `Output: ${outputPath}` : undefined,
 		child.sessionFile ? `Session: ${child.sessionFile}` : undefined,
-		child.transcriptPath
-			? `Transcript file: ${child.transcriptPath}`
-			: undefined,
+		child.transcriptPath ? `Transcript file: ${child.transcriptPath}` : undefined,
 		child.error ? `Error: ${child.error}` : undefined,
-		child.outputSaveError
-			? `Output warning: ${child.outputSaveError}`
-			: undefined,
-		child.transcriptError
-			? `Transcript warning: ${child.transcriptError}`
-			: undefined,
+		child.outputSaveError ? `Output warning: ${child.outputSaveError}` : undefined,
+		child.transcriptError ? `Transcript warning: ${child.transcriptError}` : undefined,
 		"",
 		"Result transcript tail",
 	];
-	const outputLines = (child.finalOutput ?? "")
-		.split(/\r?\n/)
-		.filter((line) => line.trim())
-		.slice(-TRANSCRIPT_LINES);
-	lines.push(
-		...(outputLines.length ? outputLines : ["(no recovered output available)"]),
-	);
+	const outputLines = (child.finalOutput ?? "").split(/\r?\n/).filter((line) => line.trim()).slice(-TRANSCRIPT_LINES);
+	lines.push(...(outputLines.length ? outputLines : ["(no recovered output available)"]));
 	return lines.filter((line): line is string => line !== undefined);
 }
 
 function asyncDetail(item: Extract<FleetItem, { kind: "async" }>): string[] {
 	const status = readStatus(item.run.asyncDir);
 	if (status) {
-		return formatAsyncRunTranscript(status, item.run.asyncDir, {
-			index: item.index,
-			lines: TRANSCRIPT_LINES,
-		}).split("\n");
+		return formatAsyncRunTranscript(status, item.run.asyncDir, { index: item.index, lines: TRANSCRIPT_LINES }).split("\n");
 	}
-	const outputPath =
-		item.index !== undefined
-			? path.join(item.run.asyncDir, `output-${item.index}.log`)
-			: undefined;
+	const outputPath = item.index !== undefined ? path.join(item.run.asyncDir, `output-${item.index}.log`) : undefined;
 	return [
 		`Run: ${item.runId}`,
 		"Source: async",
 		`State: ${item.state}`,
 		`Mode: ${item.run.mode}${contextModeLabel(item.run.context) ? ` ${contextModeLabel(item.run.context)}` : ""}`,
-		item.index !== undefined
-			? `Child: ${item.index} (${item.agent})${contextModeLabel(item.step?.context) ? ` ${contextModeLabel(item.step?.context)}` : ""}`
-			: `Agent: ${item.agent}${contextModeLabel(item.run.context) ? ` ${contextModeLabel(item.run.context)}` : ""}`,
+		item.index !== undefined ? `Child: ${item.index} (${item.agent})${contextModeLabel(item.step?.context) ? ` ${contextModeLabel(item.step?.context)}` : ""}` : `Agent: ${item.agent}${contextModeLabel(item.run.context) ? ` ${contextModeLabel(item.run.context)}` : ""}`,
 		outputPath ? `Output: ${outputPath}` : undefined,
-		item.step?.sessionFile
-			? `Session: ${item.step.sessionFile}`
-			: item.run.sessionFile
-				? `Session: ${item.run.sessionFile}`
-				: undefined,
+		item.step?.sessionFile ? `Session: ${item.step.sessionFile}` : item.run.sessionFile ? `Session: ${item.run.sessionFile}` : undefined,
 		"",
 		"Transcript",
 		"(status is no longer available)",
 	].filter((line): line is string => line !== undefined);
 }
 
-function persistentDetail(
-	item: Extract<FleetItem, { kind: "persistent" }>,
-): string[] {
+function persistentDetail(item: Extract<FleetItem, { kind: "persistent" }>): string[] {
 	const lines = [
 		"Source: persistent",
 		`State: ${item.state}`,
@@ -520,26 +344,15 @@ function persistentDetail(
 	return lines;
 }
 
-function detailLines(
-	item: FleetItem | undefined,
-	error: string | undefined,
-): string[] {
-	if (!item)
-		return [
-			error
-				? `Fleet scan failed: ${error}`
-				: "No current-session foreground or recent async children.",
-			"",
-			"New runs appear here automatically while this inspector remains open.",
-		];
-	const lines =
-		item.kind === "foreground-active"
-			? foregroundActiveDetail(item)
-			: item.kind === "foreground-recent"
-				? foregroundRecentDetail(item)
-				: item.kind === "persistent"
-					? persistentDetail(item)
-					: asyncDetail(item);
+function detailLines(item: FleetItem | undefined, error: string | undefined): string[] {
+	if (!item) return [error ? `Fleet scan failed: ${error}` : "No current-session foreground or recent async children.", "", "New runs appear here automatically while this inspector remains open."];
+	const lines = item.kind === "foreground-active"
+		? foregroundActiveDetail(item)
+		: item.kind === "foreground-recent"
+			? foregroundRecentDetail(item)
+			: item.kind === "persistent"
+				? persistentDetail(item)
+				: asyncDetail(item);
 	if (error) lines.unshift(`Fleet scan warning: ${error}`, "");
 	return lines;
 }
@@ -548,24 +361,14 @@ function isActionableAsyncState(state: string): boolean {
 	return state === "running" || state === "queued" || state === "pending";
 }
 
-function firstToolResultText(
-	result: AgentToolResult<Details> | null,
-	fallback: string,
-): FleetActionResult {
+function firstToolResultText(result: AgentToolResult<Details> | null, fallback: string): FleetActionResult {
 	if (!result) return { text: fallback, isError: true };
-	const text =
-		result.content.find((item) => item.type === "text")?.text ?? fallback;
+	const text = result.content.find((item) => item.type === "text")?.text ?? fallback;
 	return { text, ...(result.isError ? { isError: true } : {}) };
 }
 
 function uniquePaths(values: Array<string | undefined>): string[] {
-	return [
-		...new Set(
-			values
-				.filter((value): value is string => Boolean(value))
-				.map((value) => path.resolve(value)),
-		),
-	];
+	return [...new Set(values.filter((value): value is string => Boolean(value)).map((value) => path.resolve(value)))];
 }
 
 function fleetArtifactsRoot(state: SubagentState, cwd: string): string {
@@ -576,23 +379,12 @@ function fleetArtifactsRoot(state: SubagentState, cwd: string): string {
 	);
 }
 
-function transcriptTarget(
-	item: FleetItem,
-	state: SubagentState,
-): { path: string; trustedRoots: string[] } | undefined {
+function transcriptTarget(item: FleetItem, state: SubagentState): { path: string; trustedRoots: string[] } | undefined {
 	if (item.kind === "persistent") return undefined;
 	if (item.kind === "foreground-active") {
-		const artifactsRoot = fleetArtifactsRoot(
-			state,
-			item.control.cwd ?? state.baseCwd,
-		);
+		const artifactsRoot = fleetArtifactsRoot(state, item.control.cwd ?? state.baseCwd);
 		return {
-			path: getArtifactPaths(
-				artifactsRoot,
-				item.runId,
-				item.agent,
-				item.index ?? 0,
-			).transcriptPath,
+			path: getArtifactPaths(artifactsRoot, item.runId, item.agent, item.index ?? 0).transcriptPath,
 			trustedRoots: [artifactsRoot],
 		};
 	}
@@ -609,14 +401,12 @@ function transcriptTarget(
 			]),
 		};
 	}
-	const step =
-		item.step ?? (item.run.steps.length === 1 ? item.run.steps[0] : undefined);
+	const step = item.step ?? (item.run.steps.length === 1 ? item.run.steps[0] : undefined);
 	if (!step?.transcriptPath) return undefined;
 	const transcriptPath = path.isAbsolute(step.transcriptPath)
 		? step.transcriptPath
 		: path.resolve(item.run.asyncDir, step.transcriptPath);
-	const trackedJob =
-		state.fleetJobs?.get(item.runId) ?? state.asyncJobs.get(item.runId);
+	const trackedJob = state.fleetJobs?.get(item.runId) ?? state.asyncJobs.get(item.runId);
 	return {
 		path: transcriptPath,
 		trustedRoots: uniquePaths([
@@ -628,10 +418,8 @@ function transcriptTarget(
 }
 
 function itemContext(item: FleetItem): string | undefined {
-	if (item.kind === "async")
-		return contextModeLabel(item.step?.context ?? item.run.context);
-	if (item.kind === "foreground-recent")
-		return contextModeLabel(item.child.context);
+	if (item.kind === "async") return contextModeLabel(item.step?.context ?? item.run.context);
+	if (item.kind === "foreground-recent") return contextModeLabel(item.child.context);
 	return undefined;
 }
 
@@ -643,9 +431,7 @@ function itemMode(item: FleetItem): string {
 function itemSource(item: FleetItem): string {
 	if (item.kind === "persistent") return "persistent";
 	if (item.kind === "async") return "background";
-	return item.kind === "foreground-active"
-		? "foreground · live"
-		: "foreground · recent";
+	return item.kind === "foreground-active" ? "foreground · live" : "foreground · recent";
 }
 
 function itemStats(item: FleetItem): string[] {
@@ -671,7 +457,6 @@ function itemStats(item: FleetItem): string[] {
 		const terminalRun = item.state !== "queued" && item.state !== "running" && item.state !== "pending";
 		const endTime = item.run.endedAt ?? (terminalRun ? item.run.lastUpdate : undefined) ?? Date.now();
 		durationMs = item.step?.durationMs ?? Math.max(0, endTime - item.run.startedAt);
-
 	}
 	return [
 		model,
@@ -681,29 +466,14 @@ function itemStats(item: FleetItem): string[] {
 	].filter((value): value is string => Boolean(value));
 }
 
-function structuredHeader(
-	item: FleetItem,
-	width: number,
-	theme: Theme,
-	conversationState: string,
-): string[] {
+function structuredHeader(item: FleetItem, width: number, theme: Theme, conversationState: string): string[] {
 	const lines: string[] = [];
-	lines.push(
-		rightAligned(
-			` ${statusGlyph(item, theme)} ${theme.bold(item.agent)}`,
-			theme.fg("dim", item.state),
-			width,
-		),
-	);
-	const child =
-		item.index !== undefined && item.kind !== "persistent"
-			? ` · child ${item.index + 1}`
-			: "";
+	lines.push(rightAligned(` ${statusGlyph(item, theme)} ${theme.bold(item.agent)}`, theme.fg("dim", item.state), width));
+	const child = item.index !== undefined && item.kind !== "persistent" ? ` · child ${item.index + 1}` : "";
 	const context = itemContext(item);
-	const identity =
-		item.kind === "persistent"
-			? `${itemSource(item)} · persist-${item.index} · ${itemMode(item)}`
-			: `${itemSource(item)} · ${item.runId.slice(0, 8)}${child} · ${itemMode(item)}${context ? ` ${context}` : ""}`;
+	const identity = item.kind === "persistent"
+		? `${itemSource(item)} · persist-${item.index} · ${itemMode(item)}`
+		: `${itemSource(item)} · ${item.runId.slice(0, 8)}${child} · ${itemMode(item)}${context ? ` ${context}` : ""}`;
 	lines.push(`  ${theme.fg("dim", identity)}`);
 	const stats = itemStats(item);
 	if (stats.length) lines.push(`  ${theme.fg("muted", stats.join(" · "))}`);
@@ -711,9 +481,7 @@ function structuredHeader(
 		const task = item.description.replace(/\s+/g, " ").trim();
 		lines.push(`  ${theme.fg("dim", "Task")}  ${task}`);
 	}
-	lines.push(
-		`${theme.fg("accent", "Conversation")} ${theme.fg("dim", `· ${conversationState}`)}`,
-	);
+	lines.push(`${theme.fg("accent", "Conversation")} ${theme.fg("dim", `· ${conversationState}`)}`);
 	return lines.map((line) => truncateToWidth(line, width));
 }
 
@@ -725,11 +493,7 @@ function fit(text: string, width: number): string {
 function rightAligned(left: string, right: string, width: number): string {
 	const rightWidth = visibleWidth(right);
 	const leftWidth = Math.max(0, width - rightWidth - 1);
-	return (
-		fit(left, leftWidth) +
-		" ".repeat(Math.max(1, width - leftWidth - rightWidth)) +
-		fit(right, rightWidth)
-	);
+	return fit(left, leftWidth) + " ".repeat(Math.max(1, width - leftWidth - rightWidth)) + fit(right, rightWidth);
 }
 
 interface FleetDetailSections {
@@ -767,6 +531,7 @@ export class SubagentFleetComponent implements Component {
 	private expandedTools = false;
 	private actionNotice: FleetActionResult | undefined;
 	private steerDraft: string | undefined;
+	private steerMode: SteerDeliveryMode = "steer";
 	private stopConfirming = false;
 	private actionBusy = false;
 	private transcriptCache: FleetTranscriptCache | undefined;
@@ -803,25 +568,16 @@ export class SubagentFleetComponent implements Component {
 	}
 
 	private refresh(): void {
-		const previousKey =
-			this.snapshot.items[this.selected]?.key ?? this.selectedKey;
+		const previousKey = this.snapshot.items[this.selected]?.key ?? this.selectedKey;
 		this.snapshot = collectFleetSnapshot(this.state, this.options);
-		const preserved = previousKey
-			? this.snapshot.items.findIndex((item) => item.key === previousKey)
-			: -1;
-		this.selected =
-			preserved >= 0
-				? preserved
-				: Math.min(this.selected, Math.max(0, this.snapshot.items.length - 1));
+		const preserved = previousKey ? this.snapshot.items.findIndex((item) => item.key === previousKey) : -1;
+		this.selected = preserved >= 0 ? preserved : Math.min(this.selected, Math.max(0, this.snapshot.items.length - 1));
 		this.selectedKey = this.snapshot.items[this.selected]?.key;
 	}
 
 	private moveSelection(delta: number): void {
 		if (this.snapshot.items.length === 0) return;
-		this.selected = Math.max(
-			0,
-			Math.min(this.snapshot.items.length - 1, this.selected + delta),
-		);
+		this.selected = Math.max(0, Math.min(this.snapshot.items.length - 1, this.selected + delta));
 		this.selectedKey = this.snapshot.items[this.selected]?.key;
 		this.detailAutoFollow = true;
 		this.resetActionInput();
@@ -830,62 +586,30 @@ export class SubagentFleetComponent implements Component {
 
 	private resetActionInput(): void {
 		this.steerDraft = undefined;
+		this.steerMode = "steer";
 		this.stopConfirming = false;
 	}
 
-	private selectedAsyncAction():
-		{ item: Extract<FleetItem, { kind: "async" }> } | { reason: string } {
+	private selectedAsyncAction(): { item: Extract<FleetItem, { kind: "async" }> } | { reason: string } {
 		const item = this.snapshot.items[this.selected];
 		if (!item) return { reason: "No child is selected." };
-		if (item.kind !== "async")
-			return {
-				reason:
-					"Fleet controls are available for current-session top-level async runs only.",
-			};
-		if (
-			!isActionableAsyncState(item.run.state) ||
-			!isActionableAsyncState(item.state)
-		)
-			return {
-				reason: `Selected child is ${item.state}; controls require a running or queued async child.`,
-			};
+		if (item.kind !== "async") return { reason: "Fleet controls are available for current-session top-level async runs only." };
+		if (!isActionableAsyncState(item.run.state) || !isActionableAsyncState(item.state)) return { reason: `Selected child is ${item.state}; controls require a running or queued async child.` };
 		return { item };
 	}
 
 	private actionLines(): string[] {
 		const lines: string[] = [];
-		if (this.actionBusy)
-			lines.push(this.theme.fg("accent", "Action pending..."));
+		if (this.actionBusy) lines.push(this.theme.fg("accent", "Action pending..."));
 		if (this.steerDraft !== undefined) {
-			lines.push(
-				this.theme.fg(
-					"accent",
-					`Steer message: ${this.steerDraft}${this.theme.fg("dim", "▌")}`,
-				),
-			);
-			lines.push(
-				this.theme.fg("dim", "Enter sends · Esc cancels · Backspace edits"),
-			);
+			lines.push(this.theme.fg("accent", `Steer message (${this.steerMode}): ${this.steerDraft}${this.theme.fg("dim", "▌")}`));
+			lines.push(this.theme.fg("dim", "Enter sends · Tab changes mode · Esc cancels · Backspace edits"));
 		} else if (this.stopConfirming) {
 			const selected = this.snapshot.items[this.selected];
-			const runLabel =
-				selected && "runId" in selected ? selected.runId : "selected run";
-			lines.push(
-				this.theme.fg("warning", `Confirm stop for async run ${runLabel}?`),
-			);
-			lines.push(
-				this.theme.fg(
-					"dim",
-					"Stop ends the run; use interrupt for a resumable pause. Enter/Y confirms · N returns · Esc cancels",
-				),
-			);
+			lines.push(this.theme.fg("warning", `Confirm stop for async run ${selected && selected.kind !== "persistent" ? selected.runId : "selected run"}?`));
+			lines.push(this.theme.fg("dim", "Stop ends the run; use interrupt for a resumable pause. Enter/Y confirms · N returns · Esc cancels"));
 		} else if (this.actionNotice) {
-			lines.push(
-				this.theme.fg(
-					this.actionNotice.isError ? "error" : "success",
-					this.actionNotice.text,
-				),
-			);
+			lines.push(this.theme.fg(this.actionNotice.isError ? "error" : "success", this.actionNotice.text));
 		}
 		return lines;
 	}
@@ -911,12 +635,7 @@ export class SubagentFleetComponent implements Component {
 		this.tui.requestRender();
 		void action()
 			.then((result) => this.setActionNotice(result))
-			.catch((error) =>
-				this.setActionNotice({
-					text: error instanceof Error ? error.message : String(error),
-					isError: true,
-				}),
-			)
+			.catch((error) => this.setActionNotice({ text: error instanceof Error ? error.message : String(error), isError: true }))
 			.finally(() => {
 				this.actionBusy = false;
 				if (!this.disposed) this.tui.requestRender();
@@ -924,14 +643,8 @@ export class SubagentFleetComponent implements Component {
 	}
 
 	private scrollDetail(delta: number): void {
-		const maxScroll = Math.max(
-			0,
-			this.detailLineCount - this.detailViewportHeight,
-		);
-		this.detailScroll = Math.max(
-			0,
-			Math.min(maxScroll, this.detailScroll + delta),
-		);
+		const maxScroll = Math.max(0, this.detailLineCount - this.detailViewportHeight);
+		this.detailScroll = Math.max(0, Math.min(maxScroll, this.detailScroll + delta));
 		this.detailAutoFollow = this.detailScroll >= maxScroll;
 		this.tui.requestRender();
 	}
@@ -946,33 +659,21 @@ export class SubagentFleetComponent implements Component {
 			if (matchesKey(data, "return") || data === "\r" || data === "\n") {
 				const message = this.steerDraft.trim();
 				if (!message) {
-					this.setActionNotice({
-						text: "Steer message cannot be empty.",
-						isError: true,
-					});
+					this.setActionNotice({ text: "Steer message cannot be empty.", isError: true });
 					return;
 				}
 				const target = this.selectedAsyncAction();
 				if ("reason" in target || !this.options.actions) {
-					this.setActionNotice({
-						text:
-							"reason" in target
-								? target.reason
-								: "Fleet controls are unavailable in this context.",
-						isError: true,
-					});
+					this.setActionNotice({ text: "reason" in target ? target.reason : "Fleet controls are unavailable in this context.", isError: true });
 					return;
 				}
-				this.runAction(() =>
-					this.options.actions!.steer({
-						runId: target.item.runId,
-						asyncDir: target.item.run.asyncDir,
-						...(target.item.index !== undefined
-							? { index: target.item.index }
-							: {}),
-						message,
-					}),
-				);
+				this.runAction(() => this.options.actions!.steer({ runId: target.item.runId, asyncDir: target.item.run.asyncDir, ...(target.item.index !== undefined ? { index: target.item.index } : {}), message, mode: this.steerMode }));
+				return;
+			}
+			if (matchesKey(data, "tab") || data === "\t") {
+				const modes: SteerDeliveryMode[] = ["steer", "follow_up", "auto"];
+				this.steerMode = modes[(modes.indexOf(this.steerMode) + 1) % modes.length]!;
+				this.tui.requestRender();
 				return;
 			}
 			if (matchesKey(data, "backspace") || data === "\x7f") {
@@ -990,61 +691,30 @@ export class SubagentFleetComponent implements Component {
 			if (matchesKey(data, "return") || data.toLowerCase() === "y") {
 				const target = this.selectedAsyncAction();
 				if ("reason" in target || !this.options.actions) {
-					this.setActionNotice({
-						text:
-							"reason" in target
-								? target.reason
-								: "Fleet controls are unavailable in this context.",
-						isError: true,
-					});
+					this.setActionNotice({ text: "reason" in target ? target.reason : "Fleet controls are unavailable in this context.", isError: true });
 					return;
 				}
-				this.runAction(() =>
-					Promise.resolve(
-						this.options.actions!.stop({
-							runId: target.item.runId,
-							asyncDir: target.item.run.asyncDir,
-							...(target.item.index !== undefined
-								? { index: target.item.index }
-								: {}),
-						}),
-					),
-				);
+				this.runAction(() => Promise.resolve(this.options.actions!.stop({ runId: target.item.runId, asyncDir: target.item.run.asyncDir, ...(target.item.index !== undefined ? { index: target.item.index } : {}) })));
 				return;
 			}
-			if (
-				matchesKey(data, "escape") ||
-				matchesKey(data, "ctrl+c") ||
-				data.toLowerCase() === "n" ||
-				matchesKey(data, "backspace")
-			) {
+			if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c") || data.toLowerCase() === "n" || matchesKey(data, "backspace")) {
 				this.resetActionInput();
 				this.tui.requestRender();
 			}
 			return;
 		}
-		if (
-			matchesKey(data, "escape") ||
-			matchesKey(data, "ctrl+c") ||
-			matchesKey(data, "q")
-		) {
+		if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c") || matchesKey(data, "q")) {
 			this.done(undefined);
 			return;
 		}
 		if (matchesKey(data, Key.shift("k"))) return this.scrollDetail(-1);
 		if (matchesKey(data, Key.shift("j"))) return this.scrollDetail(1);
-		if (matchesKey(data, "up") || matchesKey(data, "k"))
-			return this.moveSelection(-1);
-		if (matchesKey(data, "down") || matchesKey(data, "j"))
-			return this.moveSelection(1);
-		if (matchesKey(data, "home"))
-			return this.moveSelection(-this.snapshot.items.length);
-		if (matchesKey(data, "end"))
-			return this.moveSelection(this.snapshot.items.length);
-		if (matchesKey(data, "pageUp") || matchesKey(data, Key.shift("m")))
-			return this.scrollDetail(-this.detailViewportHeight);
-		if (matchesKey(data, "pageDown") || matchesKey(data, Key.shift("n")))
-			return this.scrollDetail(this.detailViewportHeight);
+		if (matchesKey(data, "up") || matchesKey(data, "k")) return this.moveSelection(-1);
+		if (matchesKey(data, "down") || matchesKey(data, "j")) return this.moveSelection(1);
+		if (matchesKey(data, "home")) return this.moveSelection(-this.snapshot.items.length);
+		if (matchesKey(data, "end")) return this.moveSelection(this.snapshot.items.length);
+		if (matchesKey(data, "pageUp")) return this.scrollDetail(-this.detailViewportHeight);
+		if (matchesKey(data, "pageDown")) return this.scrollDetail(this.detailViewportHeight);
 		if (data.toLowerCase() === "r") {
 			this.transcriptCache = undefined;
 			this.refresh();
@@ -1053,14 +723,7 @@ export class SubagentFleetComponent implements Component {
 		}
 		if (data === "s") {
 			const target = this.selectedAsyncAction();
-			if ("reason" in target || !this.options.actions)
-				this.setActionNotice({
-					text:
-						"reason" in target
-							? target.reason
-							: "Fleet controls are unavailable in this context.",
-					isError: true,
-				});
+			if ("reason" in target || !this.options.actions) this.setActionNotice({ text: "reason" in target ? target.reason : "Fleet controls are unavailable in this context.", isError: true });
 			else {
 				this.actionNotice = undefined;
 				this.steerDraft = "";
@@ -1070,16 +733,15 @@ export class SubagentFleetComponent implements Component {
 			}
 			return;
 		}
+		if (data === "H") {
+			const target = this.selectedAsyncAction();
+			if ("reason" in target || !this.options.actions?.inspect) this.setActionNotice({ text: "reason" in target ? target.reason : "Herdr inspector controls are unavailable in this context.", isError: true });
+			else this.runAction(() => this.options.actions!.inspect!({ runId: target.item.runId, asyncDir: target.item.run.asyncDir, ...(target.item.index !== undefined ? { index: target.item.index } : {}) }));
+			return;
+		}
 		if (data === "D") {
 			const target = this.selectedAsyncAction();
-			if ("reason" in target || !this.options.actions)
-				this.setActionNotice({
-					text:
-						"reason" in target
-							? target.reason
-							: "Fleet controls are unavailable in this context.",
-					isError: true,
-				});
+			if ("reason" in target || !this.options.actions) this.setActionNotice({ text: "reason" in target ? target.reason : "Fleet controls are unavailable in this context.", isError: true });
 			else {
 				this.actionNotice = undefined;
 				this.stopConfirming = true;
@@ -1097,80 +759,33 @@ export class SubagentFleetComponent implements Component {
 	}
 
 	private rosterLines(width: number): string[] {
-		if (this.snapshot.items.length === 0)
-			return [this.theme.fg("dim", "No tracked children")];
-		const start = Math.max(
-			0,
-			Math.min(
-				this.selected - this.bodyHeight + 1,
-				Math.max(0, this.snapshot.items.length - this.bodyHeight),
-			),
-		);
-		return this.snapshot.items
-			.slice(start, start + this.bodyHeight)
-			.map((item, offset) => {
-				const index = start + offset;
-				const marker =
-					index === this.selected ? this.theme.fg("accent", "›") : " ";
-				const context =
-					item.kind === "async"
-						? contextModeBadge(
-								this.theme,
-								item.step?.context ?? item.run.context,
-							)
-						: item.kind === "foreground-recent"
-							? contextModeBadge(this.theme, item.child.context)
-							: "";
-				const agent =
-					index === this.selected ? this.theme.bold(item.agent) : item.agent;
-				const identity =
-					item.description?.replace(/\s+/g, " ").trim() ||
-					(item.kind === "persistent"
-						? `slot ${item.index}`
-						: item.runId.slice(0, 8));
-				const left = `${marker} ${statusGlyph(item, this.theme)} ${agent}${context} ${this.theme.fg("dim", `· ${identity}`)}`;
-				return rightAligned(left, this.theme.fg("dim", item.state), width);
-			});
+		if (this.snapshot.items.length === 0) return [this.theme.fg("dim", "No tracked children")];
+		const start = Math.max(0, Math.min(this.selected - this.bodyHeight + 1, Math.max(0, this.snapshot.items.length - this.bodyHeight)));
+		return this.snapshot.items.slice(start, start + this.bodyHeight).map((item, offset) => {
+			const index = start + offset;
+			const marker = index === this.selected ? this.theme.fg("accent", "›") : " ";
+			const context = item.kind === "async" ? contextModeBadge(this.theme, item.step?.context ?? item.run.context) : item.kind === "foreground-recent" ? contextModeBadge(this.theme, item.child.context) : "";
+			const agent = index === this.selected ? this.theme.bold(item.agent) : item.agent;
+			const identity = item.description?.replace(/\s+/g, " ").trim() || (item.kind === "persistent" ? `slot ${item.index}` : item.runId.slice(0, 8));
+			const left = `${marker} ${statusGlyph(item, this.theme)} ${agent}${context} ${this.theme.fg("dim", `· ${identity}`)}`;
+			return rightAligned(left, this.theme.fg("dim", item.state), width);
+		});
 	}
 
-	private renderedTranscript(
-		target: { path: string; trustedRoots: string[] },
-		width: number,
-	): { transcript: FleetTranscript; body: string[] } {
+	private renderedTranscript(target: { path: string; trustedRoots: string[] }, width: number): { transcript: FleetTranscript; body: string[] } {
 		const fingerprint = `${target.trustedRoots.join("\0")}|${transcriptFingerprint(target.path)}`;
-		if (
-			this.transcriptCache &&
-			this.transcriptCache.path === target.path &&
-			this.transcriptCache.fingerprint === fingerprint &&
-			this.transcriptCache.width === width &&
-			this.transcriptCache.expandedTools === this.expandedTools
-		) {
-			return {
-				transcript: this.transcriptCache.transcript,
-				body: [...this.transcriptCache.body],
-			};
+		if (this.transcriptCache
+			&& this.transcriptCache.path === target.path
+			&& this.transcriptCache.fingerprint === fingerprint
+			&& this.transcriptCache.width === width
+			&& this.transcriptCache.expandedTools === this.expandedTools) {
+			return { transcript: this.transcriptCache.transcript, body: [...this.transcriptCache.body] };
 		}
-		const transcript = readFleetTranscript(target.path, {
-			trustedRoots: target.trustedRoots,
-		});
-		const body =
-			transcript.events.length > 0
-				? renderFleetTranscript(
-						transcript,
-						width,
-						this.theme,
-						this.markdownTheme,
-						{ expandedTools: this.expandedTools },
-					)
-				: [];
-		this.transcriptCache = {
-			path: target.path,
-			fingerprint,
-			width,
-			expandedTools: this.expandedTools,
-			transcript,
-			body,
-		};
+		const transcript = readFleetTranscript(target.path, { trustedRoots: target.trustedRoots });
+		const body = transcript.events.length > 0
+			? renderFleetTranscript(transcript, width, this.theme, this.markdownTheme, { expandedTools: this.expandedTools })
+			: [];
+		this.transcriptCache = { path: target.path, fingerprint, width, expandedTools: this.expandedTools, transcript, body };
 		return { transcript, body: [...body] };
 	}
 
@@ -1183,39 +798,22 @@ export class SubagentFleetComponent implements Component {
 				const { transcript, body } = this.renderedTranscript(target, width);
 				transcriptWarning = transcript.warning;
 				if (transcript.events.length > 0) {
-					if (this.snapshot.error)
-						body.unshift(
-							this.theme.fg(
-								"warning",
-								`Fleet scan warning: ${this.snapshot.error}`,
-							),
-							"",
-						);
+					if (this.snapshot.error) body.unshift(this.theme.fg("warning", `Fleet scan warning: ${this.snapshot.error}`), "");
 					const latest = transcript.events.at(-1);
-					const conversationState =
-						latest?.kind === "assistant"
-							? "assistant response"
-							: latest?.kind === "user"
-								? "supervisor message"
-								: latest?.kind === "tool"
-									? `${latest.name} · ${latest.status}`
-									: "activity";
-					return {
-						header: structuredHeader(
-							selected,
-							width,
-							this.theme,
-							conversationState,
-						),
-						body: this.withActionLines(body),
-					};
+					const conversationState = latest?.kind === "assistant"
+						? "assistant response"
+						: latest?.kind === "user"
+							? "supervisor message"
+							: latest?.kind === "tool"
+								? `${latest.name} · ${latest.status}`
+								: "activity";
+					return { header: structuredHeader(selected, width, this.theme, conversationState), body: this.withActionLines(body) };
 				}
 			}
 		}
 
 		const raw = detailLines(selected, this.snapshot.error);
-		if (transcriptWarning)
-			raw.unshift(`Transcript preview warning: ${transcriptWarning}`, "");
+		if (transcriptWarning) raw.unshift(`Transcript preview warning: ${transcriptWarning}`, "");
 		const lines: string[] = [];
 		for (const line of raw) {
 			const styled = /^(Run|State|Mode|Source|Child|Agent|Model):/.test(line)
@@ -1234,43 +832,23 @@ export class SubagentFleetComponent implements Component {
 	}
 
 	render(width: number): string[] {
-		if (width < 36)
-			return [
-				truncateToWidth(
-					"Subagent fleet needs at least 36 columns. Esc closes.",
-					width,
-				),
-			];
+		if (width < 36) return [truncateToWidth("Subagent fleet needs at least 36 columns. Esc closes.", width)];
 		const innerWidth = width - 2;
 		const rows = this.tui.terminal?.rows ?? 32;
 		this.bodyHeight = Math.max(2, Math.floor(rows * 0.85) - 6);
 		const rosterWidth = Math.max(22, Math.min(46, Math.floor((innerWidth - 1) * 0.38)));
-
 		const detailWidth = Math.max(1, innerWidth - rosterWidth - 1);
 		const roster = this.rosterLines(rosterWidth);
 		const detail = this.wrappedDetail(detailWidth);
-		const detailHeader = detail.header.slice(
-			0,
-			Math.max(0, this.bodyHeight - 1),
-		);
-		this.detailViewportHeight = Math.max(
-			1,
-			this.bodyHeight - detailHeader.length,
-		);
+		const detailHeader = detail.header.slice(0, Math.max(0, this.bodyHeight - 1));
+		this.detailViewportHeight = Math.max(1, this.bodyHeight - detailHeader.length);
 		this.detailLineCount = detail.body.length;
-		const maxDetailScroll = Math.max(
-			0,
-			detail.body.length - this.detailViewportHeight,
-		);
+		const maxDetailScroll = Math.max(0, detail.body.length - this.detailViewportHeight);
 		if (this.detailAutoFollow) this.detailScroll = maxDetailScroll;
-		else if (this.detailScroll > maxDetailScroll)
-			this.detailScroll = maxDetailScroll;
+		else if (this.detailScroll > maxDetailScroll) this.detailScroll = maxDetailScroll;
 		const visibleDetails = [
 			...detailHeader,
-			...detail.body.slice(
-				this.detailScroll,
-				this.detailScroll + this.detailViewportHeight,
-			),
+			...detail.body.slice(this.detailScroll, this.detailScroll + this.detailViewportHeight),
 		];
 		const lines = [this.theme.fg("border", `╭${"─".repeat(innerWidth)}╮`)];
 		const selected = this.snapshot.items[this.selected];
@@ -1278,41 +856,21 @@ export class SubagentFleetComponent implements Component {
 		const selectedStatus = selected
 			? `${statusGlyph(selected, this.theme)} ${selected.agent} · ${selected.state} `
 			: this.theme.fg("dim", "no children ");
-		lines.push(
-			this.theme.fg("border", "│") +
-				rightAligned(title, selectedStatus, innerWidth) +
-				this.theme.fg("border", "│"),
-		);
-		lines.push(
-			this.theme.fg(
-				"border",
-				`├${"─".repeat(rosterWidth)}┬${"─".repeat(detailWidth)}┤`,
-			),
-		);
+		lines.push(this.theme.fg("border", "│") + rightAligned(title, selectedStatus, innerWidth) + this.theme.fg("border", "│"));
+		lines.push(this.theme.fg("border", `├${"─".repeat(rosterWidth)}┬${"─".repeat(detailWidth)}┤`));
 		for (let index = 0; index < this.bodyHeight; index++) {
 			lines.push(
-				this.theme.fg("border", "│") +
-					fit(roster[index] ?? "", rosterWidth) +
-					this.theme.fg("border", "│") +
-					fit(visibleDetails[index] ?? "", detailWidth) +
-					this.theme.fg("border", "│"),
+				this.theme.fg("border", "│")
+				+ fit(roster[index] ?? "", rosterWidth)
+				+ this.theme.fg("border", "│")
+				+ fit(visibleDetails[index] ?? "", detailWidth)
+				+ this.theme.fg("border", "│"),
 			);
 		}
-		lines.push(
-			this.theme.fg(
-				"border",
-				`├${"─".repeat(rosterWidth)}┴${"─".repeat(detailWidth)}┤`,
-			),
-		);
-		const position = this.snapshot.items.length
-			? `${this.selected + 1}/${this.snapshot.items.length}`
-			: "0/0";
-		const footer = ` ↑↓/jk agent · ⇧K/J line · ⇧M/⇧N or PgUp/PgDn page · s steer · D stop · x/Ctrl+O tools · r refresh · Esc close · ${position}`;
-		lines.push(
-			this.theme.fg("border", "│") +
-				fit(this.theme.fg("dim", footer), innerWidth) +
-				this.theme.fg("border", "│"),
-		);
+		lines.push(this.theme.fg("border", `├${"─".repeat(rosterWidth)}┴${"─".repeat(detailWidth)}┤`));
+		const position = this.snapshot.items.length ? `${this.selected + 1}/${this.snapshot.items.length}` : "0/0";
+		const footer = ` ↑↓/jk agent · H Herdr · s steer · D stop · x/Ctrl+O tools · r refresh · Esc close · ${position}`;
+		lines.push(this.theme.fg("border", "│") + fit(this.theme.fg("dim", footer), innerWidth) + this.theme.fg("border", "│"));
 		lines.push(this.theme.fg("border", `╰${"─".repeat(innerWidth)}╯`));
 		return lines.map((line) => truncateToWidth(line, width));
 	}
@@ -1328,59 +886,37 @@ export class SubagentFleetComponent implements Component {
 	}
 }
 
-export async function openSubagentFleet(
-	ctx: ExtensionContext,
-	state: SubagentState,
-	options: FleetViewOptions = {},
-): Promise<void> {
+export async function openSubagentFleet(ctx: ExtensionContext, state: SubagentState, options: FleetViewOptions = {}): Promise<void> {
 	const wasOpen = state.fleetInspectorOpen === true;
 	state.fleetInspectorOpen = true;
-	if (typeof ctx.ui.setWidget === "function")
-		ctx.ui.setWidget(FLEET_STATUS_WIDGET_KEY, undefined);
-	const actions =
-		options.actions ??
-		({
-			steer: async (input: {
-				runId: string;
-				asyncDir: string;
-				index?: number;
-				message: string;
-			}) =>
-				firstToolResultText(
-					await steerAsyncRun({
-						state,
-						runId: input.runId,
-						...(input.index !== undefined ? { index: input.index } : {}),
-						message: input.message,
-						location: { asyncDir: input.asyncDir, resolvedId: input.runId },
-					}),
-					`Failed to steer async run ${input.runId}.`,
-				),
-			stop: (input: { runId: string; asyncDir: string; index?: number }) =>
-				firstToolResultText(
-					stopAsyncRun(state, input.runId, undefined, {
-						asyncDir: input.asyncDir,
-						resolvedId: input.runId,
-					}),
-					`Failed to stop async run ${input.runId}.`,
-				),
-		} satisfies FleetActionHandlers);
+	if (typeof ctx.ui.setWidget === "function") ctx.ui.setWidget(FLEET_STATUS_WIDGET_KEY, undefined);
+	const actions = options.actions ?? {
+		steer: async (input: { runId: string; asyncDir: string; index?: number; message: string; mode: SteerDeliveryMode }) => firstToolResultText(await steerAsyncRun({
+			state,
+			runId: input.runId,
+			...(input.index !== undefined ? { index: input.index } : {}),
+			message: input.message,
+			mode: input.mode,
+			location: { asyncDir: input.asyncDir, resolvedId: input.runId } as Parameters<typeof steerAsyncRun>[0]["location"],
+		}), `Failed to steer async run ${input.runId}.`),
+		stop: (input: { runId: string; asyncDir: string; index?: number }) => firstToolResultText(stopAsyncRun(state, input.runId, undefined, { asyncDir: input.asyncDir, resolvedId: input.runId }), `Failed to stop async run ${input.runId}.`),
+		inspect: async (input: { runId: string; asyncDir: string; index?: number }) => firstToolResultText(await handleHerdrInspectorAction("inspector.open", {
+			id: input.runId,
+			dir: input.asyncDir,
+			...(input.index !== undefined ? { index: input.index } : {}),
+		}, {
+			state,
+			cwd: state.baseCwd,
+			...(state.authorityPolicy ? { authorityPolicy: state.authorityPolicy } : {}),
+			...(state.missionStoreConfig ? { missions: state.missionStoreConfig } : {}),
+		}), `Failed to open Herdr inspector for async run ${input.runId}.`),
+	} satisfies FleetActionHandlers;
 	try {
 		await ctx.ui.custom<undefined>(
-			(tui, theme, _keybindings, done) =>
-				new SubagentFleetComponent(tui, theme, state, done, {
-					...options,
-					actions,
-				}),
+			(tui, theme, _keybindings, done) => new SubagentFleetComponent(tui, theme, state, done, { ...options, actions }),
 			{
 				overlay: true,
-				overlayOptions: {
-					anchor: "center",
-					width: "95%",
-					minWidth: 60,
-					maxHeight: "85%",
-					margin: 1,
-				},
+				overlayOptions: { anchor: "center", width: "95%", minWidth: 60, maxHeight: "85%", margin: 1 },
 			},
 		);
 	} finally {

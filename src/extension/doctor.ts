@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { discoverAgentsAll, type AgentSource } from "../agents/agents.ts";
 import { isAsyncAvailable } from "../runs/background/async-execution.ts";
 import { formatSpawnBudgetSummary, getSpawnBudgetSnapshot } from "../runs/shared/spawn-budget.ts";
+import { diagnoseIntercomBridge, type IntercomBridgeDiagnostic } from "../intercom/intercom-bridge.ts";
 import { discoverAvailableSkills, type SkillSource } from "../agents/skills.ts";
 import {
 	DIRS,
@@ -23,6 +24,7 @@ interface DoctorDeps {
 	isAsyncAvailable: () => boolean;
 	discoverAgentsAll: typeof discoverAgentsAll;
 	discoverAvailableSkills: typeof discoverAvailableSkills;
+	diagnoseIntercomBridge: typeof diagnoseIntercomBridge;
 }
 
 interface DoctorReportInput {
@@ -33,6 +35,7 @@ interface DoctorReportInput {
 	requestedSessionDir?: string;
 	currentSessionFile?: string | null;
 	currentSessionId?: string | null;
+	orchestratorTarget?: string;
 	sessionError?: string;
 	expandTilde?: (value: string) => string;
 	paths?: DoctorPaths;
@@ -52,6 +55,7 @@ const DEFAULT_DEPS: DoctorDeps = {
 	isAsyncAvailable,
 	discoverAgentsAll,
 	discoverAvailableSkills,
+	diagnoseIntercomBridge,
 };
 
 function errorText(error: unknown): string {
@@ -79,7 +83,7 @@ function formatExistingDirectory(label: string, dirPath: string): string {
 }
 
 function formatSourceCounts(counts: Record<AgentSource, number>): string {
-	return `package ${counts.package}, user ${counts.user}, project ${counts.project}`;
+	return `builtin ${counts.builtin}, package ${counts.package}, user ${counts.user}, project ${counts.project}`;
 }
 
 function formatSkillSourceCounts(skills: Array<{ source: SkillSource }>): string {
@@ -93,6 +97,7 @@ function formatSkillSourceCounts(skills: Array<{ source: SkillSource }>): string
 		"user-settings",
 		"user-package",
 		"extension",
+		"builtin",
 		"unknown",
 	];
 	const parts = ordered
@@ -128,6 +133,7 @@ function formatDiscovery(input: DoctorReportInput, deps: DoctorDeps): string[] {
 		lineFromCheck("agents/chains", () => {
 			const discovered = deps.discoverAgentsAll(input.cwd);
 			const agentCounts = {
+				builtin: discovered.builtin.length,
 				package: discovered.package?.length ?? 0,
 				user: discovered.user.length,
 				project: discovered.project.length,
@@ -135,9 +141,9 @@ function formatDiscovery(input: DoctorReportInput, deps: DoctorDeps): string[] {
 			const chainCounts = discovered.chains.reduce<Record<AgentSource, number>>((counts, chain) => {
 				counts[chain.source] += 1;
 				return counts;
-			}, { package: 0, user: 0, project: 0 });
+			}, { builtin: 0, package: 0, user: 0, project: 0 });
 			return [
-				`- agents: total ${agentCounts.package + agentCounts.user + agentCounts.project} (${formatSourceCounts(agentCounts)})`,
+				`- agents: total ${agentCounts.builtin + agentCounts.package + agentCounts.user + agentCounts.project} (${formatSourceCounts(agentCounts)})`,
 				`- chains: total ${discovered.chains.length} (${formatSourceCounts(chainCounts)})`,
 			].join("\n");
 		}),
@@ -146,6 +152,16 @@ function formatDiscovery(input: DoctorReportInput, deps: DoctorDeps): string[] {
 			return `- skills: total ${skills.length} (${formatSkillSourceCounts(skills)})`;
 		}),
 	];
+}
+
+function formatIntercomDiagnostic(diagnostic: IntercomBridgeDiagnostic, context: "fresh" | "fork" | undefined): string[] {
+	const lines = [
+		`- bridge: ${diagnostic.active ? "active" : "inactive"}${diagnostic.reason ? ` (${diagnostic.reason})` : ""}`,
+		`- mode: ${diagnostic.mode}; context: ${context ?? "unspecified"}`,
+		`- orchestrator target: ${diagnostic.orchestratorTarget ?? "not available"}`,
+		`- supervisor channel: ${diagnostic.supervisorChannelAvailable ? "available" : "unavailable"} (${diagnostic.extensionDir})`,
+	];
+	return lines;
 }
 
 function formatSpawnBudgetSection(input: DoctorReportInput): string[] {
@@ -202,6 +218,13 @@ export function buildDoctorReport(input: DoctorReportInput): string {
 		"Permission system",
 		...formatPermissionSystemSection(),
 		"",
+		"Intercom bridge",
+		...lineFromCheck("intercom bridge", () => formatIntercomDiagnostic(deps.diagnoseIntercomBridge({
+			config: input.config.intercomBridge,
+			context: input.context,
+			orchestratorTarget: input.orchestratorTarget,
+			cwd: input.cwd,
+		}), input.context).join("\n")).split("\n"),
 	];
 	return lines.join("\n");
 }

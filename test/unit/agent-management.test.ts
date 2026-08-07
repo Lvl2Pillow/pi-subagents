@@ -3,37 +3,23 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import {
-	handleCreate,
-	handleList,
-	handleManagementAction,
-	handleUpdate,
-} from "../../src/agents/agent-management.ts";
-
-import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { ExtensionConfig } from "../../src/shared/types.ts";
-
-const mockModelRegistry = { getAvailable: () => [] } as unknown as ModelRegistry;
+import { handleCreate, handleList, handleManagementAction, handleUpdate } from "../../src/agents/agent-management.ts";
 import { clearSkillCache } from "../../src/agents/skills.ts";
 
 let tempDir = "";
 let oldAgentDir: string | undefined;
 
-function readText(result: {
-	content: Array<{ type: string; text?: string }>;
-}): string {
+function readText(result: { content: Array<{ type: string; text?: string }> }): string {
 	const first = result.content[0];
 	assert.ok(first);
 	assert.equal(first.type, "text");
 	assert.equal(typeof first.text, "string");
-	return first.text!;
+	return first.text;
 }
 
 describe("agent management config parsing", () => {
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(
-			path.join(os.tmpdir(), "pi-subagents-management-"),
-		);
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-management-"));
 		oldAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = path.join(tempDir, "agent-home");
 		clearSkillCache();
@@ -49,7 +35,7 @@ describe("agent management config parsing", () => {
 	it("surfaces JSON parse errors for create config strings", () => {
 		const result = handleCreate(
 			{ config: '{"name":' },
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 
 		assert.equal(result.isError, true);
@@ -59,143 +45,74 @@ describe("agent management config parsing", () => {
 	it("hides lower-priority agents shadowed by project agents in list output", () => {
 		const agentsDir = path.join(tempDir, ".pi", "agents");
 		fs.mkdirSync(agentsDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(agentsDir, "scout.md"),
-			"---\nname: scout\ndescription: Project scout override\n---\n\nProject scout agent.\n",
-		);
+		fs.writeFileSync(path.join(agentsDir, "scout.md"), "---\nname: scout\ndescription: Project scout override\n---\n\nProject scout agent.\n");
 
 		const result = handleList(
 			{ agentScope: "project" },
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 
 		assert.equal(result.isError, false);
-		assert.match(
-			readText(result),
-			/- scout \(project\): Project scout override/,
-		);
+		assert.match(readText(result), /- scout \(project\): Project scout override/);
+		assert.doesNotMatch(readText(result), /- scout \(builtin/);
 	});
 
 	it("gets only the effective agent detail and respects explicit scope", () => {
 		const projectAgentsDir = path.join(tempDir, ".pi", "agents");
 		const userAgentsDir = path.join(tempDir, "agent-home", "agents");
-		const packageDir = path.join(
-			tempDir,
-			".pi",
-			"npm",
-			"node_modules",
-			"test-agents",
-		);
+		const packageDir = path.join(tempDir, ".pi", "npm", "node_modules", "test-agents");
 		fs.mkdirSync(projectAgentsDir, { recursive: true });
 		fs.mkdirSync(userAgentsDir, { recursive: true });
 		fs.mkdirSync(path.join(packageDir, "agents"), { recursive: true });
 		fs.mkdirSync(path.join(packageDir, "chains"), { recursive: true });
-		fs.writeFileSync(
-			path.join(projectAgentsDir, "worker.md"),
-			"---\nname: worker\ndescription: Project worker override\n---\n\nProject worker.\n",
-		);
-		fs.writeFileSync(
-			path.join(userAgentsDir, "worker.md"),
-			"---\nname: worker\ndescription: User worker override\n---\n\nUser worker.\n",
-		);
-		fs.writeFileSync(
-			path.join(packageDir, "package.json"),
-			JSON.stringify({
-				"pi-subagents": { agents: ["agents"], chains: ["chains"] },
-			}),
-		);
-		fs.writeFileSync(
-			path.join(packageDir, "agents", "worker.md"),
-			"---\nname: worker\ndescription: Package worker override\n---\n\nPackage worker.\n",
-		);
-		fs.writeFileSync(
-			path.join(packageDir, "chains", "package-flow.chain.json"),
-			JSON.stringify({
-				name: "package-flow",
-				description: "Package flow",
-				chain: [{ agent: "worker", task: "Package task" }],
-			}),
-			"utf-8",
-		);
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		fs.writeFileSync(path.join(projectAgentsDir, "worker.md"), "---\nname: worker\ndescription: Project worker override\n---\n\nProject worker.\n");
+		fs.writeFileSync(path.join(userAgentsDir, "worker.md"), "---\nname: worker\ndescription: User worker override\n---\n\nUser worker.\n");
+		fs.writeFileSync(path.join(packageDir, "package.json"), JSON.stringify({ "pi-subagents": { agents: ["agents"], chains: ["chains"] } }));
+		fs.writeFileSync(path.join(packageDir, "agents", "worker.md"), "---\nname: worker\ndescription: Package worker override\n---\n\nPackage worker.\n");
+		fs.writeFileSync(path.join(packageDir, "chains", "package-flow.chain.json"), JSON.stringify({
+			name: "package-flow",
+			description: "Package flow",
+			chain: [{ agent: "worker", task: "Package task" }],
+		}), "utf-8");
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 
-		const effective = readText(
-			handleManagementAction("get", { agent: "worker" }, ctx),
-		);
+		const effective = readText(handleManagementAction("get", { agent: "worker" }, ctx));
 		assert.match(effective, /Agent: worker \(project\)/);
 		assert.match(effective, /Description: Project worker override/);
-		assert.doesNotMatch(
-			effective,
-			/User worker override|Package worker override|Implementation agent for normal tasks/,
-		);
+		assert.doesNotMatch(effective, /User worker override|Package worker override|Implementation agent for normal tasks/);
 
-		const userScoped = readText(
-			handleManagementAction(
-				"get",
-				{ agent: "worker", agentScope: "user" },
-				ctx,
-			),
-		);
+		const userScoped = readText(handleManagementAction("get", { agent: "worker", agentScope: "user" }, ctx));
 		assert.match(userScoped, /Agent: worker \(user\)/);
 		assert.match(userScoped, /Description: User worker override/);
-		assert.doesNotMatch(
-			userScoped,
-			/Project worker override|Implementation agent for normal tasks/,
-		);
+		assert.doesNotMatch(userScoped, /Project worker override|Implementation agent for normal tasks/);
 
 		const userChainsDir = path.join(tempDir, "agent-home", "chains");
 		const projectChainsDir = path.join(tempDir, ".pi", "chains");
 		fs.mkdirSync(userChainsDir, { recursive: true });
 		fs.mkdirSync(projectChainsDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(userChainsDir, "shared-flow.chain.json"),
-			JSON.stringify({
-				name: "shared-flow",
-				description: "User shared flow",
-				chain: [{ agent: "worker", task: "User flow" }],
-			}),
-			"utf-8",
-		);
-		fs.writeFileSync(
-			path.join(projectChainsDir, "shared-flow.chain.json"),
-			JSON.stringify({
-				name: "shared-flow",
-				description: "Project shared flow",
-				chain: [{ agent: "worker", task: "Project flow" }],
-			}),
-			"utf-8",
-		);
+		fs.writeFileSync(path.join(userChainsDir, "shared-flow.chain.json"), JSON.stringify({
+			name: "shared-flow",
+			description: "User shared flow",
+			chain: [{ agent: "worker", task: "User flow" }],
+		}), "utf-8");
+		fs.writeFileSync(path.join(projectChainsDir, "shared-flow.chain.json"), JSON.stringify({
+			name: "shared-flow",
+			description: "Project shared flow",
+			chain: [{ agent: "worker", task: "Project flow" }],
+		}), "utf-8");
 
-		const userChain = readText(
-			handleManagementAction(
-				"get",
-				{ chainName: "shared-flow", agentScope: "user" },
-				ctx,
-			),
-		);
+		const userChain = readText(handleManagementAction("get", { chainName: "shared-flow", agentScope: "user" }, ctx));
 		assert.match(userChain, /Chain: shared-flow \(user\)/);
 		assert.match(userChain, /Description: User shared flow/);
 		assert.doesNotMatch(userChain, /Project shared flow|Project flow/);
 
-		const projectChain = readText(
-			handleManagementAction(
-				"get",
-				{ chainName: "shared-flow", agentScope: "project" },
-				ctx,
-			),
-		);
+		const projectChain = readText(handleManagementAction("get", { chainName: "shared-flow", agentScope: "project" }, ctx));
 		assert.match(projectChain, /Chain: shared-flow \(project\)/);
 		assert.match(projectChain, /Description: Project shared flow/);
 		assert.doesNotMatch(projectChain, /User shared flow|User flow/);
 
 		for (const agentScope of ["user", "project"] as const) {
-			const packageChain = readText(
-				handleManagementAction(
-					"get",
-					{ chainName: "package-flow", agentScope },
-					ctx,
-				),
-			);
+			const packageChain = readText(handleManagementAction("get", { chainName: "package-flow", agentScope }, ctx));
 			assert.match(packageChain, /Chain: package-flow \(package\)/);
 			assert.match(packageChain, /Description: Package flow/);
 		}
@@ -204,7 +121,7 @@ describe("agent management config parsing", () => {
 	it("surfaces JSON parse errors for update config strings", () => {
 		const result = handleUpdate(
 			{ agent: "reviewer", config: '{"description":' },
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 
 		assert.equal(result.isError, true);
@@ -212,38 +129,21 @@ describe("agent management config parsing", () => {
 	});
 
 	it("creates, gets, updates, and deletes a packaged agent by runtime name", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const created = handleCreate(
-			{
-				config: {
-					name: "Scout",
-					package: "Code Analysis",
-					description: "Fast recon",
-					scope: "project",
-					systemPrompt: "Inspect",
-				},
-			},
+			{ config: { name: "Scout", package: "Code Analysis", description: "Fast recon", scope: "project", systemPrompt: "Inspect" } },
 			ctx,
 		);
 
 		assert.equal(created.isError, false);
 		assert.match(readText(created), /Created agent 'code-analysis.scout'/);
-		const filePath = path.join(
-			tempDir,
-			".pi",
-			"agents",
-			"code-analysis.scout.md",
-		);
+		const filePath = path.join(tempDir, ".pi", "agents", "code-analysis.scout.md");
 		let content = fs.readFileSync(filePath, "utf-8");
 		assert.match(content, /^name: scout$/m);
 		assert.match(content, /^package: code-analysis$/m);
 		assert.doesNotMatch(content, /^name: code-analysis\.scout$/m);
 
-		const got = handleManagementAction(
-			"get",
-			{ agent: "code-analysis.scout" },
-			ctx,
-		);
+		const got = handleManagementAction("get", { agent: "code-analysis.scout" }, ctx);
 		assert.equal(got.isError, false);
 		assert.match(readText(got), /Agent: code-analysis\.scout/);
 		assert.match(readText(got), /Local name: scout/);
@@ -254,59 +154,31 @@ describe("agent management config parsing", () => {
 			ctx,
 		);
 		assert.equal(updated.isError, false);
-		assert.match(
-			readText(updated),
-			/code-analysis\.scout' to 'documentation\.scout'/,
-		);
+		assert.match(readText(updated), /code-analysis\.scout' to 'documentation\.scout'/);
 		assert.equal(fs.existsSync(filePath), false);
-		const updatedPath = path.join(
-			tempDir,
-			".pi",
-			"agents",
-			"documentation.scout.md",
-		);
+		const updatedPath = path.join(tempDir, ".pi", "agents", "documentation.scout.md");
 		content = fs.readFileSync(updatedPath, "utf-8");
 		assert.match(content, /^name: scout$/m);
 		assert.match(content, /^package: documentation$/m);
 
-		const deleted = handleManagementAction(
-			"delete",
-			{ agent: "documentation.scout" },
-			ctx,
-		);
+		const deleted = handleManagementAction("delete", { agent: "documentation.scout" }, ctx);
 		assert.equal(deleted.isError, false);
 		assert.equal(fs.existsSync(updatedPath), false);
 	});
 
 	it("creates, reports, and clears agent-local skill paths", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
-		const skillFile = path.join(
-			tempDir,
-			".pi",
-			"agents",
-			"skills",
-			"private",
-			"SKILL.md",
-		);
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const skillFile = path.join(tempDir, ".pi", "agents", "skills", "private", "SKILL.md");
 		fs.mkdirSync(path.dirname(skillFile), { recursive: true });
-		fs.writeFileSync(
-			skillFile,
-			"---\ndescription: Private skill\n---\nbody\n",
-			"utf-8",
-		);
+		fs.writeFileSync(skillFile, "---\ndescription: Private skill\n---\nbody\n", "utf-8");
 
-		const created = handleCreate(
-			{
-				config: {
-					name: "Local",
-					description: "Local skills",
-					scope: "project",
-					skills: "private",
-					skillPath: ["./skills", "./skills"],
-				},
-			},
-			ctx,
-		);
+		const created = handleCreate({ config: {
+			name: "Local",
+			description: "Local skills",
+			scope: "project",
+			skills: "private",
+			skillPath: ["./skills", "./skills"],
+		} }, ctx);
 		assert.equal(created.isError, false);
 		assert.doesNotMatch(readText(created), /skills not found/);
 		const filePath = path.join(tempDir, ".pi", "agents", "local.md");
@@ -316,34 +188,21 @@ describe("agent management config parsing", () => {
 		const got = handleManagementAction("get", { agent: "local" }, ctx);
 		assert.match(readText(got), /^Skill paths: \.\/skills$/m);
 
-		const updated = handleUpdate(
-			{ agent: "local", config: { skills: false, skillPath: false } },
-			ctx,
-		);
+		const updated = handleUpdate({ agent: "local", config: { skills: false, skillPath: false } }, ctx);
 		assert.equal(updated.isError, false);
 		content = fs.readFileSync(filePath, "utf-8");
 		assert.doesNotMatch(content, /^skills?:/m);
 		assert.doesNotMatch(content, /^skillPath:/m);
 
-		const invalid = handleUpdate(
-			{ agent: "local", config: { skillPath: ["./skills", 1] } },
-			ctx,
-		);
+		const invalid = handleUpdate({ agent: "local", config: { skillPath: ["./skills", 1] } }, ctx);
 		assert.equal(invalid.isError, true);
 		assert.match(readText(invalid), /config\.skillPath must be/);
 	});
 
 	it("rejects package values that cannot be normalized", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const created = handleCreate(
-			{
-				config: {
-					name: "Scout",
-					package: "!!!",
-					description: "Fast recon",
-					scope: "project",
-				},
-			},
+			{ config: { name: "Scout", package: "!!!", description: "Fast recon", scope: "project" } },
 			ctx,
 		);
 
@@ -352,70 +211,36 @@ describe("agent management config parsing", () => {
 	});
 
 	it("creates and updates packaged chains while preserving packaged step names", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		fs.mkdirSync(path.join(tempDir, ".pi", "agents"), { recursive: true });
-		fs.writeFileSync(
-			path.join(tempDir, ".pi", "agents", "code-analysis.scout.md"),
-			`---
+		fs.writeFileSync(path.join(tempDir, ".pi", "agents", "code-analysis.scout.md"), `---
 name: scout
 package: code-analysis
 description: Fast recon
 ---
 
 Inspect
-`,
-			"utf-8",
-		);
+`, "utf-8");
 
 		const created = handleCreate(
-			{
-				config: {
-					name: "Review Flow",
-					package: "Code Analysis",
-					description: "Review flow",
-					scope: "project",
-					steps: [
-						{
-							agent: "code-analysis.scout",
-							task: "Inspect",
-							toolBudget: { soft: 3, hard: 5, block: ["read"] },
-						},
-					],
-				},
-			},
+			{ config: { name: "Review Flow", package: "Code Analysis", description: "Review flow", scope: "project", steps: [{ agent: "code-analysis.scout", task: "Inspect", toolBudget: { soft: 3, hard: 5, block: ["read"] } }] } },
 			ctx,
 		);
 		assert.equal(created.isError, false);
-		assert.match(
-			readText(created),
-			/Created chain 'code-analysis.review-flow'/,
-		);
-		const filePath = path.join(
-			tempDir,
-			".pi",
-			"chains",
-			"code-analysis.review-flow.chain.md",
-		);
+		assert.match(readText(created), /Created chain 'code-analysis.review-flow'/);
+		const filePath = path.join(tempDir, ".pi", "chains", "code-analysis.review-flow.chain.md");
 		let content = fs.readFileSync(filePath, "utf-8");
 		assert.match(content, /^name: review-flow$/m);
 		assert.match(content, /^package: code-analysis$/m);
 		assert.match(content, /^## code-analysis\.scout$/m);
-		assert.match(
-			content,
-			/^toolBudget: \{"soft":3,"hard":5,"block":\["read"\]\}$/m,
-		);
+		assert.match(content, /^toolBudget: \{"soft":3,"hard":5,"block":\["read"\]\}$/m);
 
 		const updated = handleUpdate(
 			{ chainName: "code-analysis.review-flow", config: { package: false } },
 			ctx,
 		);
 		assert.equal(updated.isError, false);
-		const updatedPath = path.join(
-			tempDir,
-			".pi",
-			"chains",
-			"review-flow.chain.md",
-		);
+		const updatedPath = path.join(tempDir, ".pi", "chains", "review-flow.chain.md");
 		assert.equal(fs.existsSync(filePath), false);
 		content = fs.readFileSync(updatedPath, "utf-8");
 		assert.match(content, /^name: review-flow$/m);
@@ -423,7 +248,7 @@ Inspect
 	});
 
 	it("creates and updates agents with single-agent launch defaults", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const result = handleCreate(
 			{
 				config: {
@@ -440,45 +265,22 @@ Inspect
 		);
 
 		assert.equal(result.isError, false);
-		const filePath = path.join(
-			tempDir,
-			".pi",
-			"agents",
-			"background-reviewer.md",
-		);
+		const filePath = path.join(tempDir, ".pi", "agents", "background-reviewer.md");
 		let content = fs.readFileSync(filePath, "utf-8");
 		assert.match(content, /^async: false$/m);
 		assert.match(content, /^timeoutMs: 120000$/m);
 		assert.match(content, /^turnBudget: \{"maxTurns":8,"graceTurns":2\}$/m);
-		assert.match(
-			content,
-			/^acceptance: \{"level":"none","reason":"lightweight reviewer"\}$/m,
-		);
+		assert.match(content, /^acceptance: \{"level":"none","reason":"lightweight reviewer"\}$/m);
 
-		const got = handleManagementAction(
-			"get",
-			{ agent: "background-reviewer" },
-			ctx,
-		);
+		const got = handleManagementAction("get", { agent: "background-reviewer" }, ctx);
 		assert.equal(got.isError, false);
 		assert.match(readText(got), /Async: false/);
 		assert.match(readText(got), /Timeout: 120000ms/);
 		assert.match(readText(got), /Turn budget: \{"maxTurns":8,"graceTurns":2\}/);
-		assert.match(
-			readText(got),
-			/Acceptance: \{"level":"none","reason":"lightweight reviewer"\}/,
-		);
+		assert.match(readText(got), /Acceptance: \{"level":"none","reason":"lightweight reviewer"\}/);
 
 		const updated = handleUpdate(
-			{
-				agent: "background-reviewer",
-				config: {
-					async: true,
-					timeoutMs: false,
-					turnBudget: false,
-					acceptance: "",
-				},
-			},
+			{ agent: "background-reviewer", config: { async: true, timeoutMs: false, turnBudget: false, acceptance: "" } },
 			ctx,
 		);
 		assert.equal(updated.isError, false);
@@ -507,14 +309,11 @@ Inspect
 					timeoutMs: 0,
 				},
 			},
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 
 		assert.equal(result.isError, true);
-		assert.match(
-			readText(result),
-			/config\.timeoutMs must be a positive integer/,
-		);
+		assert.match(readText(result), /config\.timeoutMs must be a positive integer/);
 
 		const invalidAcceptance = handleCreate(
 			{
@@ -525,58 +324,30 @@ Inspect
 					acceptance: "none",
 				},
 			},
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 		assert.equal(invalidAcceptance.isError, true);
-		assert.match(
-			readText(invalidAcceptance),
-			/config\.acceptance level "none" requires a reason/,
-		);
+		assert.match(readText(invalidAcceptance), /config\.acceptance level "none" requires a reason/);
 	});
 
 	it("creates and updates agents with tool budgets", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const result = handleCreate(
-			{
-				config: {
-					name: "budgeted-reviewer",
-					description: "Review with a budget",
-					scope: "project",
-					toolBudget: { soft: 4, hard: 7, block: ["read", "grep"] },
-				},
-			},
+			{ config: { name: "budgeted-reviewer", description: "Review with a budget", scope: "project", toolBudget: { soft: 4, hard: 7, block: ["read", "grep"] } } },
 			ctx,
 		);
 
 		assert.equal(result.isError, false);
-		const filePath = path.join(
-			tempDir,
-			".pi",
-			"agents",
-			"budgeted-reviewer.md",
-		);
+		const filePath = path.join(tempDir, ".pi", "agents", "budgeted-reviewer.md");
 		let content = fs.readFileSync(filePath, "utf-8");
-		assert.match(
-			content,
-			/^toolBudget: \{"soft":4,"hard":7,"block":\["read","grep"\]\}$/m,
-		);
+		assert.match(content, /^toolBudget: \{"soft":4,"hard":7,"block":\["read","grep"\]\}$/m);
 
-		const got = handleManagementAction(
-			"get",
-			{ agent: "budgeted-reviewer" },
-			ctx,
-		);
+		const got = handleManagementAction("get", { agent: "budgeted-reviewer" }, ctx);
 		assert.equal(got.isError, false);
-		assert.match(
-			readText(got),
-			/Tool budget: \{"soft":4,"hard":7,"block":\["read","grep"\]\}/,
-		);
+		assert.match(readText(got), /Tool budget: \{"soft":4,"hard":7,"block":\["read","grep"\]\}/);
 
 		const updated = handleUpdate(
-			{
-				agent: "budgeted-reviewer",
-				config: { toolBudget: { hard: 3, block: "*" } },
-			},
+			{ agent: "budgeted-reviewer", config: { toolBudget: { hard: 3, block: "*" } } },
 			ctx,
 		);
 		assert.equal(updated.isError, false);
@@ -585,127 +356,55 @@ Inspect
 	});
 
 	it("rejects invalid tool budget management config", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const agentResult = handleCreate(
-			{
-				config: {
-					name: "bad-budget",
-					description: "Bad budget",
-					scope: "project",
-					toolBudget: { soft: 5, hard: 4 },
-				},
-			},
+			{ config: { name: "bad-budget", description: "Bad budget", scope: "project", toolBudget: { soft: 5, hard: 4 } } },
 			ctx,
 		);
 		assert.equal(agentResult.isError, true);
-		assert.match(
-			readText(agentResult),
-			/config\.toolBudget\.soft must be <= config\.toolBudget\.hard/,
-		);
+		assert.match(readText(agentResult), /config\.toolBudget\.soft must be <= config\.toolBudget\.hard/);
 
 		const chainResult = handleCreate(
-			{
-				config: {
-					name: "bad-chain-budget",
-					description: "Bad budget",
-					scope: "project",
-					steps: [{ agent: "reviewer", toolBudget: { hard: 2, block: [] } }],
-				},
-			},
+			{ config: { name: "bad-chain-budget", description: "Bad budget", scope: "project", steps: [{ agent: "reviewer", toolBudget: { hard: 2, block: [] } }] } },
 			ctx,
 		);
 		assert.equal(chainResult.isError, true);
-		assert.match(
-			readText(chainResult),
-			/config\.steps\[0\]\.toolBudget\.block must contain at least one tool name/,
-		);
+		assert.match(readText(chainResult), /config\.steps\[0\]\.toolBudget\.block must contain at least one tool name/);
 	});
 
 	it("creates, updates, reports, clears, and validates acceptance roles", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const created = handleCreate(
-			{
-				config: {
-					name: "explorer",
-					description: "Explore code",
-					scope: "project",
-					acceptanceRole: "read-only",
-				},
-			},
+			{ config: { name: "explorer", description: "Explore code", scope: "project", acceptanceRole: "read-only" } },
 			ctx,
 		);
 		assert.equal(created.isError, false);
 
 		const filePath = path.join(tempDir, ".pi", "agents", "explorer.md");
-		assert.match(
-			fs.readFileSync(filePath, "utf-8"),
-			/^acceptanceRole: read-only$/m,
-		);
-		assert.match(
-			readText(handleManagementAction("get", { agent: "explorer" }, ctx)),
-			/Acceptance role: read-only/,
-		);
+		assert.match(fs.readFileSync(filePath, "utf-8"), /^acceptanceRole: read-only$/m);
+		assert.match(readText(handleManagementAction("get", { agent: "explorer" }, ctx)), /Acceptance role: read-only/);
 
-		const updated = handleUpdate(
-			{ agent: "explorer", config: { acceptanceRole: "writer" } },
-			ctx,
-		);
+		const updated = handleUpdate({ agent: "explorer", config: { acceptanceRole: "writer" } }, ctx);
 		assert.equal(updated.isError, false);
-		assert.match(
-			fs.readFileSync(filePath, "utf-8"),
-			/^acceptanceRole: writer$/m,
-		);
+		assert.match(fs.readFileSync(filePath, "utf-8"), /^acceptanceRole: writer$/m);
 
-		const cleared = handleUpdate(
-			{ agent: "explorer", config: { acceptanceRole: false } },
-			ctx,
-		);
+		const cleared = handleUpdate({ agent: "explorer", config: { acceptanceRole: false } }, ctx);
 		assert.equal(cleared.isError, false);
-		assert.doesNotMatch(
-			fs.readFileSync(filePath, "utf-8"),
-			/^acceptanceRole:/m,
-		);
+		assert.doesNotMatch(fs.readFileSync(filePath, "utf-8"), /^acceptanceRole:/m);
 
-		assert.equal(
-			handleUpdate(
-				{ agent: "explorer", config: { acceptanceRole: "read-only" } },
-				ctx,
-			).isError,
-			false,
-		);
-		assert.equal(
-			handleUpdate({ agent: "explorer", config: { acceptanceRole: "" } }, ctx)
-				.isError,
-			false,
-		);
-		assert.doesNotMatch(
-			fs.readFileSync(filePath, "utf-8"),
-			/^acceptanceRole:/m,
-		);
+		assert.equal(handleUpdate({ agent: "explorer", config: { acceptanceRole: "read-only" } }, ctx).isError, false);
+		assert.equal(handleUpdate({ agent: "explorer", config: { acceptanceRole: "" } }, ctx).isError, false);
+		assert.doesNotMatch(fs.readFileSync(filePath, "utf-8"), /^acceptanceRole:/m);
 
-		const invalid = handleUpdate(
-			{ agent: "explorer", config: { acceptanceRole: "observer" } },
-			ctx,
-		);
+		const invalid = handleUpdate({ agent: "explorer", config: { acceptanceRole: "observer" } }, ctx);
 		assert.equal(invalid.isError, true);
-		assert.match(
-			readText(invalid),
-			/config\.acceptanceRole must be 'read-only', 'writer', or false/,
-		);
+		assert.match(readText(invalid), /config\.acceptanceRole must be 'read-only', 'writer', or false/);
 	});
 
 	it("creates agents with completion guard disabled", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const result = handleCreate(
-			{
-				config: {
-					name: "test-runner",
-					description: "Run tests",
-					scope: "project",
-					tools: "read, grep, bash, ls",
-					completionGuard: false,
-				},
-			},
+			{ config: { name: "test-runner", description: "Run tests", scope: "project", tools: "read, grep, bash, ls", completionGuard: false } },
 			ctx,
 		);
 
@@ -721,15 +420,8 @@ Inspect
 
 	it("rejects non-boolean completion guard config", () => {
 		const result = handleCreate(
-			{
-				config: {
-					name: "test-runner",
-					description: "Run tests",
-					scope: "project",
-					completionGuard: "false",
-				},
-			},
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ config: { name: "test-runner", description: "Run tests", scope: "project", completionGuard: "false" } },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 
 		assert.equal(result.isError, true);
@@ -737,82 +429,46 @@ Inspect
 	});
 
 	it("creates agents with subagent-only extensions", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const result = handleCreate(
-			{
-				config: {
-					name: "child-tool-user",
-					description: "Uses child tools",
-					scope: "project",
-					subagentOnlyExtensions: "./tools/child-only.ts, /opt/pi/child.ts",
-				},
-			},
+			{ config: { name: "child-tool-user", description: "Uses child tools", scope: "project", subagentOnlyExtensions: "./tools/child-only.ts, /opt/pi/child.ts" } },
 			ctx,
 		);
 
 		assert.equal(result.isError, false);
 		const filePath = path.join(tempDir, ".pi", "agents", "child-tool-user.md");
 		const content = fs.readFileSync(filePath, "utf-8");
-		assert.match(
-			content,
-			/^subagentOnlyExtensions: \.\/tools\/child-only\.ts, \/opt\/pi\/child\.ts$/m,
-		);
+		assert.match(content, /^subagentOnlyExtensions: \.\/tools\/child-only\.ts, \/opt\/pi\/child\.ts$/m);
 
-		const got = handleManagementAction(
-			"get",
-			{ agent: "child-tool-user" },
-			ctx,
-		);
+		const got = handleManagementAction("get", { agent: "child-tool-user" }, ctx);
 		assert.equal(got.isError, false);
-		assert.match(
-			readText(got),
-			/Subagent-only extensions: \.\/tools\/child-only\.ts, \/opt\/pi\/child\.ts/,
-		);
+		assert.match(readText(got), /Subagent-only extensions: \.\/tools\/child-only\.ts, \/opt\/pi\/child\.ts/);
 	});
 
 	it("does not serialize settings overrides into custom agent frontmatter during updates", () => {
-		const ctx = {
-			cwd: tempDir,
-			modelRegistry: {
-				getAvailable: () => [
-					{ provider: "anthropic", id: "claude-sonnet-4-6" },
-				],
-			} as unknown as ModelRegistry,
-		};
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [{ provider: "anthropic", id: "claude-sonnet-4-6" }] } };
 		const settingsPath = path.join(tempDir, ".pi", "settings.json");
 		const agentPath = path.join(tempDir, ".pi", "agents", "implementer.md");
 		fs.mkdirSync(path.dirname(agentPath), { recursive: true });
-		fs.writeFileSync(
-			settingsPath,
-			JSON.stringify(
-				{
-					subagents: {
-						agentOverrides: {
-							implementer: {
-								model: "anthropic/claude-sonnet-4-6",
-								systemPromptMode: "append",
-								inheritProjectContext: true,
-								inheritSkills: true,
-							},
-						},
+		fs.writeFileSync(settingsPath, JSON.stringify({
+			subagents: {
+				agentOverrides: {
+					implementer: {
+						model: "anthropic/claude-sonnet-4-6",
+						systemPromptMode: "append",
+						inheritProjectContext: true,
+						inheritSkills: true,
 					},
 				},
-				null,
-				2,
-			),
-			"utf-8",
-		);
-		fs.writeFileSync(
-			agentPath,
-			`---
+			},
+		}, null, 2), "utf-8");
+		fs.writeFileSync(agentPath, `---
 name: implementer
 description: TDD implementer
 ---
 
 Drive the failing test first.
-`,
-			"utf-8",
-		);
+`, "utf-8");
 
 		const got = handleManagementAction("get", { agent: "implementer" }, ctx);
 		assert.equal(got.isError, false);
@@ -835,11 +491,7 @@ Drive the failing test first.
 		assert.doesNotMatch(content, /^inheritProjectContext:/m);
 		assert.doesNotMatch(content, /^inheritSkills:/m);
 
-		const gotAfter = handleManagementAction(
-			"get",
-			{ agent: "implementer" },
-			ctx,
-		);
+		const gotAfter = handleManagementAction("get", { agent: "implementer" }, ctx);
 		assert.equal(gotAfter.isError, false);
 		const afterText = readText(gotAfter);
 		assert.match(afterText, /Model: anthropic\/claude-sonnet-4-6/);
@@ -849,36 +501,26 @@ Drive the failing test first.
 	});
 
 	it("preserves explicit default-like frontmatter that blocks settings overrides during updates", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		const settingsPath = path.join(tempDir, ".pi", "settings.json");
 		const agentPath = path.join(tempDir, ".pi", "agents", "implementer.md");
 		fs.mkdirSync(path.dirname(agentPath), { recursive: true });
-		fs.writeFileSync(
-			settingsPath,
-			JSON.stringify(
-				{
-					subagents: {
-						agentOverrides: {
-							implementer: {
-								thinking: "high",
-								fallbackModels: ["openai/gpt-5-mini"],
-								tools: ["bash"],
-								skills: ["override-skill"],
-								defaultContext: "fork",
-								completionGuard: false,
-								toolBudget: { hard: 3 },
-							},
-						},
+		fs.writeFileSync(settingsPath, JSON.stringify({
+			subagents: {
+				agentOverrides: {
+					implementer: {
+						thinking: "high",
+						fallbackModels: ["openai/gpt-5-mini"],
+						tools: ["bash"],
+						skills: ["override-skill"],
+						defaultContext: "fork",
+						completionGuard: false,
+						toolBudget: { hard: 3 },
 					},
 				},
-				null,
-				2,
-			),
-			"utf-8",
-		);
-		fs.writeFileSync(
-			agentPath,
-			`---
+			},
+		}, null, 2), "utf-8");
+		fs.writeFileSync(agentPath, `---
 name: implementer
 description: TDD implementer
 fallbackModels:
@@ -891,9 +533,7 @@ toolBudget:
 ---
 
 Drive the failing test first.
-`,
-			"utf-8",
-		);
+`, "utf-8");
 
 		const got = handleManagementAction("get", { agent: "implementer" }, ctx);
 		assert.equal(got.isError, false);
@@ -917,11 +557,7 @@ Drive the failing test first.
 		assert.match(content, /^completionGuard: true$/m);
 		assert.match(content, /^toolBudget: ?$/m);
 
-		const gotAfter = handleManagementAction(
-			"get",
-			{ agent: "implementer" },
-			ctx,
-		);
+		const gotAfter = handleManagementAction("get", { agent: "implementer" }, ctx);
 		assert.equal(gotAfter.isError, false);
 		const afterText = readText(gotAfter);
 		assert.match(afterText, /Thinking: off/);
@@ -929,155 +565,73 @@ Drive the failing test first.
 	});
 
 	it("updates JSON chain descriptions without rewriting them as markdown", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
-		const chainPath = path.join(
-			tempDir,
-			".pi",
-			"chains",
-			"dynamic-review.chain.json",
-		);
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const chainPath = path.join(tempDir, ".pi", "chains", "dynamic-review.chain.json");
 		fs.mkdirSync(path.dirname(chainPath), { recursive: true });
-		fs.writeFileSync(
-			chainPath,
-			JSON.stringify({
-				name: "dynamic-review",
-				description: "Review dynamic targets",
-				chain: [
-					{
-						agent: "scout",
-						task: "Return targets",
-						as: "targets",
-						outputSchema: { type: "object" },
-					},
-					{
-						expand: {
-							from: { output: "targets", path: "/items" },
-							item: "target",
-							key: "/path",
-							maxItems: 4,
-						},
-						parallel: {
-							agent: "reviewer",
-							task: "Review {target.path}",
-							outputSchema: { type: "object" },
-						},
-						collect: { as: "reviews" },
-					},
-				],
-			}),
-			"utf-8",
-		);
+		fs.writeFileSync(chainPath, JSON.stringify({
+			name: "dynamic-review",
+			description: "Review dynamic targets",
+			chain: [
+				{ agent: "scout", task: "Return targets", as: "targets", outputSchema: { type: "object" } },
+				{
+					expand: { from: { output: "targets", path: "/items" }, item: "target", key: "/path", maxItems: 4 },
+					parallel: { agent: "reviewer", task: "Review {target.path}", outputSchema: { type: "object" } },
+					collect: { as: "reviews" },
+				},
+			],
+		}), "utf-8");
 
-		const updated = handleUpdate(
-			{
-				chainName: "dynamic-review",
-				config: { description: "Updated dynamic review" },
-			},
-			ctx,
-		);
+		const updated = handleUpdate({ chainName: "dynamic-review", config: { description: "Updated dynamic review" } }, ctx);
 
 		assert.equal(updated.isError, false);
 		const content = fs.readFileSync(chainPath, "utf-8");
 		assert.doesNotMatch(content, /^---/);
-		const parsed = JSON.parse(content) as {
-			description?: string;
-			chain?: Array<{ collect?: { as?: string } }>;
-		};
+		const parsed = JSON.parse(content) as { description?: string; chain?: Array<{ collect?: { as?: string } }> };
 		assert.equal(parsed.description, "Updated dynamic review");
 		assert.equal(parsed.chain?.[1]?.collect?.as, "reviews");
 	});
 
 	it("renames and repackages JSON chains while preserving JSON format and extension", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
-		const chainPath = path.join(
-			tempDir,
-			".pi",
-			"chains",
-			"dynamic-review.chain.json",
-		);
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+		const chainPath = path.join(tempDir, ".pi", "chains", "dynamic-review.chain.json");
 		fs.mkdirSync(path.dirname(chainPath), { recursive: true });
-		fs.writeFileSync(
-			chainPath,
-			JSON.stringify({
-				name: "dynamic-review",
-				description: "Review dynamic targets",
-				chain: [{ agent: "scout", task: "Return targets" }],
-			}),
-			"utf-8",
-		);
+		fs.writeFileSync(chainPath, JSON.stringify({
+			name: "dynamic-review",
+			description: "Review dynamic targets",
+			chain: [{ agent: "scout", task: "Return targets" }],
+		}), "utf-8");
 
-		const updated = handleUpdate(
-			{
-				chainName: "dynamic-review",
-				config: { name: "Review Flow", package: "Code Analysis" },
-			},
-			ctx,
-		);
+		const updated = handleUpdate({ chainName: "dynamic-review", config: { name: "Review Flow", package: "Code Analysis" } }, ctx);
 
 		assert.equal(updated.isError, false);
-		const updatedPath = path.join(
-			tempDir,
-			".pi",
-			"chains",
-			"code-analysis.review-flow.chain.json",
-		);
+		const updatedPath = path.join(tempDir, ".pi", "chains", "code-analysis.review-flow.chain.json");
 		assert.equal(fs.existsSync(chainPath), false);
 		const content = fs.readFileSync(updatedPath, "utf-8");
 		assert.doesNotMatch(content, /^---/);
-		const parsed = JSON.parse(content) as {
-			name?: string;
-			package?: string;
-			chain?: Array<{ agent?: string }>;
-		};
+		const parsed = JSON.parse(content) as { name?: string; package?: string; chain?: Array<{ agent?: string }> };
 		assert.equal(parsed.name, "review-flow");
 		assert.equal(parsed.package, "code-analysis");
 		assert.equal(parsed.chain?.[0]?.agent, "scout");
 	});
 
 	it("gets dynamic JSON chain details and lists invalid chain diagnostics", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		fs.mkdirSync(path.join(tempDir, ".pi", "chains"), { recursive: true });
-		fs.writeFileSync(
-			path.join(tempDir, ".pi", "chains", "dynamic-review.chain.json"),
-			JSON.stringify({
-				name: "dynamic-review",
-				description: "Review dynamic targets",
-				chain: [
-					{
-						agent: "scout",
-						task: "Return targets",
-						as: "targets",
-						outputSchema: { type: "object" },
-					},
-					{
-						expand: {
-							from: { output: "targets", path: "/items" },
-							item: "target",
-							key: "/path",
-							maxItems: 4,
-						},
-						parallel: {
-							agent: "reviewer",
-							task: "Review {target.path}",
-							outputSchema: { type: "object" },
-						},
-						collect: { as: "reviews" },
-					},
-				],
-			}),
-			"utf-8",
-		);
-		fs.writeFileSync(
-			path.join(tempDir, ".pi", "chains", "broken.chain.json"),
-			"{",
-			"utf-8",
-		);
+		fs.writeFileSync(path.join(tempDir, ".pi", "chains", "dynamic-review.chain.json"), JSON.stringify({
+			name: "dynamic-review",
+			description: "Review dynamic targets",
+			chain: [
+				{ agent: "scout", task: "Return targets", as: "targets", outputSchema: { type: "object" } },
+				{
+					expand: { from: { output: "targets", path: "/items" }, item: "target", key: "/path", maxItems: 4 },
+					parallel: { agent: "reviewer", task: "Review {target.path}", outputSchema: { type: "object" } },
+					collect: { as: "reviews" },
+				},
+			],
+		}), "utf-8");
+		fs.writeFileSync(path.join(tempDir, ".pi", "chains", "broken.chain.json"), "{", "utf-8");
 
-		const got = handleManagementAction(
-			"get",
-			{ chainName: "dynamic-review" },
-			ctx,
-		);
+		const got = handleManagementAction("get", { chainName: "dynamic-review" }, ctx);
 		assert.equal(got.isError, false);
 		assert.match(readText(got), /Dynamic fanout -> reviews/);
 		assert.match(readText(got), /Expand: targets\/items/);
@@ -1090,15 +644,7 @@ Drive the failing test first.
 		assert.match(readText(listed), /Invalid JSON chain/);
 	});
 
-	it("reports runtime-loaded model mappings from current session state", () => {
-		const agentsDir = path.join(tempDir, "agent-home", "agents");
-		fs.mkdirSync(agentsDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(agentsDir, "scout.md"),
-			"---\nname: scout\ndescription: Scout\n---\n\nScout.\n",
-			"utf-8",
-		);
-
+	it("reports builtin runtime-loaded model mappings from current session state", () => {
 		const ctx = {
 			cwd: tempDir,
 			modelRegistry: {
@@ -1106,46 +652,28 @@ Drive the failing test first.
 					{ provider: "openai", id: "gpt-5-mini" },
 					{ provider: "anthropic", id: "claude-sonnet-4" },
 				],
-			} as unknown as ModelRegistry,
+			},
 			model: { provider: "openai", id: "gpt-5-mini" },
 		};
 
-		const result = handleManagementAction("models", {}, ctx as Parameters<typeof handleManagementAction>[2]);
+		const result = handleManagementAction("models", {}, ctx);
 		const text = readText(result);
 		assert.equal(result.isError, false);
-		assert.match(text, /^Agent model mappings/m);
+		assert.match(text, /^Builtin subagent models/m);
 		assert.match(text, /Current session model:\n  openai\/gpt-5-mini/);
-		assert.match(
-			text,
-			/(?:^|\n)scout\n  model:\n    openai\/gpt-5-mini\n  source: inherits current session model(?:\n|$)/,
-		);
+		assert.match(text, /(?:^|\n)scout\n  model:\n    openai\/gpt-5-mini\n  source: inherits current session model(?:\n|$)/);
 	});
 
-	it("reports override source and disabled state in runtime model mappings", () => {
+	it("reports override source and disabled builtin state in runtime model mappings", () => {
 		const projectSettingsPath = path.join(tempDir, ".pi", "settings.json");
 		fs.mkdirSync(path.dirname(projectSettingsPath), { recursive: true });
-		const projectAgentsDir = path.join(tempDir, ".pi", "agents");
-		fs.mkdirSync(projectAgentsDir, { recursive: true });
-		fs.writeFileSync(
-			path.join(projectAgentsDir, "reviewer.md"),
-			"---\nname: reviewer\ndescription: Review\n---\n\nReview.\n",
-			"utf-8",
-		);
-		fs.writeFileSync(
-			projectSettingsPath,
-			JSON.stringify(
-				{
-					subagents: {
-						agentOverrides: {
-							reviewer: { model: "claude-sonnet-4", disabled: true },
-						},
-					},
+		fs.writeFileSync(projectSettingsPath, JSON.stringify({
+			subagents: {
+				agentOverrides: {
+					reviewer: { model: "claude-sonnet-4", disabled: true },
 				},
-				null,
-				2,
-			),
-			"utf-8",
-		);
+			},
+		}, null, 2), "utf-8");
 
 		const ctx = {
 			cwd: tempDir,
@@ -1154,49 +682,36 @@ Drive the failing test first.
 					{ provider: "openai", id: "gpt-5-mini" },
 					{ provider: "anthropic", id: "claude-sonnet-4" },
 				],
-			} as unknown as ModelRegistry,
+			},
 			model: { provider: "openai", id: "gpt-5-mini" },
 		};
 
-		const result = handleManagementAction("models", { agent: "reviewer" }, ctx as Parameters<typeof handleManagementAction>[2]);
+		const result = handleManagementAction("models", { agent: "reviewer" }, ctx);
 		const text = readText(result);
 		assert.equal(result.isError, false);
-		assert.match(text, /^Agent model mapping/m);
+		assert.match(text, /^Builtin subagent model/m);
 		assert.match(text, /Agent: reviewer/);
 		assert.match(text, /Effective model:\n  anthropic\/claude-sonnet-4/);
 		assert.match(text, /Source: project override/);
 		assert.match(text, /Requested model setting:\n  claude-sonnet-4/);
 		assert.match(text, /Disabled: true/);
-		assert.match(
-			text.replaceAll("\\", "/"),
-			/Override file:\n  .*\.pi\/settings\.json/,
-		);
+		assert.match(text.replaceAll("\\", "/"), /Override file:\n  .*\.pi\/settings\.json/);
 	});
 
-	it("rejects unknown agent filters for runtime model mappings", () => {
-		const result = handleManagementAction(
-			"models",
-			{ agent: "not-a-builtin" },
-			{
-				cwd: tempDir,
-				modelRegistry: mockModelRegistry,
-			},
-		);
+	it("rejects unknown builtin filters for runtime model mappings", () => {
+		const result = handleManagementAction("models", { agent: "not-a-builtin" }, {
+			cwd: tempDir,
+			modelRegistry: { getAvailable: () => [] },
+		});
 
 		assert.equal(result.isError, true);
-		assert.match(readText(result), /Agent 'not-a-builtin' not found/);
+		assert.match(readText(result), /Builtin agent 'not-a-builtin' not found/);
 	});
 
-	it("creates delegate with its prompt defaults", () => {
+	it("creates delegate with its builtin prompt defaults", () => {
 		const result = handleCreate(
-			{
-				config: {
-					name: "delegate",
-					description: "Delegate helper",
-					scope: "project",
-				},
-			},
-			{ cwd: tempDir, modelRegistry: mockModelRegistry },
+			{ config: { name: "delegate", description: "Delegate helper", scope: "project" } },
+			{ cwd: tempDir, modelRegistry: { getAvailable: () => [] } },
 		);
 
 		assert.equal(result.isError, false);
@@ -1208,40 +723,25 @@ Drive the failing test first.
 	});
 
 	it("lists proactive skill subagent suggestions from repeated configured skill use", () => {
-		const ctx = { cwd: tempDir, modelRegistry: mockModelRegistry };
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
 		fs.mkdirSync(path.join(tempDir, ".pi", "agents"), { recursive: true });
-		fs.mkdirSync(path.join(tempDir, ".pi", "skills", "deslop"), {
-			recursive: true,
-		});
-		fs.writeFileSync(
-			path.join(tempDir, ".pi", "skills", "deslop", "SKILL.md"),
-			`---
+		fs.mkdirSync(path.join(tempDir, ".pi", "skills", "deslop"), { recursive: true });
+		fs.writeFileSync(path.join(tempDir, ".pi", "skills", "deslop", "SKILL.md"), `---
 description: Cleanup review.
 ---
 
 Review for cleanup.
-`,
-			"utf-8",
-		);
+`, "utf-8");
 		for (const name of ["cleanup-a", "cleanup-b"]) {
-			fs.writeFileSync(
-				path.join(tempDir, ".pi", "agents", `${name}.md`),
-				`---
+			fs.writeFileSync(path.join(tempDir, ".pi", "agents", `${name}.md`), `---
 name: ${name}
 description: Cleanup ${name}
 skills: deslop
 ---
 
 Inspect cleanup.
-`,
-				"utf-8",
-			);
+`, "utf-8");
 		}
-		fs.writeFileSync(
-			path.join(tempDir, ".pi", "agents", "reviewer.md"),
-			"---\nname: reviewer\ndescription: Reviews cleanup\n---\n\nReview.\n",
-			"utf-8",
-		);
 
 		const listed = handleManagementAction("list", {}, ctx);
 		const text = readText(listed);
@@ -1253,37 +753,25 @@ Inspect cleanup.
 	it("can disable proactive skill subagent suggestions in config", () => {
 		const ctx = {
 			cwd: tempDir,
-			modelRegistry: mockModelRegistry,
-			config: { proactiveSkillSubagents: false } as unknown as ExtensionConfig,
+			modelRegistry: { getAvailable: () => [] },
+			config: { proactiveSkillSubagents: false },
 		};
 		fs.mkdirSync(path.join(tempDir, ".pi", "agents"), { recursive: true });
-		fs.mkdirSync(path.join(tempDir, ".pi", "skills", "deslop"), {
-			recursive: true,
-		});
-		fs.writeFileSync(
-			path.join(tempDir, ".pi", "skills", "deslop", "SKILL.md"),
-			"Review for cleanup.\n",
-			"utf-8",
-		);
+		fs.mkdirSync(path.join(tempDir, ".pi", "skills", "deslop"), { recursive: true });
+		fs.writeFileSync(path.join(tempDir, ".pi", "skills", "deslop", "SKILL.md"), "Review for cleanup.\n", "utf-8");
 		for (const name of ["cleanup-a", "cleanup-b"]) {
-			fs.writeFileSync(
-				path.join(tempDir, ".pi", "agents", `${name}.md`),
-				`---
+			fs.writeFileSync(path.join(tempDir, ".pi", "agents", `${name}.md`), `---
 name: ${name}
 description: Cleanup ${name}
 skills: deslop
 ---
 
 Inspect cleanup.
-`,
-				"utf-8",
-			);
+`, "utf-8");
 		}
 
 		const listed = handleManagementAction("list", {}, ctx);
-		assert.doesNotMatch(
-			readText(listed),
-			/Proactive skill subagent suggestions:/,
-		);
+		assert.doesNotMatch(readText(listed), /Proactive skill subagent suggestions:/);
 	});
+
 });

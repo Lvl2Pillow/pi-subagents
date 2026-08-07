@@ -1,7 +1,7 @@
 import { Agent, type AgentTool, type StreamFn, type ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createReadOnlyTools, convertToLlm, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 import { resolveModelCandidate } from "../runs/shared/model-fallback.ts";
 import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS, toModelInfo } from "../shared/model-info.ts";
@@ -32,7 +32,7 @@ type WatchdogWarnParams = Static<typeof WatchdogWarnParams>;
 
 type WatchdogContextProvider = ExtensionContext | (() => ExtensionContext | undefined);
 
-type RegistryModel = Model<Api>;
+type RegistryModel = Model<any>;
 
 interface WatchdogReviewAuth {
 	apiKey?: string;
@@ -92,7 +92,10 @@ function resolveReviewThinking(input: {
 function resolveConfiguredModel(ctx: ExtensionContext, rawModel: string): { model: RegistryModel; modelString: string } {
 	const availableModels = ctx.modelRegistry.getAvailable().map(toModelInfo);
 	const preferredProvider = typeof ctx.model?.provider === "string" ? ctx.model.provider : undefined;
-	const resolved = resolveModelCandidate(rawModel, availableModels, preferredProvider) ?? "";
+	const resolved = resolveModelCandidate(rawModel, availableModels, preferredProvider);
+	if (!resolved) {
+		throw new Error(`Configured watchdog model '${rawModel}' did not match exactly one authenticated available model. Use provider/model or configure credentials for the intended provider.`);
+	}
 	const { baseModel } = splitKnownThinkingSuffix(resolved);
 	const named = splitProviderModel(baseModel);
 	if (!named) {
@@ -104,12 +107,12 @@ function resolveConfiguredModel(ctx: ExtensionContext, rawModel: string): { mode
 	if (!ctx.modelRegistry.hasConfiguredAuth(model)) {
 		throw new Error(`Configured watchdog model '${baseModel}' is not authenticated. Configure credentials for provider '${named.provider}' or choose an authenticated model.`);
 	}
-	return { model, modelString: resolved as string };
+	return { model, modelString: resolved };
 }
 
 async function resolveReviewAuth(ctx: ExtensionContext, model: RegistryModel): Promise<WatchdogReviewAuth> {
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok) throw new Error(`Watchdog model auth failed for ${fullModelId(model)}: ${"error" in auth ? auth.error : "unknown auth failure"}`);
+	if (auth.ok === false) throw new Error(`Watchdog model auth failed for ${fullModelId(model)}: ${auth.error}`);
 	return {
 		...(auth.apiKey ? { apiKey: auth.apiKey } : {}),
 		...(auth.headers ? { headers: auth.headers } : {}),
@@ -138,7 +141,7 @@ export async function resolveWatchdogReviewModel(
 		};
 	}
 
-	const currentModel = ctx.model as RegistryModel;
+	const currentModel = ctx.model;
 	if (!currentModel) {
 		throw new Error("Main watchdog review cannot run because the current Pi session model is unavailable and subagents.watchdog.main.model is not configured.");
 	}

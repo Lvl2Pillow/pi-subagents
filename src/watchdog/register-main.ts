@@ -174,14 +174,14 @@ function resolveModelCommandValue(ctx: ExtensionCommandContext, raw: string): { 
 	if (!value) throw new Error("Expected a model, 'recommended', or 'inherit'.");
 	if (value === "inherit") return { model: null, thinking: null, description: "current session model and thinking" };
 	if (value === "recommended") {
-		const recommendation = recommendStrongWatchdogModel(ctx);
+		const recommendation = recommendStrongWatchdogModel(ctx as ExtensionContext);
 		return {
 			model: recommendation.model,
 			thinking: recommendation.thinking,
 			description: `${recommendation.model}:${recommendation.thinking} (${recommendation.label})`,
 		};
 	}
-	const resolved = resolveWatchdogModelInput(ctx, value);
+	const resolved = resolveWatchdogModelInput(ctx as ExtensionContext, value);
 	return {
 		model: resolved.model,
 		thinking: resolved.thinking ?? null,
@@ -190,10 +190,10 @@ function resolveModelCommandValue(ctx: ExtensionCommandContext, raw: string): { 
 }
 
 function buildRecommendationText(ctx: ExtensionCommandContext): string {
-	const recommendation = recommendStrongWatchdogModel(ctx);
+	const recommendation = recommendStrongWatchdogModel(ctx as ExtensionContext);
 	return [
 		"Subagent watchdog recommended model",
-		`Current session: ${currentSessionModelLine(ctx)}`,
+		`Current session: ${currentSessionModelLine(ctx as ExtensionContext)}`,
 		`Recommended: ${recommendation.model}:${recommendation.thinking}`,
 		`Reason: ${recommendation.reason}`,
 		"",
@@ -212,15 +212,15 @@ function buildCheckText(runtime: MainWatchdogRuntime, ctx: ExtensionCommandConte
 	}
 	const lines = ["Subagent watchdog config check", "", "Config: ok"];
 	if (snapshot.config.main.model) {
-		const resolved = resolveWatchdogModelInput(ctx, snapshot.config.main.model);
+		const resolved = resolveWatchdogModelInput(ctx as ExtensionContext, snapshot.config.main.model);
 		lines.push(`Main model: ${resolved.model} auth ok`);
 	} else {
-		lines.push(`Main model: ${currentSessionModelLine(ctx)}`);
+		lines.push(`Main model: ${currentSessionModelLine(ctx as ExtensionContext)}`);
 	}
-	lines.push(`Main thinking: ${mainThinkingLine(snapshot, ctx)}`);
+	lines.push(`Main thinking: ${mainThinkingLine(snapshot, ctx as ExtensionContext)}`);
 	lines.push(lspLine(snapshot));
 	try {
-		const recommendation = recommendStrongWatchdogModel(ctx);
+		const recommendation = recommendStrongWatchdogModel(ctx as ExtensionContext);
 		lines.push(`Recommended strong watchdog: ${recommendation.model}:${recommendation.thinking}`);
 	} catch (error) {
 		lines.push(`Recommended strong watchdog: unavailable (${messageFromError(error)})`);
@@ -390,7 +390,7 @@ export function registerMainWatchdog(pi: ExtensionAPI, options: RegisterMainWatc
 	});
 
 	pi.registerMessageRenderer<WatchdogWarningDetails>(SUBAGENT_WATCHDOG_WARNING_TYPE, (message, renderOptions, theme) => {
-		const details = message.details;
+		const details = message.details as WatchdogWarningDetails | undefined;
 		if (!details?.summary || !details.evidence || !details.recommendedAction) {
 			const content = typeof message.content === "string"
 				? message.content

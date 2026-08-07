@@ -14,16 +14,23 @@ Saved chain files may still be discovered for management and existing durable ru
 Precedence is by parsed runtime name:
 1. project scope
 2. user scope
-3. package scope
+3. builtin agents
+
+Project settings resolve from the nearest parent directory containing `.pi` or `.agents` by default. In monorepos or git worktrees where an incidental nested `.pi` directory should not shadow the repository config, set `subagents.projectRootResolution: "git-root"` in the repository root `.pi/settings.json`; a nested project can opt back with `"nearest"` in its own settings.
 
 ## Running Subagents
+
+### External CLI profiles
+
+An agent may set `runner.type: external-cli` with a non-empty `command`, optional string `args`, and `promptDelivery: stdin` (the default). The command runs with `shell: false`, inherits the resolved cwd and environment, and receives the combined agent instructions and task through stdin. It must already be installed; pi-subagents adds no CLI dependency.
+
+External CLI profiles are async-only and one-shot. They support lifecycle artifacts, stdout/stderr logs, timeout, and stop. Full stdout and stderr are retained in their log files, while the final stdout response and stderr error kept in memory are each limited to their last 64 KiB. They do not support foreground/clarify, steer/resume/interrupt-as-pause, Pi models/tools/extensions/skills, tool or turn budgets, structured output, nested subagents, fallbacks, or sessions.
 
 ### Single agent
 
 ```typescript
 subagent({
-  agent: "oracle",
-  task: "Review my current direction and challenge assumptions."
+  workflowScript: `return runs.run("oracle-check", { agent: "oracle", task: "Review my current direction and challenge assumptions." })`
 })
 ```
 
@@ -31,9 +38,7 @@ subagent({
 
 ```typescript
 subagent({
-  agent: "oracle",
-  task: "Review my current direction and challenge assumptions.",
-  context: "fork"
+  workflowScript: `return runs.run("oracle-check", { agent: "oracle", task: "Review my current direction and challenge assumptions.", context: "fork" })`
 })
 ```
 
@@ -48,7 +53,7 @@ its resolved launch context as `[fresh]` or `[fork]`. Aggregate headers show
 
 ### Scripted workflows
 
-`workflowScript` is the sole public orchestration surface. Use `runs.run(key, { agent, task, ... })` for one child, `runs.all([...])` for parallel children, and ordinary JavaScript for sequence, branching, filtering, retries, and aggregation.
+`workflowScript` is the sole public execution surface. Use `runs.run(key, { agent, task, ... })` for one child, `runs.all([...])` for parallel children, and ordinary JavaScript for sequence, branching, filtering, retries, and aggregation. Scripts are ordinary JavaScript statement bodies, so use an explicit return such as `workflowScript: "return runs.run('main', { agent: 'worker', task: '...' })"` for a useful one-child result. Prefer a single scripted workflow whenever the parent is starting a coordinated wave, such as multiple reviews, review plus gate monitor, worker then monitor setup, cross-repo prep lanes, or a fanout that the parent will consume together.
 
 ```js
 subagent({
@@ -63,7 +68,7 @@ subagent({
 })
 ```
 
-Scripts run in a timed worker with only `runs.run`, `runs.all`, `runs.status`, `runs.ref/refs`, `emit`, captured `console`, and standard JavaScript. Stable keys are required. Child launches follow ordinary single-agent execution controls.
+Scripts run in a timed worker with only `runs.run`, `runs.all`, `runs.status`, `runs.ref/refs`, `emit`, captured `console`, and standard JavaScript. Stable keys are required. Child launches follow ordinary single-agent execution controls. Give each child a distinct decision and output path when reports must outlive the workflow, then consume the aggregate workflow result before opening individual reports.
 
 ### Async/background
 
@@ -79,25 +84,25 @@ In an interactive chat, normally return control when ready to yield and let Pi w
 
 ```typescript
 subagent({
-  agent: "worker",
-  task: "Run the full test suite",
+  workflowScript: `return runs.run("main", { agent: "worker", task: "Run the full test suite" })`,
   async: true
 })
 ```
 
-File-only output mode works for async single runs and workflowScript child launches. Use distinct absolute or durable output paths when later script steps need stable references.
+File-only output mode works for workflowScript child launches. Use distinct absolute or durable output paths when later script steps need stable references. For cross-codebase waves, include the repo slug or lane key in each output path so reports from different repositories cannot collide.
 
 For review fanout where the parent continues a local audit:
 
 ```typescript
 const run = subagent({
-  agent: "reviewer",
-  task: "Review the current diff for correctness issues. Do not edit files.",
+  workflowScript: `return runs.run("correctness", { agent: "reviewer", task: "Review the current diff for correctness issues. Do not edit files." })`,
   async: true,
   context: "fresh"
 })
 // Continue local inspection, then later call status with the returned id.
 ```
+
+While children run, the persistent FleetView and the collapsed foreground tool-result card show live per-child detail: resolved model and thinking level, `[fresh]`/`[fork]` context, tool/token/elapsed counters, and current activity. The collapsed running card also prints the configured expand-key hint ("Press … for live detail"); expanding it shows nested children, recent tools, and recent output. Model badges appear once the child's model resolves at first attempt start. `/subagents-fleet` opens the live fleet inspector, which also has per-child controls (`s` steer, `D` stop with confirmation). When optional Herdr 0.7.5+ is available, `H` opens a raw inspector dashboard for the selected active async child; this mirrors artifacts rather than attaching to the headless child. Use it for confusing or long-running active async work when the human wants a dedicated visual pane or FleetView is insufficient, not for routine headless runs.
 
 Inspect async runs with `subagent({ action: "status", id: "..." })` or `subagent({ action: "status" })` for active runs. Use `subagent({ action: "status", view: "fleet" })` when supervising several active foreground/background runs and `subagent({ action: "status", id: "...", view: "transcript", index: 0 })` when you need the latest child output without digging through artifacts. If a delegated fanout child launches nested runs, the parent status view shows them as a tree and you can target a nested run directly with its nested id.
 
@@ -141,13 +146,19 @@ Use diagnostics when setup or child startup looks wrong:
 subagent({ action: "doctor" })
 ```
 
+### External terminal work
+
+Use native `subagent` runs for unattended implementation, review, and gate work that needs managed isolation, durable artifacts, and process controls. Use `interactive_shell` for visible terminal work, alternate CLIs, trust prompts, and recovery.
+
+A cooperating terminal runtime can register read-only external records through `pi-subagents/external-runs`. Records include the source, session, state, optional report path, and completion reason. They are observations only: pi-subagents does not start, stop, steer, or otherwise own the foreign process. Run unattended raw terminal agents in an explicit isolated cwd or worktree; do not use a live project checkout as disposable review space.
+
 ### Scheduled subagent runs
 
 Schedules are durable project records under `.pi-subagents/schedules/`. They are enabled by default; set `{ "scheduledRuns": { "enabled": false } }` in `~/.pi/agent/extensions/subagent/config.json` to disable them. Only schedule explicit work the user asked for.
 
 ```typescript
 // One-shot reviewer
-subagent({ action: "schedule.create", id: "evening-review", name: "Evening review", at: "+30m", agent: "reviewer", task: "Review the diff." })
+subagent({ action: "schedule.create", id: "evening-review", name: "Evening review", at: "+30m", workflowScript: "return runs.run('main', { agent: 'reviewer', task: 'Review the diff.' })" })
 
 // Fixed recurring workflow
 subagent({ action: "schedule.create", id: "backlog", every: "6h", catchUp: "latest", workflowScript: "..." })
@@ -162,9 +173,9 @@ subagent({ action: "schedule.run-due" })
 subagent({ action: "schedule.delete", id: "backlog" })
 ```
 
-`schedule.create` accepts exactly one target (`workflowScript`, or `agent` with optional `task`) and exactly one trigger (`at`, or a fixed `every` interval using `m`, `h`, `d`, or `w`). Runs always launch async with fresh context and no automatic mission; mission attachment is deferred from this first slice. `overlap` is currently `skip`; `catchUp` supports `latest` and `none`. `schedule.run-due` is the headless external-launcher seam. Calendar recurrence, cron, and the schedule inspector are deferred from this first safe slice. Definitions, bounded history, append-only events, and per-run receipts remain project-scoped across Pi sessions.
+`schedule.create` accepts exactly one target, `workflowScript`, and exactly one trigger (`at`, or a fixed `every` interval using `m`, `h`, `d`, or `w`). Runs always launch async with fresh context and no automatic mission; mission attachment is deferred from this first slice. `overlap` is currently `skip`; `catchUp` supports `latest` and `none`. `schedule.run-due` is the headless external-launcher seam. Calendar recurrence, cron, and the schedule inspector are deferred from this first safe slice. Definitions, bounded history, append-only events, and per-run receipts remain project-scoped across Pi sessions.
 
-Humans can use `/subagents-doctor` for the same read-only report. It checks runtime paths, discovery counts, async support, current session context, and supervisor channel state.
+Humans can use `/subagents-doctor` for the same read-only report. It checks runtime paths, discovery counts, async support, current session context, and intercom bridge state.
 
 ### Subagent control
 
@@ -191,16 +202,18 @@ Per-run control thresholds can be overridden when a task legitimately runs witho
 
 ```typescript
 subagent({
-  agent: "worker",
-  task: "Run the slow migration test suite",
-  control: {
-    needsAttentionAfterMs: 300000,
-    notifyOn: ["needs_attention"]
-  }
+  workflowScript: `return runs.run("slow-tests", {
+    agent: "worker",
+    task: "Run the slow migration test suite",
+    control: {
+      needsAttentionAfterMs: 300000,
+      notifyOn: ["needs_attention"]
+    }
+  })`
 })
 ```
 
-If the run already has an active supervisor bridge target, needs-attention notifications can also prepare a compact supervisor nudge for the orchestrator. When a child route is available, the nudge tells the orchestrator which agent needs attention. Do not invent a target or ask the child to self-report when no bridge exists.
+If the run already has an active intercom bridge target, needs-attention notifications can also prepare a compact intercom ping for the orchestrator. When a child route is available, the ping tells the orchestrator which agent needs attention and includes the exact `intercom({ action: "send", to: "..." })` target for a nudge. Do not invent a target or ask the child to self-report when no bridge exists.
 
 Steering is acknowledged delivery, not a send attempt or model-compliance signal:
 
@@ -250,21 +263,39 @@ subagent({ action: "watchdog.check" })
 when the user asked. Use ordinary fresh-context `reviewer` fanout for planned review
 waves; enable the watchdog when you want an automatic second pass on real edits.
 
-## Clarify TUI
+## Missions and cross-project routing
 
-Single and parallel runs support a clarification TUI when you want to preview or
-edit parameters before launch:
+Missions are the durable orchestration layer. Use this noun map:
+
+- **Project/codebase** — where work happens.
+- **Mission** — why delegated work exists and how to recover it later.
+- **Run** — one actual subagent execution.
+- **Receipt** — proof or a link for an external outcome, such as a PR, CI check, deployment, or release.
+
+Ordinary launches with a task create a mission by default, so substantial delegated work has a persisted goal, status, run links, decisions, artifacts, and delivery receipts that survive compaction or a new parent chat. Automatic persistence failures leave the run intact and set `details.missionWarning`; explicit `missionId` or `mission` remains strict before launch. Human receipts end with a mission id/status line, while structured JSON text remains untouched and `details.missionId` is authoritative. Pass `missionId` to attach an existing mission, use `mission: { title, goal?, labels? }` to control the auto-created record, pass `mission: false` for intentionally ephemeral work, or set `missions.enabled: false` to opt out globally.
+
+Use `mission.update` while work runs to record decisions, artifacts, labels, summaries, or delivery receipts. A receipt records a pull request, CI, deployment, or release link with a concise status; it does not authorize or automate merge, CI polling, or deployment. Record open product, architecture, or safety decisions there and escalate them upward; do not let a child decide silently. Use `mission.attach-run` only for runs launched outside the normal mission-backed path, and use `mission.close` with a terminal status and concise summary when the mission is done.
+
+After compaction, restart, or confusing history, recover from durable state first: `mission.list` in the project, `mission.list` with `missionScope: "global"` for the user-local cross-project pointer index, then `mission.show` for the relevant mission. `mission.show` refreshes linked async status when available and returns warnings instead of hiding the mission if a linked status file is temporarily unreadable. Use the linked run ids with normal `status`, `steer`, `resume`, or `stop` actions. Project mission JSON remains authoritative over chat history.
+
+Routing rule:
+- Same project: ordinary mission-backed subagents.
+- Different project, small/bounded task: ordinary async subagent with explicit `cwd`, an authority boundary, and durable output.
+- Several projects with independent work: one async `workflowScript` whose child keys include repo slugs and whose child calls set explicit `cwd`; keep publication and merge decisions serial per repo.
+- Different project, substantial or long-running work: open a project-owned Herdr pane rooted there when a separate visible project session is useful, then give that project Pi session a narrow mission/result contract. Do not model it as ordinary child nesting, and do not expect existing headless runs to move into the pane.
+
+Project panes run a separate Pi session from the target directory. Subagents launched inside that pane use that project's config, agents, skills, files, git state, and mission records. The pane binding lives under `<projectRoot>/.pi-subagents/project-panes/herdr.json`. For ordinary headless delegation to another repo, prefer explicit `cwd` first; reserve project panes for visible or persistent project ownership.
 
 ```typescript
-subagent({
-  agent: "worker",
-  task: "Implement feature X",
-  clarify: true
-})
+subagent({ action: "mission.create", mission: { title: "Ship auth refresh", goal: "Implement and validate refresh handling" } })
+subagent({ workflowScript: `return runs.run("main", { agent: "worker", task: "Implement the approved plan" })`, missionId: "<mission-id>" })
+subagent({ workflowScript: `return runs.run("main", { agent: "scout", task: "Quickly answer whether this file exists" })`, mission: false })
+subagent({ action: "mission.list", missionScope: "global" })
+subagent({ action: "project.open", cwd: "/path/to/other-repo", message: "Own this mission for the project and report back with receipts." })
+subagent({ action: "project.status", cwd: "/path/to/other-repo" })
+subagent({ action: "project.close", cwd: "/path/to/other-repo" })
+subagent({ action: "mission.close", missionId: "<mission-id>", missionStatus: "completed", summary: "Auth refresh shipped and tests pass." })
 ```
-
-Tool calls launch directly by default. Set `clarify: true` on single, parallel, or chain runs when you want the clarify UI. Clarify edits affect only the next run; use management actions, settings, or markdown files for persistent changes.
-For programmatic background launches, use `async: true`. `clarify: true` keeps the run foreground for the clarify UI.
 
 ## Worktree Isolation
 
@@ -273,25 +304,30 @@ them share one filesystem view.
 
 ```typescript
 subagent({
-  tasks: [
-    { agent: "worker", task: "Implement feature A" },
-    { agent: "worker", task: "Implement feature B" }
-  ],
-  worktree: true
+  workflowScript: `
+    const results = await runs.all([
+      { key: "feature-a", agent: "worker", task: "Implement feature A", worktree: true },
+      { key: "feature-b", agent: "worker", task: "Implement feature B", worktree: true }
+    ]);
+    return results.map(({ key, artifactPaths }) => ({ key, artifactPaths }));
+  `
 })
 ```
 
-`worktree: true` gives each parallel task its own git worktree branched from
-HEAD. This requires a clean git state and is mainly for intentionally parallel
-write workflows. On completion, use the versioned aggregate handoff at
-`parallelHandoff.path` from foreground details or async status/results instead of scraping the combined
-text. Its versioned manifest records child status and output references, full
+`worktree: true` on a `runs.run` / `runs.all` item gives that child its own git
+worktree branched from HEAD. A top-level workflow `worktree: true` makes this the
+default for every child, and a child can opt out with `worktree: false`. This
+requires a clean git state and is mainly for intentionally parallel write
+workflows. On completion, use each child's handoff path from its
+`artifactPaths` instead of scraping combined text. Each manifest records child status and output references, full
 patch paths and stats, and whether each temporary worktree and branch was
-removed. If you want one writer thread and several advisory agents, prefer a
+removed. The manifest is journaled immediately after managed worktree setup, before children run, so abrupt exits retain owned paths and branches for recovery. Dirty or divergent work without a successfully captured patch is preserved with a partial-cleanup warning. Permanently discard recorded preserved work with `subagent({ action: "worktree.discard", handoffPath: "<child handoff path>" })`; authority defaults to interactive confirmation and refuses headlessly, and partial results print manual Git recovery commands. If you want one writer thread and several advisory agents, prefer a
 single-writer pattern instead.
 
 Git worktrees start from tracked files, so ignored or untracked build state
-such as `node_modules` may be absent. `pi-subagents` attempts to symlink the
+such as `node_modules` may be absent. The clean-check ignores pi-subagents'
+own `.pi-subagents/` runtime state, including default mission records, but still
+rejects ordinary source/config changes. `pi-subagents` attempts to symlink the
 root checkout's `node_modules` into each managed worktree when it exists, but
 agents should still treat dependency setup as an explicit bootstrap step before
 running tests, typecheck, or builds. If module resolution fails in a fresh
@@ -310,14 +346,12 @@ The intended oracle loop is:
 ```typescript
 // Advisory review in a branched thread. Oracle defaults to forked context.
 subagent({
-  agent: "oracle",
-  task: "Review my current direction, challenge assumptions, and propose the best next move."
+  workflowScript: `return runs.run("oracle-check", { agent: "oracle", task: "Review my current direction, challenge assumptions, and propose the best next move." })`
 })
 
 // Implementation only after explicit approval. Worker defaults to forked context.
 subagent({
-  agent: "worker",
-  task: "Implement the approved approach: ..."
+  workflowScript: `return runs.run("implementation", { agent: "worker", task: "Implement the approved approach: ..." })`
 })
 ```
 
@@ -327,11 +361,11 @@ history as a baseline contract.
 
 Use `oracle` as a smart-friend escalation when the parent needs help with trajectory rather than diff inspection: architectural boundaries, model capability routing, merge conflicts, reviewer disagreement, context drift after long work, a worker about to invent a pattern, or fixes that require product/scope tradeoffs. Ask broad questions when the right concern is unclear, and let `oracle` point out missing context or files the parent should inspect before asking again. Keep `oracle` advisory unless it has been explicitly assigned the single writer role.
 
-## Subagent + Supervisor Coordination
+## Subagent + Intercom Coordination
 
 `pi-subagents` includes native supervisor coordination. Child agents can use `contact_supervisor` to ask the exact parent session that spawned them; messages are scoped by parent session id and should not appear in other Pi sessions.
 
-Do not invent a target. Prefer the tool from the injected bridge instructions.
+Most agents should not call generic `intercom` directly unless bridge instructions provide a target and `contact_supervisor` is unavailable. Do not invent a target. Prefer the tool from the injected bridge instructions.
 
 Use `contact_supervisor` with `reason: "need_decision"` when:
 - a subagent is blocked on a decision
@@ -373,6 +407,6 @@ Or inspects unresolved asks first:
 subagent_supervisor({ action: "pending" })
 ```
 
-Prefer `subagent_supervisor` for parent replies; it never conflicts with other installed tools.
+If no external `pi-intercom` tool owns the `intercom` name, native supervisor coordination may also expose `intercom` as a compatibility fallback. Prefer `subagent_supervisor` for parent replies because it never overrides installed `pi-intercom`.
 
-If supervisor messages do not show up, run `subagent({ action: "doctor" })` or `/subagents-doctor`.
+If intercom messages do not show up, run `subagent({ action: "doctor" })` or `/subagents-doctor`.

@@ -90,8 +90,8 @@ export function readProcessTerminalCandidate(asyncDir: string): ProcessTerminalC
 			runnerProcessInstanceId: raw.runnerProcessInstanceId,
 			writers,
 			...(expectedWriters ? { expectedWriters } : {}),
-			...(typeof raw.sessionFile === "string" ? { sessionFile: raw.sessionFile } : {}),
-			...(typeof raw.revivalLeaseToken === "string" ? { revivalLeaseToken: raw.revivalLeaseToken } : {}),
+			...(typeof raw.sessionFile === "string" && raw.sessionFile ? { sessionFile: raw.sessionFile } : {}),
+			...(typeof raw.revivalLeaseToken === "string" && raw.revivalLeaseToken ? { revivalLeaseToken: raw.revivalLeaseToken } : {}),
 			...(typeof raw.revivalLeaseReleaseAcknowledged === "boolean" ? { revivalLeaseReleaseAcknowledged: raw.revivalLeaseReleaseAcknowledged } : {}),
 		};
 	} catch (error) {

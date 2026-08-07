@@ -212,7 +212,7 @@ export function eventIndicatesRepoEdit(event: unknown): boolean {
 	if (!event || typeof event !== "object") return false;
 	const input = event as Record<string, unknown>;
 	if (input.type === "turn_end" || input.event === "turn_end") {
-		return [input.message, ...(Array.isArray(input.toolResults) ? (input.toolResults as unknown[]) : [])].some(messageIndicatesRepoEdit);
+		return [input.message, ...(Array.isArray(input.toolResults) ? input.toolResults : [])].some(messageIndicatesRepoEdit);
 	}
 	if (input.type === "tool_result" || input.event === "tool_result") return messageIndicatesRepoEdit({ role: "toolResult", ...input });
 	if (input.type !== "tool_result_end" && input.event !== "tool_result_end") return false;

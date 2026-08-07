@@ -1089,6 +1089,7 @@ describe("native subagent fleet", () => {
 				asyncDir: string;
 				index?: number;
 				message: string;
+				mode: string;
 			}> = [];
 			const component = new SubagentFleetComponent(
 				{ terminal: { rows: 28, columns: 100 }, requestRender() {} } as never,
@@ -1114,7 +1115,7 @@ describe("native subagent fleet", () => {
 			try {
 				component.handleInput("s");
 				assert.ok(
-					component.render(100).some((line) => line.includes("Steer message:")),
+					component.render(100).some((line) => line.includes("Steer message")),
 				);
 				for (const char of "please continue") component.handleInput(char);
 				component.handleInput("\r");
@@ -1125,6 +1126,7 @@ describe("native subagent fleet", () => {
 						asyncDir,
 						index: 0,
 						message: "please continue",
+						mode: "steer",
 					},
 				]);
 				assert.ok(

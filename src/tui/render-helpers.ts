@@ -54,6 +54,19 @@ export function renderHeader(text: string, width: number, theme: Theme): string 
 	);
 }
 
+export function formatPath(filePath: string): string {
+	const home = process.env.HOME;
+	if (home && filePath.startsWith(home)) return `~${filePath.slice(home.length)}`;
+	return filePath;
+}
+
+export function formatScrollInfo(above: number, below: number): string {
+	let info = "";
+	if (above > 0) info += `↑ ${above} more`;
+	if (below > 0) info += `${info ? "  " : ""}↓ ${below} more`;
+	return info;
+}
+
 export function renderFooter(text: string, width: number, theme: Theme): string {
 	const innerW = width - 2;
 	const padLen = Math.max(0, innerW - visibleWidth(text));

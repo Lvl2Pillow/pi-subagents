@@ -1,6 +1,6 @@
 {
   "name": "pi-subagents",
-  "version": "0.40.0",
+  "version": "0.42.1",
   "description": "Pi extension for single-agent delegation and scripted multi-agent workflows",
   "author": "Nico Bailon",
   "license": "MIT",
@@ -8,6 +8,7 @@
   "exports": {
     ".": "./index.ts",
     "./background-work": "./src/api/background-work.ts",
+    "./external-runs": "./src/api/external-runs.ts",
     "./delegation": "./src/api/delegation.ts",
     "./capability-ceiling": "./src/api/capability-ceiling.ts",
     "./preflight": "./src/api/preflight.ts",
@@ -93,9 +94,9 @@
   "devDependencies": {
     "@earendil-works/pi-agent-core": "0.81.0",
     "@earendil-works/pi-ai": "0.81.0",
-    "@earendil-works/pi-coding-agent": "0.81.0",
     "@earendil-works/pi-tui": "0.81.0",
     "@types/node": "24.13.3",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@earendil-works/pi-coding-agent": "file:./test/fixtures/pi-coding-agent-shim"
   }
 }

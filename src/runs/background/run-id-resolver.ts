@@ -55,8 +55,8 @@ function nestedScopeFromState(state: SubagentState | undefined): NestedRunResolu
 		seen.add(key);
 		routes.push(route);
 	};
-	for (const control of state.foregroundControls.values()) add(control.nestedRoute);
-	for (const job of state.asyncJobs.values()) add(job.nestedRoute);
+	for (const control of state.foregroundControls.values()) add(control.nestedRoute as NestedRoute | undefined);
+	for (const job of state.asyncJobs.values()) add(job.nestedRoute as NestedRoute | undefined);
 	return { routes };
 }
 

@@ -2,12 +2,55 @@
 
 ## [Unreleased]
 
+### Fork
+- Synced to upstream v0.42.1; retained the persistent-subagent feature (`alt+n` channels).
+
+### Added
+- Added explicit project-local subagent refinement overlays through `/subagents-refine <agent>` and `refine`, `refine.show`, and `refine.rollback` actions.
+- Added opt-in goal missions that send one needs-attention continuation notice after idle parent turns, account linked-run token usage against a mission budget, pause or stop through `mission.update`, and name retained children when resume is the next ready action.
+- Added `steer`, `follow_up`, and `auto` delivery modes with delivered/queued receipts, bounded FIFO follow-ups, retained-child revival briefs, RPC parity, and Fleet mode selection.
+- Added one-command `gate` verification for direct and scripted workflow children, with host evidence and tracked-workspace memoization.
+- Added mission-scoped durable JSON state to `workflowScript` through `state.get(key)` and `state.set(key, value)`.
+- Added a session-scoped `children.list` roster for the last 10 completed retained workflow children and let `workflowScript` resume one through `runs.run` without changing its stored agent, model, or tool contract.
+
+### Changed
+- Removed the bundled `planner` and `context-builder` roles and their stale context-handoff prompt templates.
+- Made `workflowScript` the only public subagent execution surface, including one-child and scheduled runs. Scripts now use ordinary JavaScript statement-body semantics and require an explicit `return` for useful results.
+- Require workflowScript-only persisted schedule targets. Removed legacy agent-target restore conversion.
+
+### Fixed
+- Preserve live composite child tool-call ids for APIs that normalize them, preventing context rewriting from breaking the next tool-loop turn.
+- Sanitize inherited child tool history ids so forked subagent context stays provider-portable.
+- Prevent async workflow result finalization from reading stale extension contexts after session replacement or reload.
+- Create default missions for static parallel-only chain launches, reject invalid explicit mission ids, and reject legacy `parallel` workflow child params.
+- Keep very narrow TUI result wrapping within its width budget and simplify Fleet nested status row construction.
+- Clean up fanout-child nested-control listeners on reload so stale listeners cannot duplicate resume handling.
+- Prevent path-resolution tests from modifying or deleting the user's real `~/.agents` directory. Thanks to @meatcar for the report and fix in #865.
+- Show the target agent for simple scheduled one-child workflow scripts and mark dynamic scripts clearly.
+- Stop quiet async status widget animation redraws from spilling progress updates into the editor input area.
+
+## [0.42.1] - 2026-08-06
+
+### Fixed
+- Prevent Pi from crashing when subagent status widgets and overlays are shown in narrow or resized terminal layouts. Thanks to @alanvardy for the report in #858 and @meatcar for the fix.
+- Keep async scripted workflows running without an implicit 30-minute timeout, while preserving the foreground default and explicit timeout controls.
+- Limit `workflowScript` chat progress to the supported `auto`, `off`, and `live-card` projections.
+
+## [0.42.0] - 2026-08-06
+
 ### Added
 - Split the README reference material into focused docs and keep the README as a concise quick-start guide.
 - Verified scripted workflows can mix dynamic parallel and sequential phases with managed worktree isolation.
+- Added native `@gotgenes/pi-permission-system` compatibility for child processes. Thanks to @jagaliano for #847.
 
 ### Fixed
+- Accept `mission.summary` as a title alias for workflow launches, so child runs start normally.
+- Keep async subagent widget spinners moving during quiet running periods without adding extra polling.
 - Preserve workflow child output after grouped intercom delivery, so scripts can consume `runs.run(...).output`. Thanks to @kaushal9696 for #846.
+- Match pi-mcp-adapter cache identities that include `protocolVersion`, so direct MCP tool selections resolve from current adapter caches. Thanks to @ProCleiton for #848.
+- Reject commandless verified acceptance at the runtime launch boundary before a child starts. Use `checked` or provide `acceptance.verify`. Thanks to @simonasr for #849.
+- Warn when project-scoped subagent artifacts can be included in an npm package. Thanks to @nicobailon for #840.
+- Fail child launch setup when an installed permission-system manifest cannot be read or names a missing extension entry.
 - Let the Fleet inspector use the full 85% terminal-height budget on tall terminals. Thanks to @xz-dev for #839.
 - Launch Herdr inspector panes through a JavaScript bootstrap instead of asking Node to type-strip TypeScript installed under `node_modules`. Thanks to @williamleong for #837.
 - Removed the Pi CLI devDependency from the default install and test against a local runtime shim, so repo audits no longer report the upstream dev-only Undici advisory while real Pi E2E remains optional. Thanks to @dmg-egg for #782.

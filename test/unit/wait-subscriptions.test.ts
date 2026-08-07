@@ -99,7 +99,7 @@ describe("non-blocking wait subscriptions", () => {
 				updatedAt: Date.now(),
 				children: [{ agent: "worker", index: 0, status: "detached" }],
 			}]]);
-			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ type: string; text?: string }>; isError?: boolean }> } | undefined;
+			let tool: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text?: string }>; isError?: boolean }> } | undefined;
 			registerWaitTool({
 				events: new TestBus(),
 				registerTool(value: unknown) { tool = value as typeof tool; },
